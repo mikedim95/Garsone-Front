@@ -1,0 +1,77 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Home, LogIn, ChefHat, UtensilsCrossed, Cog } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Link } from 'react-router-dom';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { HomeLink } from '../components/HomeLink';
+import { AppThemeSwitch } from '@/components/AppThemeSwitch';
+
+interface AppBurgerProps {
+  className?: string;
+  title?: string;
+  children?: React.ReactNode; // page-specific actions
+}
+
+export const AppBurger = ({ className = '', title, children }: AppBurgerProps) => {
+  const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          className={`relative inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-lg border border-border/60 bg-card/80 hover:bg-accent transition-colors duration-150 ${className}`}
+          aria-label="Open menu"
+        >
+          {/* Animated burger */}
+          <span className={`block w-5 h-0.5 bg-foreground rounded absolute transition-transform duration-200 ${open ? 'rotate-45' : '-translate-y-1'}`} />
+          <span className={`block w-5 h-0.5 bg-foreground rounded absolute transition-opacity duration-200 ${open ? 'opacity-0' : 'opacity-100'}`} />
+          <span className={`block w-5 h-0.5 bg-foreground rounded absolute transition-transform duration-200 ${open ? '-rotate-45' : 'translate-y-1'}`} />
+        </button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-[80vw] max-w-xs sm:max-w-sm flex flex-col">
+        <SheetHeader>
+          <SheetTitle className="text-base font-semibold">{title ?? 'Menu'}</SheetTitle>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+          {children ? (
+            <section className="space-y-2">
+              <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.quick_actions', { defaultValue: 'Quick Actions' })}</h3>
+              <div className="space-y-1.5">{children}</div>
+            </section>
+          ) : null}
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.navigation', { defaultValue: 'Navigation' })}</h3>
+            <NavLink to="/" label={t('nav.home')} icon={<Home className="h-4 w-4" />} />
+            <NavLink to="/login" label={t('nav.login')} icon={<LogIn className="h-4 w-4" />} />
+            <NavLink to="/waiter" label={t('waiter.dashboard')} icon={<UtensilsCrossed className="h-4 w-4" />} />
+            <NavLink to="/cook" label={t('cook.dashboard', { defaultValue: 'Cook' })} icon={<ChefHat className="h-4 w-4" />} />
+            <NavLink to="/manager" label={t('manager.dashboard')} icon={<Cog className="h-4 w-4" />} />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.preferences', { defaultValue: 'Preferences' })}</h3>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <LanguageSwitcher />
+                <HomeLink />
+              </div>
+              <AppThemeSwitch />
+            </div>
+          </section>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+
+const NavLink = ({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) => (
+  <Link
+    to={to}
+    className="flex items-center gap-2 rounded-lg border border-border/40 bg-card px-3 py-2 text-sm hover:bg-accent transition-colors"
+  >
+    <span className="text-primary">{icon}</span>
+    <span className="">{label}</span>
+  </Link>
+);

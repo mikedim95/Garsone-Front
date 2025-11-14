@@ -1,0 +1,62 @@
+import { MenuItem } from '../types';
+import { COFFEE_IMAGES, PASTRY_IMAGES, MOCK_MODIFIERS } from './mockData';
+
+export const MENU_ITEMS: MenuItem[] = [
+  {
+    id: 'item-1',
+    name: 'Espresso',
+    description: 'Single shot of rich Italian espresso',
+    price: 2.5,
+    image: COFFEE_IMAGES[0],
+    category: 'Coffee',
+    available: true,
+  },
+  {
+    id: 'item-2',
+    name: 'Cappuccino',
+    description: 'Espresso with steamed milk foam',
+    price: 3.5,
+    image: COFFEE_IMAGES[1],
+    category: 'Coffee',
+    available: true,
+    modifiers: [MOCK_MODIFIERS.milk, MOCK_MODIFIERS.size],
+  },
+  {
+    id: 'item-3',
+    name: 'Latte',
+    description: 'Mild milk coffee with smooth finish',
+    price: 4.0,
+    image: COFFEE_IMAGES[2],
+    category: 'Coffee',
+    available: true,
+    modifiers: [MOCK_MODIFIERS.milk, MOCK_MODIFIERS.size],
+  },
+  {
+    id: 'item-4',
+    name: 'Americano',
+    description: 'Espresso with hot water',
+    price: 3.0,
+    image: COFFEE_IMAGES[3],
+    category: 'Coffee',
+    available: true,
+    modifiers: [MOCK_MODIFIERS.size],
+  },
+  {
+    id: 'item-5',
+    name: 'Croissant',
+    description: 'Butter croissant, freshly baked',
+    price: 2.2,
+    image: PASTRY_IMAGES[0],
+    category: 'Pastries',
+    available: true,
+  },
+  {
+    id: 'item-6',
+    name: 'Chocolate Muffin',
+    description: 'Rich cocoa muffin',
+    price: 2.5,
+    image: PASTRY_IMAGES[1],
+    category: 'Pastries',
+    available: true,
+  },
+];

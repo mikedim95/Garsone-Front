@@ -1,0 +1,111 @@
+{
+    "hero":  {
+                 "title":  "Modern Restaurant Ordering",
+                 "subtitle":  "Scan, Order, Enjoy — No App Required",
+                 "cta_demo":  "View Demo",
+                 "cta_scan":  "Scan QR",
+                 "cta_login":  "Staff Login",
+                 "ribbon":  "Real-time • Instant • PWA Ready"
+             },
+    "features":  {
+                     "pwa":  "Fast PWA",
+                     "pwa_desc":  "Works offline, installs like an app",
+                     "mqtt":  "Real-time Alerts",
+                     "mqtt_desc":  "MQTT-powered notifications",
+                     "i18n":  "Multi-language",
+                     "i18n_desc":  "English \u0026 Greek support",
+                     "roles":  "Role Dashboards",
+                     "roles_desc":  "Waiter \u0026 Manager views"
+                 },
+    "menu":  {
+                 "title":  "Menu",
+                 "add_to_cart":  "Add to Cart",
+                 "cart":  "Cart",
+                 "checkout":  "Checkout",
+                 "total":  "Total",
+                 "call_waiter":  "Call Waiter"
+             },
+    "waiter":  {
+                   "dashboard":  "Waiter Dashboard",
+                   "tables":  "My Tables",
+                   "orders":  "Orders"
+               },
+    "manager":  {
+                    "dashboard":  "Manager Dashboard",
+                    "menu_editor":  "Menu Editor",
+                    "tables":  "Tables \u0026 Staff",
+                    "edit_waiter":  "Edit waiter",
+                    "display_name":  "Display name",
+                    "assigned_tables":  "Assigned tables",
+                    "table":  "Table",
+                    "inactive":  "Inactive",
+                    "active":  "Active",
+                    "edit_table":  "Edit table",
+                    "label":  "Label",
+                    "inactive_tables_hint":  "Inactive tables stay hidden from the customer menu and waiter assignments.",
+                    "no_waiters":  "No waiters yet. Add your first waiter to get started.",
+                    "no_tables":  "No tables yet. Add your first table to get started.",
+                    "economics":  "Economics",
+                    "personnel":  "Personnel"
+                },
+    "auth":  {
+                 "login":  "Login",
+                 "email":  "Email",
+                 "password":  "Password",
+                 "sign_in":  "Sign In"
+             },
+    "nav":  {
+                "home":  "Home",
+                "demo":  "Demo",
+                "login":  "Login"
+            },
+    "actions":  {
+                    "logout":  "Logout",
+                    "accept":  "Accept",
+                    "deny":  "Deny",
+                    "mark_ready":  "Mark Ready",
+                    "accept_call":  "Accept Call",
+                    "clear_call":  "Clear Call",
+                    "add_waiter":  "Add waiter",
+                    "add_table":  "Add table",
+                    "edit":  "Edit",
+                    "delete":  "Delete",
+                    "cancel":  "Cancel",
+                    "save_changes":  "Save changes",
+                    "create_waiter":  "Create waiter",
+                    "create_table":  "Create table"
+                },
+    "status":  {
+                   "ALL":  "All",
+                   "PLACED":  "Placed",
+                   "PREPARING":  "Preparing",
+                   "READY":  "Ready",
+                   "SERVED":  "Served",
+                   "CANCELLED":  "Cancelled"
+               },
+    "cook":  {
+                 "dashboard":  "Cook Dashboard",
+                 "incoming_orders":  "Incoming Orders",
+                 "in_preparation":  "In Preparation"
+             },
+    "toasts":  {
+                   "new_order":  "New order",
+                   "order_ready":  "Order ready",
+                   "order_cancelled":  "Order cancelled",
+                   "order_updated":  "Order updated",
+                   "update_failed":  "Update failed",
+                   "waiter_called":  "Waiter called",
+                   "call_accepted":  "Call accepted",
+                   "call_cleared":  "Call cleared",
+                   "table":  "Table {{table}}",
+                   "status_changed":  "Status changed to {{status}}"
+               },
+    "app":  {
+                "quick_actions":  "Quick Actions",
+                "navigation":  "Navigation",
+                "preferences":  "Preferences"
+            },
+    "cart":  {
+                 "swipe_hint":  "Swipe left on items to Edit or Delete"
+             }
+}
