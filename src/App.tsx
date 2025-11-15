@@ -8,7 +8,6 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import TableMenu from "./pages/TableMenu";
-import DemoStore from "./pages/DemoStore";
 import WaiterDashboard from "./pages/WaiterDashboard";
 import ManagerDashboard from "./pages/ManagerDashboard";
 import OrderThanks from "./pages/OrderThanks";
@@ -28,7 +27,6 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/table/:tableId" element={<TableMenu />} />
-            <Route path="/demo/store/:demoSlug" element={<DemoStore />} />
             <Route path="/order/:orderId/thanks" element={<OrderThanks />} />
             <Route path="/waiter" element={<WaiterDashboard />} />
             <Route path="/manager" element={<ManagerDashboard />} />

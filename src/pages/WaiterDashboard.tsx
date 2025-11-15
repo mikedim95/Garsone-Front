@@ -8,7 +8,7 @@ import { OrderCard } from '@/components/waiter/OrderCard';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
-import { mqttService } from '@/lib/mqtt';
+import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { LogOut, Check, X } from 'lucide-react';
 
@@ -119,12 +119,12 @@ export default function WaiterDashboard() {
     })();
   }, [assignmentsLoaded, user, setOrdersLocal, take]);
 
-  // MQTT live updates → mutate local cache
+  // Realtime updates → mutate local cache
   useEffect(() => {
     if (!assignmentsLoaded) return;
-    mqttService.connect().then(() => {
+    realtimeService.connect().then(() => {
       // New orders
-      mqttService.subscribe(`${storeSlug}/orders/placed`, (msg: any) => {
+      realtimeService.subscribe(`${storeSlug}/orders/placed`, (msg: any) => {
         if (!msg?.orderId) return;
         const order: Order = {
           id: msg.orderId,
@@ -167,11 +167,11 @@ export default function WaiterDashboard() {
         }
       };
       // Some publishers used a misspelled topic `prepairing`; support both.
-      mqttService.subscribe(`${storeSlug}/orders/prepairing`, onPreparing);
-      mqttService.subscribe(`${storeSlug}/orders/preparing`, onPreparing);
+      realtimeService.subscribe(`${storeSlug}/orders/prepairing`, onPreparing);
+      realtimeService.subscribe(`${storeSlug}/orders/preparing`, onPreparing);
 
       // Ready
-      mqttService.subscribe(`${storeSlug}/orders/ready`, async (msg: any) => {
+      realtimeService.subscribe(`${storeSlug}/orders/ready`, async (msg: any) => {
         if (!msg?.orderId) return;
         updateLocalStatus(msg.orderId, 'READY');
         const exists = ordersAll.some(o => o.id === msg.orderId);
@@ -197,11 +197,11 @@ export default function WaiterDashboard() {
         }
         toast({ title: t('toasts.order_cancelled'), description: t('toasts.table', { table: msg?.tableId ?? '' }) });
       };
-      mqttService.subscribe(`${storeSlug}/orders/cancelled`, onCancelled);
-      mqttService.subscribe(`${storeSlug}/orders/canceled`, onCancelled);
+      realtimeService.subscribe(`${storeSlug}/orders/cancelled`, onCancelled);
+      realtimeService.subscribe(`${storeSlug}/orders/canceled`, onCancelled);
 
       // Call waiter (new topic)
-      mqttService.subscribe(`${storeSlug}/waiter/call`, (msg: any) => {
+      realtimeService.subscribe(`${storeSlug}/waiter/call`, (msg: any) => {
         if (!msg?.tableId) return;
         if (assignedTableIds.size > 0 && !assignedTableIds.has(msg.tableId)) return;
         if (msg.action === 'called') {
@@ -211,13 +211,13 @@ export default function WaiterDashboard() {
       });
     });
     return () => {
-      mqttService.unsubscribe(`${storeSlug}/orders/placed`);
-      mqttService.unsubscribe(`${storeSlug}/orders/prepairing`);
-      mqttService.unsubscribe(`${storeSlug}/orders/preparing`);
-      mqttService.unsubscribe(`${storeSlug}/orders/ready`);
-      mqttService.unsubscribe(`${storeSlug}/orders/cancelled`);
-      mqttService.unsubscribe(`${storeSlug}/orders/canceled`);
-      mqttService.unsubscribe(`${storeSlug}/waiter/call`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/placed`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/prepairing`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/preparing`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/ready`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/canceled`);
+      realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
     };
   }, [assignmentsLoaded, storeSlug, assignedTableIds, upsertOrder, updateLocalStatus, toast]);
 
@@ -294,7 +294,7 @@ export default function WaiterDashboard() {
                 disabled={!lastCallTableId}
                 onClick={() => {
                   if (!lastCallTableId) return;
-                  mqttService.publish(`${storeSlug}/waiter/call`, {
+                  realtimeService.publish(`${storeSlug}/waiter/call`, {
                     tableId: lastCallTableId,
                     action: 'accepted',
                     ts: new Date().toISOString(),
@@ -312,7 +312,7 @@ export default function WaiterDashboard() {
                 disabled={!lastCallTableId}
                 onClick={() => {
                   if (!lastCallTableId) return;
-                  mqttService.publish(`${storeSlug}/waiter/call`, {
+                  realtimeService.publish(`${storeSlug}/waiter/call`, {
                     tableId: lastCallTableId,
                     action: 'cleared',
                     ts: new Date().toISOString(),

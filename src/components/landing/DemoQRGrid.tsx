@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Card } from '../ui/card';
 import { QR_MOCKUP } from '@/lib/mockData';
 import { ExternalLink, Smartphone } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -42,12 +41,6 @@ export const DemoQRGrid = () => {
     return () => { mounted = false; };
   }, []);
 
-  const cards: Array<{ key: string; name: string; desc: string; link: string | null; ready?: boolean }> = [
-    { key: 'demo-cafe', name: 'Demo Café', desc: 'Coffee & Pastries', link: `${BASE_ORIGIN}/demo/store/demo-cafe`, ready: true },
-    { key: 'live-store', name: 'Live Store', desc: 'Random Table (Real Backend)', link: liveUrl, ready: !!liveUrl },
-    { key: 'demo-bar', name: 'Demo Bar', desc: 'Cocktails & Drinks', link: `${BASE_ORIGIN}/demo/store/demo-bar`, ready: true },
-  ];
-
   return (
     <div id="demo-qr" className="py-32 bg-gradient-to-b from-gray-50/50 to-white">
       <div className="max-w-7xl mx-auto px-4">
@@ -60,48 +53,44 @@ export const DemoQRGrid = () => {
             Experience It Live
           </h2>
           <p className="text-xl text-gray-500 max-w-2xl mx-auto font-light">
-            Scan these QR codes to see how customers order from their phones. No app download required!
+            Scan the live QR to open a real table directly from the production backend. No mock data, no scripts, just the live experience.
           </p>
         </div>
         
-        <div className="grid md:grid-cols-3 gap-8 mb-20 items-stretch">
-          {cards.map((card) => (
-            <div 
-              key={card.key} 
-              className="group p-10 text-center bg-white rounded-3xl border border-gray-100 hover:border-purple-200 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
-            >
-              <h3 className="text-2xl font-bold mb-2 text-gray-900">{card.name}</h3>
-              <p className="text-purple-600 font-medium mb-8">{card.desc}</p>
-              <div className="flex-1 flex items-center justify-center mb-8">
-                <div className="glass p-6 rounded-3xl border-2 border-purple-100 w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-                  {card.link ? (
-                    <QRCodeSVG key={card.link} value={card.link} size={220} level="H" includeMargin={false} />
-                  ) : (
-                    <div className="text-sm text-purple-500 text-center">Fetching a table…</div>
-                  )}
-                </div>
-              </div>
-              <Button
-                asChild={!!card.link}
-                variant="outline"
-                className="w-full gap-2 mt-auto rounded-2xl py-6 hover:bg-purple-50 hover:border-purple-600 transition-all"
-                disabled={!card.link}
-                onClick={!card.link ? undefined : undefined}
-              >
-                {card.link ? (
-                  <a href={card.link} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    Open Demo
-                  </a>
+        <div className="max-w-lg mx-auto mb-20">
+          <div 
+            className="group p-10 text-center bg-white rounded-3xl border border-gray-100 hover:border-purple-200 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
+          >
+            <h3 className="text-2xl font-bold mb-2 text-gray-900">Live Store</h3>
+            <p className="text-purple-600 font-medium mb-8">Random active table from the real OrderFlow backend</p>
+            <div className="flex-1 flex items-center justify-center mb-8">
+              <div className="glass p-6 rounded-3xl border-2 border-purple-100 w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                {liveUrl ? (
+                  <QRCodeSVG key={liveUrl} value={liveUrl} size={220} level="H" includeMargin={false} />
                 ) : (
-                  <span className="inline-flex items-center gap-2 opacity-70">
-                    <ExternalLink className="h-4 w-4" />
-                    Open Demo
-                  </span>
+                  <div className="text-sm text-purple-500 text-center">Fetching a table…</div>
                 )}
-              </Button>
+              </div>
             </div>
-          ))}
+            <Button
+              asChild={!!liveUrl}
+              variant="outline"
+              className="w-full gap-2 mt-auto rounded-2xl py-6 hover:bg-purple-50 hover:border-purple-600 transition-all"
+              disabled={!liveUrl}
+            >
+              {liveUrl ? (
+                <a href={liveUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Open Live Table
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-2 opacity-70">
+                  <ExternalLink className="h-4 w-4" />
+                  Preparing link…
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
 
         <div className="relative max-w-5xl mx-auto">

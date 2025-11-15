@@ -3,7 +3,7 @@ import { useAuthStore } from "@/store/authStore";
 import { devMocks } from "./devMocks";
 
 const ENV_API: string | undefined = (import.meta as any).env?.VITE_API_URL;
-const API_BASE = (() => {
+export const API_BASE = (() => {
   // Use env only if it isn't pointing to localhost (which breaks on phones)
   if (ENV_API && ENV_API.trim().length > 0 && !/^https?:\/\/(localhost|127\.)/i.test(ENV_API.trim())) {
     return ENV_API.trim();
@@ -17,7 +17,7 @@ const API_BASE = (() => {
   return 'http://localhost:8787';
 })();
 
-function isOffline() {
+export function isOffline() {
   try {
     const ls = typeof window !== 'undefined' ? window.localStorage?.getItem('OFFLINE') : null;
     if (ls === '1' || ls === 'true') return true;
@@ -117,6 +117,7 @@ export const api = {
   editOrder: (orderId: string, data: any) => isOffline()
     ? (devMocks as any).editOrder?.(orderId, data) as any ?? devMocks.createOrder(data) as any
     : fetchApi(`/orders/${orderId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  printOrder: (orderId: string) => fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
   callWaiter: (tableId: string) => isOffline() ? devMocks.callWaiter(tableId) as any :
     fetchApi("/call-waiter", {
       method: "POST",
@@ -135,12 +136,21 @@ export const api = {
     return fetchApi(`/orders${query}`);
   },
   getOrder: (orderId: string) => isOffline() ? devMocks.getOrder(orderId) as any : fetchApi(`/orders/${orderId}`),
-  updateOrderStatus: (orderId: string, status: string) => isOffline() ?
-    devMocks.updateOrderStatus(orderId, status as any) as any :
-    fetchApi(`/orders/${orderId}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status }),
-    }),
+  updateOrderStatus: (
+    orderId: string,
+    status: string,
+    options?: { cancelReason?: string; skipMqtt?: boolean }
+  ) =>
+    isOffline()
+      ? devMocks.updateOrderStatus(orderId, status as any) as any
+      : fetchApi(`/orders/${orderId}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status,
+            ...(options?.cancelReason ? { cancelReason: options.cancelReason } : {}),
+            ...(options?.skipMqtt ? { skipMqtt: true } : {}),
+          }),
+        }),
 
   // Manager: waiter-table assignments
   getWaiterTables: () => isOffline() ? devMocks.getWaiterTables() as any : fetchApi("/waiter-tables"),

@@ -5,10 +5,25 @@ import { AnimatedMockup } from './landing/AnimatedMockup';
 import { DemoQRGrid } from './landing/DemoQRGrid';
 import { Navigation } from './landing/Navigation';
 import { Testimonials } from './landing/Testimonials';
+import { realtimeService } from '@/lib/realtime';
 
 const AppLayout: React.FC = () => {
-  // Do not connect to MQTT from landing; only tag prefix for clientId formatting
-  useEffect(() => { try { localStorage.setItem('CLIENT_PREFIX', 'landingpage'); } catch {} }, []);
+  // Do not connect to realtime streams from landing; ensure any active connection is closed.
+  useEffect(() => {
+    try { localStorage.setItem('CLIENT_PREFIX', 'landingpage'); } catch {}
+    if (typeof window !== 'undefined') {
+      (window as any).__OF_LANDING__ = true;
+    }
+    try { realtimeService.disconnect(); } catch {}
+    if (typeof window !== 'undefined') {
+      try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: false } })); } catch {}
+    }
+    return () => {
+      if (typeof window !== 'undefined' && (window as any).__OF_LANDING__) {
+        delete (window as any).__OF_LANDING__;
+      }
+    };
+  }, []);
   return (
     <div className="min-h-screen bg-white">
       <Navigation />

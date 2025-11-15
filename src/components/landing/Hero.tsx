@@ -34,7 +34,9 @@ export const Hero = () => {
         <div className="flex flex-wrap gap-4 justify-center mb-24">
           <Button 
             size="lg" 
-            onClick={() => navigate('/demo/store/demo-cafe')} 
+            onClick={() => {
+              document.getElementById('demo-qr')?.scrollIntoView({ behavior: 'smooth' });
+            }} 
             className="gap-2 text-base px-10 py-7 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 bg-gradient-to-r from-purple-600 to-blue-600"
           >
             <Play className="h-5 w-5" />

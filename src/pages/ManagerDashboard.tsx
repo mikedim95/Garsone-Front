@@ -48,7 +48,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { mqttService } from '@/lib/mqtt';
+import { realtimeService } from '@/lib/realtime';
 
 const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
   PLACED: 10,
@@ -839,15 +839,15 @@ export default function ManagerDashboard() {
 
   // Personnel: Pro analytics (defined after waiterDetails)
 
-  // Call-waiter response times (live MQTT only)
+  // Call-waiter response times (live realtime channel only)
   const [callResponseDurations, setCallResponseDurations] = useState<number[]>([]);
   const lastCallByTable = useRef<Map<string, Date>>(new Map());
   useEffect(() => {
     const storeSlug = (typeof window !== 'undefined' && window.localStorage.getItem('STORE_SLUG')) || 'store';
     let subscribed = false;
-    mqttService.connect().then(() => {
+    realtimeService.connect().then(() => {
       const topic = `${storeSlug}/waiter/call`;
-      mqttService.subscribe(topic, (msg: any) => {
+      realtimeService.subscribe(topic, (msg: any) => {
         const tableId = msg?.tableId;
         const action = msg?.action;
         const ts = msg?.ts ? new Date(msg.ts) : new Date();
@@ -870,7 +870,7 @@ export default function ManagerDashboard() {
     return () => {
       if (subscribed) {
         const storeSlug = (typeof window !== 'undefined' && window.localStorage.getItem('STORE_SLUG')) || 'store';
-        mqttService.unsubscribe(`${storeSlug}/waiter/call`);
+        realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
       }
     };
   }, []);

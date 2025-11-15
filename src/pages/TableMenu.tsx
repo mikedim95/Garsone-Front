@@ -11,7 +11,7 @@ import { AppBurger } from "./AppBurger";
 import { useCartStore } from "@/store/cartStore";
 import { api } from "@/lib/api";
 import { useMenuStore } from "@/store/menuStore";
-import { mqttService } from "@/lib/mqtt";
+import { realtimeService } from "@/lib/realtime";
 import { MenuItem } from "@/types";
 import { Bell, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -126,10 +126,10 @@ export default function TableMenu() {
   // Live refresh when manager updates menu
   useEffect(() => {
     let subscribed: string | null = null;
-    mqttService.connect().then(() => {
+    realtimeService.connect().then(() => {
       const topic = `stores/${storeSlug}/menu/updated`;
       subscribed = topic;
-      mqttService.subscribe(topic, async () => {
+      realtimeService.subscribe(topic, async () => {
         try {
           const data: any = await api.getMenu();
           setMenuCache(data);
@@ -145,11 +145,11 @@ export default function TableMenu() {
       });
     });
     return () => {
-      if (subscribed) mqttService.unsubscribe(subscribed);
+      if (subscribed) realtimeService.unsubscribe(subscribed);
     };
   }, [storeSlug, setMenuCache]);
 
-  // Fallback polling ONLY when MQTT is not connected
+  // Fallback polling ONLY when realtime channel is not connected
   useEffect(() => {
     let intervalId: number | undefined;
     let lastSnapshot: string | undefined;
@@ -167,8 +167,8 @@ export default function TableMenu() {
 
     const poll = async () => {
       try {
-        // If MQTT is connected, stop polling immediately
-        if (mqttService.isConnected()) {
+        // If realtime is connected, stop polling immediately
+        if (realtimeService.isConnected()) {
           stop();
           return;
         }
@@ -187,7 +187,7 @@ export default function TableMenu() {
     };
 
     const start = () => {
-      if (intervalId || mqttService.isConnected()) return;
+      if (intervalId || realtimeService.isConnected()) return;
       // Less aggressive: 20s to reduce UX disturbance
       intervalId = window.setInterval(poll, 20_000);
     };
@@ -200,7 +200,7 @@ export default function TableMenu() {
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        if (!mqttService.isConnected()) {
+        if (!realtimeService.isConnected()) {
           poll();
           start();
         } else {
@@ -270,7 +270,7 @@ export default function TableMenu() {
         };
         setLastOrder(normalized);
       }
-      // Backend publishes MQTT; avoid duplicate client emits
+      // Backend publishes realtime events; avoid duplicate client emits
       clearCart();
       const orderId = orderFromResponse?.id || response?.orderId;
       // pass tableId so the thanks page can subscribe to the ready topic
@@ -292,14 +292,14 @@ export default function TableMenu() {
     if (!tableId) return;
     let mounted = true;
     (async () => {
-      await mqttService.connect();
-      mqttService.subscribe(`${storeSlug}/waiter/call`, (msg: any) => {
+      await realtimeService.connect();
+      realtimeService.subscribe(`${storeSlug}/waiter/call`, (msg: any) => {
         if (!mounted) return;
         if (!msg || msg.tableId !== tableId) return;
         if (msg.action === 'accepted') setCalling('accepted');
         else if (msg.action === 'cleared') setCalling('idle');
       });
-      mqttService.subscribe(`${storeSlug}/orders/prepairing`, (msg: any) => {
+      realtimeService.subscribe(`${storeSlug}/orders/prepairing`, (msg: any) => {
         if (!mounted) return;
         if (msg?.orderId) {
           setLastOrder((prev: any) =>
@@ -307,7 +307,7 @@ export default function TableMenu() {
           );
         }
       });
-      mqttService.subscribe(`${storeSlug}/orders/ready`, (msg: any) => {
+      realtimeService.subscribe(`${storeSlug}/orders/ready`, (msg: any) => {
         if (!mounted) return;
         if (msg?.orderId) {
           setLastOrder((prev: any) =>
@@ -317,7 +317,7 @@ export default function TableMenu() {
           );
         }
       });
-      mqttService.subscribe(`${storeSlug}/orders/cancelled`, (msg: any) => {
+      realtimeService.subscribe(`${storeSlug}/orders/cancelled`, (msg: any) => {
         if (!mounted) return;
         if (msg?.orderId) {
           setLastOrder((prev: any) =>
@@ -330,10 +330,10 @@ export default function TableMenu() {
     })();
     return () => {
       mounted = false;
-      mqttService.unsubscribe(`${storeSlug}/waiter/call`);
-      mqttService.unsubscribe(`${storeSlug}/orders/prepairing`);
-      mqttService.unsubscribe(`${storeSlug}/orders/ready`);
-      mqttService.unsubscribe(`${storeSlug}/orders/cancelled`);
+      realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/prepairing`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/ready`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`);
     };
   }, [storeSlug, tableId]);
 

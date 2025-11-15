@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { HomeLink } from '@/components/HomeLink';
 import { AppBurger } from './AppBurger';
 import { CheckCircle } from 'lucide-react';
-import { mqttService } from '@/lib/mqtt';
+import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
 
 export default function OrderThanks() {
@@ -38,15 +38,15 @@ export default function OrderThanks() {
   useEffect(() => {
     if (!storeSlug) return;
     const topics: string[] = [];
-    mqttService.connect().then(() => {
+    realtimeService.connect().then(() => {
       const t = `${storeSlug}/orders/ready`;
       topics.push(t);
-      mqttService.subscribe(t, (msg: any) => {
+      realtimeService.subscribe(t, (msg: any) => {
         if (orderId && msg?.orderId === orderId) setReady(true);
         else if (!orderId && tableId && msg?.tableId === tableId) setReady(true);
       });
     });
-    return () => { topics.forEach((t) => mqttService.unsubscribe(t)); };
+    return () => { topics.forEach((t) => realtimeService.unsubscribe(t)); };
   }, [storeSlug, orderId, tableId]);
 
   return (

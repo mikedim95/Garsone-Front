@@ -29,7 +29,7 @@ export default function Login() {
     }
   });
   useEffect(() => {
-    const onMqttStatus = (e: any) => {
+    const onRealtimeStatus = (e: any) => {
       const connected = Boolean(e?.detail?.connected);
       setOffline(!connected);
     };
@@ -38,10 +38,10 @@ export default function Login() {
         setOffline(e.newValue === "1");
       }
     };
-    window.addEventListener("mqtt-status", onMqttStatus as any);
+    window.addEventListener("realtime-status", onRealtimeStatus as any);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener("mqtt-status", onMqttStatus as any);
+      window.removeEventListener("realtime-status", onRealtimeStatus as any);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -79,7 +79,7 @@ export default function Login() {
             const next = !offline;
             try { localStorage.setItem('OFFLINE', next ? '1' : '0'); } catch {}
             setOffline(next);
-            try { window.dispatchEvent(new CustomEvent('mqtt-status', { detail: { connected: !next } })); } catch {}
+            try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: !next } })); } catch {}
           }}
           title={(offline ? 'Offline' : 'Connected') + ' — click to ' + (offline ? 'go online' : 'go offline')}
           className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-3 py-2 text-xs font-medium text-foreground/80 hover:bg-accent/50 transition-colors"

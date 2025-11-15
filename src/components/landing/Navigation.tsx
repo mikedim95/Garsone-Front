@@ -54,13 +54,13 @@ export const Navigation = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <a href="#demo-qr" className="text-sm font-medium hover:text-primary transition-colors text-gray-900">
-              {t('nav.demo')}
-            </a>
+            <Button asChild variant="ghost" className="text-sm font-medium text-gray-900">
+              <a href="#demo-qr">{t('nav.demo')}</a>
+            </Button>
 
-            <a href="/login" className="text-sm font-medium hover:text-primary transition-colors text-gray-900">
-              {t('nav.login')}
-            </a>
+            <Button asChild variant="ghost" className="text-sm font-medium text-gray-900">
+              <a href="/login">{t('nav.login')}</a>
+            </Button>
           </div>
 
           {/* Right side - Status and Language */}

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
-import { mqttService } from "@/lib/mqtt";
+import { realtimeService } from "@/lib/realtime";
 import { Order } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,6 +24,7 @@ export default function CookDashboard() {
 
   const [storeSlug, setStoreSlug] = useState("demo-cafe");
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
+  const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -103,10 +104,10 @@ export default function CookDashboard() {
     init();
   }, [setOrdersLocal]);
 
-  // MQTT updates -> local store
+  // Realtime updates -> local store
   useEffect(() => {
-    mqttService.connect().then(() => {
-      mqttService.subscribe(`${storeSlug}/orders/placed`, (msg: any) => {
+    realtimeService.connect().then(() => {
+      realtimeService.subscribe(`${storeSlug}/orders/placed`, (msg: any) => {
         if (!msg?.orderId) return;
         const order: Order = {
           id: msg.orderId,
@@ -134,7 +135,7 @@ export default function CookDashboard() {
       });
     });
     return () => {
-      mqttService.unsubscribe(`${storeSlug}/orders/placed`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/placed`);
     };
   }, [storeSlug, upsertOrder]);
 
@@ -160,17 +161,23 @@ export default function CookDashboard() {
     [ordersAll]
   );
 
-  const accept = async (id: string) => {
-    setAccepting((s) => new Set(s).add(id));
+  const transitionToPreparing = async (
+    id: string,
+    setTracker: React.Dispatch<React.SetStateAction<Set<string>>>,
+    options?: { skipMqtt?: boolean }
+  ) => {
+    setTracker((s) => new Set(s).add(id));
     try {
-      await api.updateOrderStatus(id, "PREPARING");
+      await api.updateOrderStatus(id, "PREPARING", {
+        ...(options?.skipMqtt ? { skipMqtt: true } : {}),
+      });
       updateLocalStatus(id, "PREPARING");
       toast({
         title: "Preparing",
         description: `Order ${id} is now PREPARING`,
       });
     } finally {
-      setAccepting((s) => {
+      setTracker((s) => {
         const n = new Set(s);
         n.delete(id);
         return n;
@@ -178,27 +185,12 @@ export default function CookDashboard() {
     }
   };
 
-  const sendOrderToPrinter = (order: Order) => {
+  const accept = (id: string) =>
+    transitionToPreparing(id, setAccepting, { skipMqtt: true });
+
+  const sendOrderToPrinter = async (order: Order) => {
     try {
-      const payload = {
-        orderId: order.id,
-        tableId: order.tableId,
-        tableLabel: order.tableLabel,
-        createdAt: order.createdAt,
-        totalCents: Math.round((order.total ?? 0) * 100),
-        note: order.note ?? "",
-        items: (order.items || []).map((entry) => ({
-          title: entry.item?.name ?? "Item",
-          quantity: entry.quantity ?? 1,
-          unitPriceCents: Math.round((entry.item?.price ?? 0) * 100),
-          modifiers: Object.entries(entry.selectedModifiers || {}).map(
-            ([, optionId]) => ({
-              titleSnapshot: optionId,
-            })
-          ),
-        })),
-      };
-      mqttService.publish(`${storeSlug}/orders/accepted`, payload);
+      await api.printOrder(order.id);
     } catch (error) {
       console.error("Failed to publish print job", error);
       toast({
@@ -210,8 +202,8 @@ export default function CookDashboard() {
 
   const acceptWithPrint = async (order: Order) => {
     try {
-      await accept(order.id);
-      sendOrderToPrinter(order);
+      await transitionToPreparing(order.id, setPrinting);
+      await sendOrderToPrinter(order);
     } catch (error) {
       console.error("Accept with print failed", error);
     }
@@ -358,14 +350,14 @@ export default function CookDashboard() {
                 <Button
                   className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white shadow-md"
                   onClick={() => acceptWithPrint(o)}
-                  disabled={accepting.has(o.id)}
+                  disabled={printing.has(o.id)}
                   aria-label={acceptWithPrintLabel}
                   title={acceptWithPrintLabel}
                 >
-                  {accepting.has(o.id) && (
+                  {printing.has(o.id) && (
                     <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
                   )}
-                  {!accepting.has(o.id) && (
+                  {!printing.has(o.id) && (
                     <span role="img" aria-hidden="true" className="text-2xl leading-none">
                       🖨️
                     </span>
