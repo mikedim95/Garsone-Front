@@ -59,6 +59,9 @@
     "revenue_by_day": "Έσοδα ανά ημέρα",
     "categories": "Κατηγορίες",
     "revenue_by_category": "Έσοδα ανά κατηγορία",
+    "revenue_by_day": "Έσοδα ανά ημέρα",
+    "revenue_by_hour": "Έσοδα ανά ώρα",
+    "revenue_by_daypart": "Έσοδα ανά ζώνη",
     "top_items_revenue": "Top 5 προϊόντα ανά έσοδα",
     "item": "Προϊόν",
     "revenue": "Έσοδα",
@@ -190,6 +193,7 @@
     "PREPARING": "Προετοιμασία",
     "READY": "Έτοιμες",
     "SERVED": "Σερβιρίστηκαν",
+    "PAID": "Πληρωμένες",
     "CANCELLED": "Ακυρωμένες"
   },
   "cook": {

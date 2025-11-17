@@ -23,7 +23,24 @@
     "cart": "Καλάθι",
     "checkout": "Ολοκλήρωση",
     "total": "Σύνολο",
-    "call_waiter": "Κάλεσε σερβιτόρο"
+    "call_waiter": "Κάλεσε σερβιτόρο",
+    "category_label": "Κατηγορία",
+    "category_all": "Όλα",
+    "load_error_offline": "Αποτυχία φόρτωσης μενού. Χρήση offline λειτουργίας.",
+    "table_label": "Τραπέζι {{label}}",
+    "last_order_heading": "Η τελευταία σου παραγγελία",
+    "last_order_placed_time": "Υποβλήθηκε {{time}}",
+    "last_order_item_fallback": "Προϊόν {{index}}",
+    "toast_added_title": "Προστέθηκε στο καλάθι",
+    "toast_error_title": "Σφάλμα αποστολής παραγγελίας",
+    "toast_error_description": "Αποτυχία δημιουργίας παραγγελίας. Προσπαθήστε ξανά.",
+    "call_waiter_success_title": "Κλήθηκε ο σερβιτόρος",
+    "call_waiter_success_desc": "Ένας σερβιτόρος θα έρθει σύντομα",
+    "call_waiter_error_title": "Αποτυχία κλήσης",
+    "call_waiter_whitelist_error": "Η συσκευή δεν επιτρέπεται από το IP whitelist. Δείτε την ALLOWED_IPS στο backend.",
+    "call_waiter_generic_error": "Δεν ήταν δυνατή η κλήση του σερβιτόρου.",
+    "call_status_pending": "Κλήση…",
+    "call_status_accepted": "Έρχεται…"
   },
   "waiter": {
     "dashboard": "Πίνακας σερβιτόρου",
@@ -57,7 +74,15 @@
   "nav": {
     "home": "Αρχική",
     "demo": "Demo",
-    "login": "Σύνδεση"
+    "login": "Σύνδεση",
+    "solutions": "Λύσεις",
+    "resources": "Πόροι",
+    "solutions_restaurants": "Για Εστιατόρια",
+    "solutions_cafes": "Για Καφέ",
+    "solutions_bars": "Για Μπαρ",
+    "resources_docs": "Τεκμηρίωση",
+    "resources_api": "Αναφορά API",
+    "resources_support": "Υποστήριξη"
   },
   "actions": {
     "logout": "Αποσύνδεση",
@@ -70,6 +95,7 @@
     "add_table": "Προσθήκη τραπεζιού",
     "edit": "Επεξεργασία",
     "delete": "Διαγραφή",
+    "retry": "Επανάληψη",
     "cancel": "Άκυρο",
     "save_changes": "Αποθήκευση",
     "create_waiter": "Δημιουργία σερβιτόρου",
@@ -81,6 +107,7 @@
     "PREPARING": "Προετοιμασία",
     "READY": "Έτοιμες",
     "SERVED": "Σερβιρίστηκαν",
+    "PAID": "Πληρωμένες",
     "CANCELLED": "Ακυρωμένες"
   },
   "cook": {

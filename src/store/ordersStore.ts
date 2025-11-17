@@ -35,7 +35,7 @@ export const useOrdersStore = create<OrdersStore>()(
             const idx = nextQueue.indexOf(o.id);
             return { ...o, priority: idx >= 0 ? idx + 1 : undefined };
           }
-          // READY/SERVED/CANCELLED/PLACED -> no priority
+          // READY/SERVED/PAID/CANCELLED/PLACED -> no priority
           return { ...o, priority: undefined };
         });
         return { orders: withPriorities, priorityQueue: nextQueue };
@@ -73,7 +73,7 @@ export const useOrdersStore = create<OrdersStore>()(
           if (updated) {
             if (status === 'PREPARING') {
               if (!queue.includes(orderId)) queue.push(orderId);
-            } else if (status === 'READY' || status === 'SERVED' || status === 'CANCELLED') {
+            } else if (status === 'READY' || status === 'SERVED' || status === 'PAID' || status === 'CANCELLED') {
               queue = queue.filter((id) => id !== orderId);
             }
           }

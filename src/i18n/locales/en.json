@@ -23,7 +23,24 @@
                  "cart":  "Cart",
                  "checkout":  "Checkout",
                  "total":  "Total",
-                 "call_waiter":  "Call Waiter"
+                 "call_waiter":  "Call Waiter",
+                 "category_label":  "Category",
+                 "category_all":  "All",
+                 "load_error_offline":  "Failed to load menu. Using offline mode.",
+                 "table_label":  "Table {{label}}",
+                 "last_order_heading":  "Your last order",
+                 "last_order_placed_time":  "Placed {{time}}",
+                 "last_order_item_fallback":  "Item {{index}}",
+                 "toast_added_title":  "Added to cart",
+                 "toast_error_title":  "Error placing order",
+                 "toast_error_description":  "Failed to place order. Please try again.",
+                 "call_waiter_success_title":  "Waiter called",
+                 "call_waiter_success_desc":  "A waiter will be with you shortly",
+                 "call_waiter_error_title":  "Call failed",
+                 "call_waiter_whitelist_error":  "Device not allowed by IP whitelist. See ALLOWED_IPS in backend.",
+                 "call_waiter_generic_error":  "Unable to call waiter.",
+                 "call_status_pending":  "Calling…",
+                 "call_status_accepted":  "Coming…"
              },
     "waiter":  {
                    "dashboard":  "Waiter Dashboard",
@@ -59,6 +76,9 @@
                     "revenue_by_day": "Revenue by day",
                     "categories": "Categories",
                     "revenue_by_category": "Revenue by category",
+                    "revenue_by_day": "Revenue by day",
+                    "revenue_by_hour": "Revenue by hour",
+                    "revenue_by_daypart": "Revenue by daypart",
                     "top_items_revenue": "Top 5 items by revenue",
                     "item": "Item",
                     "revenue": "Revenue",
@@ -166,7 +186,15 @@
     "nav":  {
                 "home":  "Home",
                 "demo":  "Demo",
-                "login":  "Login"
+                "login":  "Login",
+                "solutions":  "Solutions",
+                "resources":  "Resources",
+                "solutions_restaurants":  "For Restaurants",
+                "solutions_cafes":  "For Cafes",
+                "solutions_bars":  "For Bars",
+                "resources_docs":  "Documentation",
+                "resources_api":  "API Reference",
+                "resources_support":  "Support"
             },
     "actions":  {
                     "logout":  "Logout",
@@ -179,6 +207,7 @@
                     "add_table":  "Add table",
                     "edit":  "Edit",
                     "delete":  "Delete",
+                    "retry":  "Retry",
                     "cancel":  "Cancel",
                     "save_changes":  "Save changes",
                     "create_waiter":  "Create waiter",
@@ -190,6 +219,7 @@
                    "PREPARING":  "Preparing",
                    "READY":  "Ready",
                    "SERVED":  "Served",
+                   "PAID":  "Paid",
                    "CANCELLED":  "Cancelled"
                },
     "cook":  {

@@ -1,4 +1,5 @@
 ﻿import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
@@ -62,6 +63,8 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { realtimeService } from '@/lib/realtime';
+import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
+import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 type ManagerMode = 'basic' | 'pro';
 type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
@@ -136,7 +139,7 @@ const getUpdatedDate = (order: Order) =>
   new Date();
 
 const getServedDate = (order: Order) =>
-  parseDate(order.servedAt) || (order.status === 'SERVED' ? getUpdatedDate(order) : null);
+  parseDate(order.servedAt) || (isServedStatus(order.status) ? getUpdatedDate(order) : null);
 
 const getOrderTotalCents = (order: Order) => {
   if (typeof order.totalCents === 'number' && Number.isFinite(order.totalCents)) {
@@ -167,6 +170,9 @@ const percentile = (values: number[], p: number) => {
   return sorted[idx];
 };
 
+const isServedStatus = (status: OrderStatus) => status === 'SERVED' || status === 'PAID';
+const isClosedStatus = (status: OrderStatus) => isServedStatus(status) || status === 'CANCELLED';
+
 const formatMinutesValue = (value: number | null) => {
   if (value == null) return '—';
   if (value >= 100) return Math.round(value).toString();
@@ -196,6 +202,7 @@ export default function ManagerDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, logout, isAuthenticated } = useAuthStore();
+  const { dashboardDark, themeClass } = useDashboardTheme();
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -448,7 +455,7 @@ export default function ManagerDashboard() {
   const PIE_COLORS = ['#6366f1','#22d3ee','#f59e0b','#ef4444','#10b981','#a855f7','#ec4899','#14b8a6'];
 
   const servedOrders = useMemo(
-    () => ordersAll.filter((order) => order.status === 'SERVED'),
+    () => ordersAll.filter((order) => isServedStatus(order.status)),
     [ordersAll]
   );
   const cancelledOrders = useMemo(
@@ -517,6 +524,57 @@ export default function ManagerDashboard() {
   );
 
   const revenueTimeline = useMemo(() => {
+    // When viewing Today use hourly buckets, otherwise use daypart segments for the selected range
+    if (econRange === 'today') {
+      const hourly = new Map<string, number>();
+      servedInRange.forEach((order) => {
+        const date = getPlacedDate(order) || new Date();
+        const key = `${date.getHours().toString().padStart(2, '0')}:00`;
+        hourly.set(key, (hourly.get(key) ?? 0) + getOrderTotalCents(order) / 100);
+      });
+      const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
+      for (let i = 0; i < 24; i++) {
+        const hourLabel = `${i.toString().padStart(2, '0')}:00`;
+        rows.push({
+          date: hourLabel,
+          revenue: hourly.get(hourLabel) ?? 0,
+          prevRevenue: 0,
+        });
+      }
+      return rows;
+    }
+
+    if (econRange === 'week') {
+      const dayparts = ['Breakfast', 'Lunch', 'Afternoon', 'Evening'] as const;
+      const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const buildMap = (orders: Order[]) => {
+        const map = new Map<string, Map<string, number>>();
+        dayparts.forEach((part) => map.set(part, new Map(labels.map((label) => [label, 0]))));
+        orders.forEach((order) => {
+          const date = getPlacedDate(order) || new Date();
+          const dayLabel = labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
+          const part = daypartOf(date);
+          const row = map.get(part) ?? new Map();
+          row.set(dayLabel, (row.get(dayLabel) ?? 0) + getOrderTotalCents(order) / 100);
+          map.set(part, row);
+        });
+        return map;
+      };
+      const currentMap = buildMap(servedInRange);
+      const prevMap = buildMap(servedPrevRange);
+      const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
+      dayparts.forEach((part) => {
+        labels.forEach((label) => {
+          rows.push({
+            date: `${label} ${part}`,
+            revenue: currentMap.get(part)?.get(label) ?? 0,
+            prevRevenue: prevMap.get(part)?.get(label) ?? 0,
+          });
+        });
+      });
+      return rows;
+    }
+
     const curMap = new Map<string, number>();
     servedInRange.forEach((order) => {
       const d = getPlacedDate(order) || new Date();
@@ -542,7 +600,7 @@ export default function ManagerDashboard() {
       });
     }
     return rows;
-  }, [servedInRange, servedPrevRange, rangeInfo]);
+  }, [servedInRange, servedPrevRange, rangeInfo, econRange]);
 
   const resolveCategoryLabel = useCallback(
     (source?: unknown) => {
@@ -1005,7 +1063,7 @@ export default function ManagerDashboard() {
         .sort((a, b) => a.label.localeCompare(b.label));
       const tableIds = assignedTables.map((table) => table.id);
       const orders = tableIds.flatMap((tableId) => ordersByTable.get(tableId) ?? []);
-      const served = orders.filter((order) => order.status === 'SERVED');
+      const served = orders.filter((order) => isServedStatus(order.status));
       const ready = orders.filter((order) => order.status === 'READY');
       const serveDurations = served
         .map((order) => minutesBetween(getPlacedDate(order), getServedDate(order)))
@@ -1084,13 +1142,13 @@ export default function ManagerDashboard() {
   }, [ordersAll, waiterDetails, waiterAssignmentsMap]);
 
   const tablesOverview = useMemo(() => {
-    return sortedTables.map((table) => {
-      const orders = ordersByTable.get(table.id) ?? [];
-      const openOrders = orders.filter(
-        (order) => order.status !== 'SERVED' && order.status !== 'CANCELLED'
-      ).length;
-      return { ...table, openOrders };
-    });
+  return sortedTables.map((table) => {
+    const orders = ordersByTable.get(table.id) ?? [];
+    const openOrders = orders.filter(
+      (order) => !isClosedStatus(order.status)
+    ).length;
+    return { ...table, openOrders };
+  });
   }, [sortedTables, ordersByTable]);
 
   const totalOrders = ordersAll.length;
@@ -1118,7 +1176,7 @@ export default function ManagerDashboard() {
       if (order.status === 'PLACED') return;
       if (order.status === 'CANCELLED') return;
       const minutes =
-        order.status === 'SERVED'
+        isServedStatus(order.status)
           ? minutesBetween(getPlacedDate(order), getServedDate(order))
           : minutesBetween(getPlacedDate(order), getUpdatedDate(order));
       if (minutes != null) {
@@ -1183,6 +1241,7 @@ export default function ManagerDashboard() {
       PREPARING: 0,
       READY: 0,
       SERVED: 0,
+      PAID: 0,
       CANCELLED: 0,
     };
     const now = Date.now();
@@ -1244,6 +1303,7 @@ export default function ManagerDashboard() {
       PLACED: makeRow(),
       PREPARING: makeRow(),
       READY: makeRow(),
+      PAID: makeRow(),
       SERVED: makeRow(),
       CANCELLED: makeRow(),
     };
@@ -1460,8 +1520,11 @@ export default function ManagerDashboard() {
     }
   };
 
+  const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
       <DashboardHeader
         title={t('manager.dashboard')}
         subtitle={user?.displayName}
@@ -1498,7 +1561,11 @@ export default function ManagerDashboard() {
         }
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8">
+      <div className="max-w-7xl mx-auto px-4 pt-4 pb-6">
+        <DashboardThemeToggle />
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 flex-1 w-full">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 sm:space-y-8">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="economics">{t('manager.economics', { defaultValue: 'Economics' })}</TabsTrigger>
@@ -1587,12 +1654,18 @@ export default function ManagerDashboard() {
             )}
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('manager.timeline', { defaultValue: 'Timeline' })}</p>
-                  <h3 className="text-lg font-semibold">{t('manager.revenue_by_day', { defaultValue: 'Revenue by day' })}</h3>
-                </div>
-              </div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{t('manager.timeline', { defaultValue: 'Timeline' })}</p>
+                      <h3 className="text-lg font-semibold">
+                        {econRange === 'today'
+                          ? t('manager.revenue_by_hour', { defaultValue: 'Revenue by hour' })
+                          : econRange === 'week'
+                          ? t('manager.revenue_by_daypart', { defaultValue: 'Revenue by daypart' })
+                          : t('manager.revenue_by_day', { defaultValue: 'Revenue by day' })}
+                      </h3>
+                    </div>
+                  </div>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={revenueTimeline}>
@@ -2902,6 +2975,7 @@ export default function ManagerDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }

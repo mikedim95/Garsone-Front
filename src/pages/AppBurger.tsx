@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Home, LogIn, ChefHat, UtensilsCrossed, Cog } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -6,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { HomeLink } from '../components/HomeLink';
 import { AppThemeSwitch } from '@/components/AppThemeSwitch';
+import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 interface AppBurgerProps {
   className?: string;
@@ -16,6 +18,8 @@ interface AppBurgerProps {
 export const AppBurger = ({ className = '', title, children }: AppBurgerProps) => {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
+  const { dashboardDark, themeClass } = useDashboardTheme();
+  const themedSheet = clsx(themeClass, { dark: dashboardDark });
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -29,9 +33,17 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
           <span className={`block w-5 h-0.5 bg-foreground rounded absolute transition-transform duration-200 ${open ? '-rotate-45' : 'translate-y-1'}`} />
         </button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-[80vw] max-w-xs sm:max-w-sm flex flex-col">
+      <SheetContent
+        side="right"
+        className={clsx(
+          'w-[80vw] max-w-xs sm:max-w-sm flex flex-col bg-background text-foreground',
+          themedSheet
+        )}
+      >
         <SheetHeader>
-          <SheetTitle className="text-base font-semibold">{title ?? 'Menu'}</SheetTitle>
+          <SheetTitle className="text-base font-semibold">
+            {title ?? t('menu.title')}
+          </SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
           {children ? (

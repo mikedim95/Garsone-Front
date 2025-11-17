@@ -20,7 +20,8 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   PREPARING: 'hsl(var(--chart-2))',
   READY: 'hsl(var(--chart-3))',
   SERVED: 'hsl(var(--chart-4))',
-  CANCELLED: 'hsl(var(--chart-5))',
+  PAID: 'hsl(var(--chart-5))',
+  CANCELLED: 'hsl(var(--destructive))',
 };
 
 const getCurrencyCode = () =>
@@ -48,7 +49,7 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
     return 0;
   };
 
-  const allStatuses: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
+  const allStatuses: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'SERVED', 'PAID', 'CANCELLED'];
 
   const toggleStatus = (status: OrderStatus) => {
     setSelectedStatuses(prev =>
@@ -89,7 +90,7 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
 
   const latestOrders = useMemo(() => filteredOrders.slice(0, 20), [filteredOrders]);
   const servedFilteredOrders = useMemo(
-    () => filteredOrders.filter((order) => order.status === 'SERVED'),
+    () => filteredOrders.filter((order) => order.status === 'SERVED' || order.status === 'PAID'),
     [filteredOrders]
   );
 
@@ -100,6 +101,7 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
       PREPARING: 0,
       READY: 0,
       SERVED: 0,
+      PAID: 0,
       CANCELLED: 0,
     };
     
@@ -136,7 +138,7 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
     const dateMap: Record<string, number> = {};
     
     filteredOrders.forEach(order => {
-      if (order.status !== 'SERVED') return;
+      if (order.status !== 'SERVED' && order.status !== 'PAID') return;
       const dateKey = format(new Date(order.placedAt ?? order.createdAt), 'MMM dd');
       dateMap[dateKey] = (dateMap[dateKey] || 0) + getOrderTotal(order);
     });

@@ -1,10 +1,12 @@
 ﻿import { useState, useEffect } from "react";
+import clsx from "clsx";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { MenuItemCard } from "@/components/menu/MenuItemCard";
 import { ModifierDialog } from "@/components/menu/ModifierDialog";
 import { Cart } from "@/components/menu/Cart";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { HomeLink } from "@/components/HomeLink";
 import { AppBurger } from "./AppBurger";
@@ -26,6 +28,7 @@ import type {
 import { Bell } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useDashboardTheme } from "@/hooks/useDashboardDark";
 
 type CategorySummary = Pick<MenuCategory, "id" | "title">;
 type MenuModifierLink = { itemId: string; modifierId: string; isRequired?: boolean };
@@ -85,10 +88,11 @@ export default function TableMenu() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { dashboardDark, themeClass } = useDashboardTheme();
   const { addItem, clearCart } = useCartStore();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
-  const [storeName, setStoreName] = useState<string>("Demo Cafe");
+  const [storeName, setStoreName] = useState<string | null>(null);
   const [storeSlug, setStoreSlug] = useState<string>("demo-cafe");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +109,25 @@ export default function TableMenu() {
       return null;
     }
   });
+  const [tableLabel, setTableLabel] = useState<string | null>(null);
+  const [tableTranslations, setTableTranslations] = useState<Record<string, string>>({});
+  const resolvedTableLabel =
+    tableLabel ||
+    lastOrder?.tableLabel ||
+    lastOrder?.table ||
+    (tableId ? tableTranslations[tableId] : null) ||
+    null;
+  const tableLabelDisplay = resolvedTableLabel ?? '—';
+  const tableLabelReady = Boolean(resolvedTableLabel);
+  const lastOrderStatus = lastOrder?.status ?? 'PLACED';
+  const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
+    defaultValue: (lastOrderStatus || 'PLACED').toString(),
+  });
+  const fallbackCategoryLabel = t('menu.category_label', { defaultValue: 'Category' });
+  const offlineFallbackMessage = t('menu.load_error_offline', {
+    defaultValue: 'Failed to load menu. Using offline mode.',
+  });
+  const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
   const menuCache = useMenuStore((s) => s.data);
   const menuTs = useMenuStore((s) => s.ts);
@@ -122,6 +145,34 @@ export default function TableMenu() {
       console.warn("Failed to persist last order", error);
     }
   }, [lastOrder]);
+
+  useEffect(() => {
+    if (lastOrder?.tableLabel) {
+      setTableLabel(lastOrder.tableLabel);
+    }
+  }, [lastOrder]);
+
+  useEffect(() => {
+    if (!tableId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await api.getTables();
+        if (cancelled) return;
+        const map = (response?.tables ?? []).reduce<Record<string, string>>((acc, table) => {
+          if (table.id && table.label) acc[table.id] = table.label;
+          return acc;
+        }, {});
+        setTableTranslations(map);
+        if (map[tableId]) setTableLabel(map[tableId]);
+      } catch (error) {
+        console.warn('Failed to fetch table label', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tableId]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
@@ -169,11 +220,14 @@ export default function TableMenu() {
         setError(null);
       } catch (err) {
         console.error("Failed to fetch menu:", err);
-        setError("Failed to load menu. Using offline mode.");
+        setError(offlineFallbackMessage);
         const { MENU_ITEMS } = await import("@/lib/menuData");
-        const fallbackCategories: CategorySummary[] = Array.from(new Set(MENU_ITEMS.map((item) => item.category ?? `Category`))).map(
-          (name, idx) => ({ id: String(idx), title: name || `Category ${idx + 1}` })
-        );
+        const fallbackCategories: CategorySummary[] = Array.from(
+          new Set(MENU_ITEMS.map((item) => item.category ?? fallbackCategoryLabel))
+        ).map((name, idx) => ({
+          id: String(idx),
+          title: name || `${fallbackCategoryLabel} ${idx + 1}`,
+        }));
         setMenuData(
           buildMenuState({
             categories: fallbackCategories,
@@ -188,7 +242,7 @@ export default function TableMenu() {
       }
     };
     hydrate();
-  }, [menuCache, menuTs, setMenuCache]);
+  }, [menuCache, menuTs, setMenuCache, offlineFallbackMessage, fallbackCategoryLabel]);
 
   // Live refresh when manager updates menu
   useEffect(() => {
@@ -313,7 +367,10 @@ export default function TableMenu() {
   const handleConfirmModifiers = (selected: Record<string, string>, qty: number) => {
     if (!customizeItem) return;
     addItem({ item: customizeItem, quantity: Math.max(1, qty || 1), selectedModifiers: selected });
-    toast({ title: "Added to cart", description: customizeItem.name });
+    toast({
+      title: t('menu.toast_added_title', { defaultValue: 'Added to cart' }),
+      description: customizeItem.name,
+    });
     setCustomizeOpen(false);
     setCustomizeItem(null);
   };
@@ -346,6 +403,7 @@ export default function TableMenu() {
             tableId,
         };
         setLastOrder(normalized);
+        if (normalized.tableLabel) setTableLabel(normalized.tableLabel);
       }
       // Backend publishes realtime events; avoid duplicate client emits
       clearCart();
@@ -358,8 +416,13 @@ export default function TableMenu() {
     } catch (error) {
       console.error("Failed to create order:", error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to place order. Please try again.",
+        title: t('menu.toast_error_title', { defaultValue: 'Error placing order' }),
+        description:
+          error instanceof Error
+            ? error.message
+            : t('menu.toast_error_description', {
+                defaultValue: 'Failed to place order. Please try again.',
+              }),
       });
     }
     return null;
@@ -373,6 +436,7 @@ export default function TableMenu() {
     const preparingTopic = `${storeSlug}/orders/prepairing`;
     const readyTopic = `${storeSlug}/orders/ready`;
     const cancelledTopic = `${storeSlug}/orders/cancelled`;
+    const paidTopic = `${storeSlug}/orders/paid`;
     (async () => {
       await realtimeService.connect();
       realtimeService.subscribe(callTopic, (payload) => {
@@ -398,6 +462,12 @@ export default function TableMenu() {
           prev && prev.id === payload.orderId ? { ...prev, status: 'CANCELLED' } : prev
         );
       });
+      realtimeService.subscribe(paidTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status: 'PAID' } : prev
+        );
+      });
     })();
     return () => {
       mounted = false;
@@ -405,6 +475,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(preparingTopic);
       realtimeService.unsubscribe(readyTopic);
       realtimeService.unsubscribe(cancelledTopic);
+      realtimeService.unsubscribe(paidTopic);
     };
   }, [storeSlug, tableId]);
 
@@ -414,31 +485,49 @@ export default function TableMenu() {
       setCalling("pending");
       await api.callWaiter(tableId);
       toast({
-        title: "Waiter called",
-        description: "A waiter will be with you shortly",
+        title: t('menu.call_waiter_success_title', { defaultValue: 'Waiter called' }),
+        description: t('menu.call_waiter_success_desc', {
+          defaultValue: 'A waiter will be with you shortly',
+        }),
       });
       // safety re-enable after 45s
       setTimeout(() => setCalling((s) => (s === "pending" ? "idle" : s)), 45000);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error ?? '');
       toast({
-        title: "Call failed",
+        title: t('menu.call_waiter_error_title', { defaultValue: 'Call failed' }),
         description:
           msg.includes('403') || msg.includes('whitelist')
-            ? "Device not allowed by IP whitelist. See ALLOWED_IPS in backend."
-            : msg || "Unable to call waiter.",
+            ? t('menu.call_waiter_whitelist_error', {
+                defaultValue: 'Device not allowed by IP whitelist. See ALLOWED_IPS in backend.',
+              })
+            : msg || t('menu.call_waiter_generic_error', { defaultValue: 'Unable to call waiter.' }),
       });
       setCalling("idle");
     }
   };
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-      <header className="bg-card border-b border-border sticky top-0 z-40">
+    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
+      <header className="bg-card/80 backdrop-blur border-b border-border sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-primary">{storeName}</h1>
-            <p className="text-sm text-muted-foreground">Table {tableId}</p>
+            {storeName ? (
+              <h1 className="text-2xl font-bold text-primary">{storeName}</h1>
+            ) : (
+              <Skeleton className="h-8 w-48 rounded-full" />
+            )}
+            {tableLabelReady ? (
+              <p className="text-sm text-muted-foreground">
+                {t('menu.table_label', {
+                  label: tableLabelDisplay,
+                  defaultValue: `Table ${tableLabelDisplay}`,
+                })}
+              </p>
+            ) : (
+              <Skeleton className="h-4 w-20 rounded-full" />
+            )}
           </div>
           <div className="flex gap-2 items-center">
             <AppBurger title={storeName}>
@@ -446,27 +535,42 @@ export default function TableMenu() {
                 <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Your last order</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {t('menu.last_order_heading', { defaultValue: 'Your last order' })}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        Placed {new Date(lastOrder.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {t('menu.last_order_placed_time', {
+                          time: new Date(lastOrder.createdAt || Date.now()).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          }),
+                          defaultValue: `Placed ${new Date(
+                            lastOrder.createdAt || Date.now()
+                          ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+                        })}
                       </p>
                     </div>
                     <span className="text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-primary/10 text-primary">
-                      {(lastOrder.status || 'PLACED').toString()}
+                      {lastOrderStatusLabel}
                     </span>
                   </div>
                   <div className="space-y-2 text-sm">
                     {(lastOrder?.items ?? []).map((item: SubmittedOrderItem, idx: number) => (
                       <div key={`last-order-${idx}`} className="flex items-center justify-between text-sm">
                         <span className="font-medium text-foreground">
-                          {item?.title ?? item?.item?.name ?? `Item ${idx + 1}`}
+                          {item?.title ??
+                            item?.item?.name ??
+                            t('menu.last_order_item_fallback', {
+                              index: idx + 1,
+                              defaultValue: `Item ${idx + 1}`,
+                            })}
                         </span>
                         <span className="text-muted-foreground">×{item?.quantity ?? item?.qty ?? 1}</span>
                       </div>
                     ))}
                   </div>
                   <div className="flex items-center justify-between text-sm font-semibold">
-                    <span>Total</span>
+                    <span>{t('menu.total')}</span>
                     <span>
                       €{computeOrderTotal(lastOrder).toFixed(2)}
                     </span>
@@ -489,15 +593,17 @@ export default function TableMenu() {
                   <Bell className="h-4 w-4 relative" />
                 </span>
                 {calling === "idle" && t("menu.call_waiter")}
-                {calling === "pending" && "Calling…"}
-                {calling === "accepted" && "Coming…"}
+                {calling === "pending" &&
+                  t('menu.call_status_pending', { defaultValue: 'Calling…' })}
+                {calling === "accepted" &&
+                  t('menu.call_status_accepted', { defaultValue: 'Coming…' })}
               </button>
             </AppBurger>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
         {loading ? (
           <div className="flex gap-2 mb-8 overflow-x-hidden pb-2">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -512,7 +618,7 @@ export default function TableMenu() {
               onClick={() => setSelectedCategory('all')}
               className="shrink-0"
             >
-              All
+              {t('menu.category_all', { defaultValue: 'All' })}
             </Button>
             {categories.map((cat) => (
               <Button
@@ -529,31 +635,35 @@ export default function TableMenu() {
 
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-card rounded-xl shadow-md overflow-hidden">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <Card key={`skeleton-${idx}`} className="p-0 rounded-2xl overflow-hidden">
                 <Skeleton className="w-full aspect-square" />
                 <div className="p-4 space-y-2">
                   <Skeleton className="h-4 w-3/4" />
                   <Skeleton className="h-3 w-1/2" />
                   <div className="flex items-center justify-between pt-2">
                     <Skeleton className="h-6 w-16" />
-                    <Skeleton className="h-9 w-24 rounded" />
+                    <Skeleton className="h-9 w-24 rounded-full" />
                   </div>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         ) : error ? (
           <div className="text-center py-12">
             <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Button onClick={() => window.location.reload()}>
+              {t('actions.retry', { defaultValue: 'Retry' })}
+            </Button>
           </div>
         ) : (
           <>
             {selectedCategory === 'all' ? (
               <div className="space-y-8">
                 {categories.map((cat) => {
-                  const catItems = (menuData?.items ?? []).filter((item) => matchesCategory(item, cat.id, categories));
+                  const catItems = (menuData?.items ?? []).filter((item) =>
+                    matchesCategory(item, cat.id, categories)
+                  );
                   if (catItems.length === 0) return null;
                   return (
                     <section key={cat.id}>
@@ -575,6 +685,11 @@ export default function TableMenu() {
                 {filteredItems.map((item) => (
                   <MenuItemCard key={item.id} item={item} onAdd={handleAddItem} />
                 ))}
+                {filteredItems.length === 0 && (
+                  <div className="col-span-full text-center text-muted-foreground py-10">
+                    {t('menu.no_items', { defaultValue: 'No menu items available yet.' })}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -590,14 +705,6 @@ export default function TableMenu() {
         onConfirm={handleConfirmModifiers}
       />
     </div>
+    </div>
   );
 }
-
-
-
-
-
-
-
-
-

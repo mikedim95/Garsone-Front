@@ -59,6 +59,9 @@
                     "revenue_by_day": "Revenue by day",
                     "categories": "Categories",
                     "revenue_by_category": "Revenue by category",
+                    "revenue_by_day": "Revenue by day",
+                    "revenue_by_hour": "Revenue by hour",
+                    "revenue_by_daypart": "Revenue by daypart",
                     "top_items_revenue": "Top 5 items by revenue",
                     "item": "Item",
                     "revenue": "Revenue",
@@ -190,6 +193,7 @@
                    "PREPARING":  "Preparing",
                    "READY":  "Ready",
                    "SERVED":  "Served",
+                   "PAID":  "Paid",
                    "CANCELLED":  "Cancelled"
                },
     "cook":  {

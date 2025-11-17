@@ -17,6 +17,7 @@ const statusColors = {
   PREPARING: 'bg-accent text-accent-foreground',
   READY: 'bg-primary/15 text-primary',
   SERVED: 'bg-muted text-muted-foreground',
+  PAID: 'bg-emerald-100 text-emerald-700',
   CANCELLED: 'bg-destructive/10 text-destructive',
 } as const;
 
@@ -25,6 +26,7 @@ const borderColors = {
   PREPARING: 'border-l-4 border-accent',
   READY: 'border-l-4 border-primary',
   SERVED: 'border-l-4 border-muted',
+  PAID: 'border-l-4 border-emerald-400',
   CANCELLED: 'border-l-4 border-destructive',
 } as const;
 
@@ -34,6 +36,7 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false }
   const startPreparingLabel = 'Start preparing';
   const markReadyLabel = 'Mark ready';
   const markServedLabel = 'Mark served';
+  const markPaidLabel = 'Mark paid';
   const border = borderColors[order.status] || '';
   return (
     <Card className={`p-4 ${border}`}>
@@ -108,6 +111,32 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false }
                 </span>
               </Button>
             )}
+            {order.status === 'SERVED' && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setLocalBusy(true);
+                  Promise.resolve(onUpdateStatus(order.id, 'PAID'))
+                    .catch(() => {})
+                    .finally(() => {
+                      setLocalBusy(false);
+                    });
+                }}
+                className="relative flex-1 inline-flex items-center justify-center gap-2 bg-emerald-500 text-white hover:bg-emerald-600 shadow-md"
+                aria-label={markPaidLabel}
+                title={markPaidLabel}
+                aria-busy={isBusy}
+                data-busy={isBusy ? 'true' : 'false'}
+                disabled={isBusy}
+              >
+                <span className={`absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${isBusy ? 'opacity-100' : 'opacity-0'}`}>
+                  <Loader2 className="h-5 w-5 animate-spin text-white" />
+                </span>
+                <span className={`transition-opacity ${isBusy ? 'opacity-0' : 'opacity-100'}`} role="img" aria-hidden="true">
+                  💳
+                </span>
+              </Button>
+            )}
           </>
         ) : (
           <>
@@ -121,6 +150,32 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false }
               >
                 <span role="img" aria-hidden="true" className="text-2xl leading-none">
                   🥂
+                </span>
+              </Button>
+            )}
+            {order.status === 'SERVED' && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setLocalBusy(true);
+                  Promise.resolve(onUpdateStatus(order.id, 'PAID'))
+                    .catch(() => {})
+                    .finally(() => {
+                      setLocalBusy(false);
+                    });
+                }}
+                className="relative flex-1 inline-flex items-center justify-center gap-2 bg-emerald-500 text-white hover:bg-emerald-600 shadow-md"
+                aria-label={markPaidLabel}
+                title={markPaidLabel}
+                aria-busy={isBusy}
+                data-busy={isBusy ? 'true' : 'false'}
+                disabled={isBusy}
+              >
+                <span className={`absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${isBusy ? 'opacity-100' : 'opacity-0'}`}>
+                  <Loader2 className="h-5 w-5 animate-spin text-white" />
+                </span>
+                <span className={`transition-opacity ${isBusy ? 'opacity-0' : 'opacity-100'}`} role="img" aria-hidden="true">
+                  💳
                 </span>
               </Button>
             )}

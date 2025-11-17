@@ -1,38 +1,115 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTheme } from '@/components/theme-provider-context';
 
-const STORAGE_KEY = 'dashboardDark';
+const THEME_KEY = 'dashboardTheme';
+const EVENT_NAME = 'dashboardThemeEvent';
 
-interface DashboardDarkEventDetail {
-  value: boolean;
+export type DashboardTheme =
+  | 'classic'
+  | 'luxe-ember'
+  | 'nocturne-marina'
+  | 'modern-mist'
+  | 'velvet-dusk';
+
+export const dashboardThemeOptions: Array<{ value: DashboardTheme; label: string }> = [
+  { value: 'classic', label: 'Garsoné Classic' },
+  { value: 'luxe-ember', label: 'Luxe Ember' },
+  { value: 'nocturne-marina', label: 'Nocturne Marina' },
+  { value: 'modern-mist', label: 'Modern Mist' },
+  { value: 'velvet-dusk', label: 'Velvet Dusk' },
+];
+
+export const dashboardThemeClassNames = dashboardThemeOptions
+  .filter((option) => option.value !== 'classic')
+  .map((option) => `theme-${option.value}`);
+
+interface DashboardThemeEventDetail {
+  theme?: DashboardTheme;
 }
 
-export const useDashboardDark = () => {
-  const [enabled, setEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem(STORAGE_KEY) === '1';
-  });
+const readTheme = (): DashboardTheme => {
+  if (typeof window === 'undefined') return 'modern-mist';
+  const stored = localStorage.getItem(THEME_KEY) as DashboardTheme | null;
+  return stored ?? 'modern-mist';
+};
+
+const broadcast = (detail: DashboardThemeEventDetail) => {
+  try {
+    window.dispatchEvent(new CustomEvent<DashboardThemeEventDetail>(EVENT_NAME, { detail }));
+  } catch (error) {
+    console.warn('Failed to dispatch dashboard theme event', error);
+  }
+};
+
+const getSystemPrefersDark = () => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
+
+const useSystemPrefersDark = () => {
+  const [prefersDark, setPrefersDark] = useState<boolean>(() => getSystemPrefersDark());
 
   useEffect(() => {
-    const handler = () => setEnabled(localStorage.getItem(STORAGE_KEY) === '1');
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    setPrefersDark(media.matches);
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
   }, []);
 
-  const set = (value: boolean) => {
-    setEnabled(value);
-    try {
-      localStorage.setItem(STORAGE_KEY, value ? '1' : '0');
-    } catch (error) {
-      console.warn('Failed to persist dashboard dark preference', error);
+  return prefersDark;
+};
+
+export const useDashboardTheme = () => {
+  const { theme, setTheme } = useTheme();
+  const systemPrefersDark = useSystemPrefersDark();
+  const [dashboardTheme, setThemeState] = useState<DashboardTheme>(() => readTheme());
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === THEME_KEY) {
+        setThemeState(readTheme());
+      }
+    };
+    const handleEvent = (event: Event) => {
+      const detail = (event as CustomEvent<DashboardThemeEventDetail>).detail;
+      if (detail.theme) {
+        setThemeState(detail.theme);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(EVENT_NAME, handleEvent as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(EVENT_NAME, handleEvent as EventListener);
+    };
+  }, []);
+
+  const dashboardDark = useMemo(() => {
+    if (theme === 'system') {
+      return systemPrefersDark;
     }
-    try {
-      window.dispatchEvent(
-        new CustomEvent<DashboardDarkEventDetail>('dashboardDarkChanged', { detail: { value } })
-      );
-    } catch (error) {
-      console.warn('Failed to dispatch dashboardDarkChanged event', error);
-    }
+    return theme === 'dark';
+  }, [systemPrefersDark, theme]);
+
+  const setDashboardDark = (value: boolean) => {
+    setTheme(value ? 'dark' : 'light');
   };
 
-  return { dashboardDark: enabled, setDashboardDark: set };
+  const setDashboardTheme = (value: DashboardTheme) => {
+    setThemeState(value);
+    try {
+      localStorage.setItem(THEME_KEY, value);
+    } catch (error) {
+      console.warn('Failed to persist dashboard theme preference', error);
+    }
+    broadcast({ theme: value });
+  };
+
+  const themeClass = dashboardTheme === 'classic' ? '' : `theme-${dashboardTheme}`;
+
+  return { dashboardDark, setDashboardDark, dashboardTheme, setDashboardTheme, themeClass };
 };
+
+export const useDashboardDark = useDashboardTheme;

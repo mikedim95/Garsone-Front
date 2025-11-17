@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
@@ -10,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { DashboardThemeToggle } from "@/components/DashboardThemeToggle";
+import { useDashboardTheme } from "@/hooks/useDashboardDark";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -102,6 +105,7 @@ export default function CookDashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
+  const { dashboardDark, themeClass } = useDashboardTheme();
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -280,9 +284,12 @@ export default function CookDashboard() {
   const cancelLabel = t('actions.cancel');
   const markReadyLabel = t('actions.mark_ready');
 
+  const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+
   return (
-    <div className="min-h-screen bg-gradient-card">
-      <DashboardHeader
+    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
+        <DashboardHeader
         title={t('cook.dashboard') || 'Cook Dashboard'}
         subtitle={user?.displayName}
         rightContent={user ? (
@@ -315,7 +322,11 @@ export default function CookDashboard() {
         }
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
+      <div className="max-w-6xl mx-auto px-4 pt-4">
+        <DashboardThemeToggle />
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1 w-full">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
           <h2 className="text-xl sm:text-2xl font-bold text-foreground">
@@ -491,6 +502,6 @@ export default function CookDashboard() {
         </div>
       </div>
     </div>
+    </div>
   );
 }
-

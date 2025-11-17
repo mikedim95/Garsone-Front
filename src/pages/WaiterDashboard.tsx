@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
@@ -11,10 +12,12 @@ import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { LogOut, Check, X } from 'lucide-react';
+import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
+import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 const ORDER_FETCH_LIMIT = 50;
 
-type StatusKey = 'ALL' | 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'CANCELLED';
+type StatusKey = 'ALL' | 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
 type OrderEventPayload = {
   orderId?: string;
   tableId?: string;
@@ -32,7 +35,7 @@ type TableWaiter = { id?: string | null };
 interface TableWithWaiters extends Table {
   waiters?: TableWaiter[];
 }
-const ORDER_STATUS_VALUES: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
+const ORDER_STATUS_VALUES: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'SERVED', 'PAID', 'CANCELLED'];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -166,6 +169,7 @@ export default function WaiterDashboard() {
   const { toast } = useToast();
 
   const { user, logout, isAuthenticated } = useAuthStore();
+  const { dashboardDark, themeClass } = useDashboardTheme();
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -296,6 +300,11 @@ export default function WaiterDashboard() {
       await hydrateOrder(payload.orderId!);
       toast({ title: t('toasts.order_cancelled'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
     };
+    const handlePaid = async (payload: unknown) => {
+      if (!isOrderEventPayload(payload)) return;
+      updateLocalStatus(payload.orderId!, 'PAID');
+      await hydrateOrder(payload.orderId!);
+    };
     const handleWaiterCall = (payload: unknown) => {
       if (!isWaiterCallPayload(payload)) return;
       if (assignedTableIds.size > 0 && !assignedTableIds.has(payload.tableId)) return;
@@ -316,6 +325,7 @@ export default function WaiterDashboard() {
         realtimeService.subscribe(`${storeSlug}/orders/ready`, handleReady);
         realtimeService.subscribe(`${storeSlug}/orders/cancelled`, handleCancelled);
         realtimeService.subscribe(`${storeSlug}/orders/canceled`, handleCancelled);
+        realtimeService.subscribe(`${storeSlug}/orders/paid`, handlePaid);
         realtimeService.subscribe(`${storeSlug}/waiter/call`, handleWaiterCall);
       })
       .catch((error) => {
@@ -329,6 +339,7 @@ export default function WaiterDashboard() {
       realtimeService.unsubscribe(`${storeSlug}/orders/ready`);
       realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`);
       realtimeService.unsubscribe(`${storeSlug}/orders/canceled`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/paid`);
       realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
     };
   }, [assignmentsLoaded, storeSlug, assignedTableIds, upsertOrder, updateLocalStatus, toast, t]);
@@ -351,6 +362,7 @@ export default function WaiterDashboard() {
     { key: 'PREPARING', cls: 'bg-accent text-accent-foreground hover:bg-accent/80' },
     { key: 'READY', cls: 'bg-primary/10 text-primary hover:bg-primary/20' },
     { key: 'SERVED', cls: 'bg-card text-muted-foreground hover:bg-muted' },
+    { key: 'PAID', cls: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
     { key: 'CANCELLED', cls: 'bg-destructive/10 text-destructive hover:bg-destructive/20' },
   ];
 
@@ -378,8 +390,11 @@ export default function WaiterDashboard() {
     navigate('/login');
   };
 
+  const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+
   return (
-    <div className="min-h-screen bg-gradient-card">
+    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
       <DashboardHeader
         title={t('waiter.dashboard')}
         subtitle={user?.displayName}
@@ -446,7 +461,11 @@ export default function WaiterDashboard() {
         }
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8">
+      <div className="max-w-6xl mx-auto px-4 pt-4">
+        <DashboardThemeToggle />
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 flex-1 w-full">
         <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
           <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
           <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
@@ -472,13 +491,12 @@ export default function WaiterDashboard() {
               order={order}
               onUpdateStatus={handleUpdateStatus}
               mode="waiter"
-              busy={actingIds.has(`SERVED:${order.id}`)}
+              busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
             />
           ))}
         </div>
       </div>
     </div>
+    </div>
   );
 }
-
-

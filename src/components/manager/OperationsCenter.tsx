@@ -156,7 +156,7 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
 
   const slaHitRate = useMemo(() => {
     // SLA: 15 minutes target to READY/SERVED
-    const past = orders.filter(o => o.status === 'READY' || o.status === 'SERVED');
+    const past = orders.filter(o => o.status === 'READY' || o.status === 'SERVED' || o.status === 'PAID');
     if (past.length === 0) return 100;
     const hits = past.filter(o => minutesSince(o.createdAt, now) <= 15).length;
     return Math.round((hits / past.length) * 100);

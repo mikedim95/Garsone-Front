@@ -1,12 +1,57 @@
+import clsx from 'clsx'
 import { Switch } from '@/components/ui/switch'
-import { useDashboardDark } from '@/hooks/useDashboardDark'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { dashboardThemeOptions, useDashboardTheme, type DashboardTheme } from '@/hooks/useDashboardDark'
 
-export const DashboardThemeToggle = () => {
-  const { dashboardDark, setDashboardDark } = useDashboardDark()
+type DashboardThemeToggleProps = {
+  className?: string
+}
+
+export const DashboardThemeToggle = ({ className }: DashboardThemeToggleProps) => {
+  const {
+    dashboardDark,
+    setDashboardDark,
+    dashboardTheme,
+    setDashboardTheme,
+  } = useDashboardTheme()
+
   return (
-    <label className="inline-flex items-center gap-2 text-sm">
-      <Switch checked={dashboardDark} onCheckedChange={(value)=> setDashboardDark(Boolean(value))} />
-      Dark dashboards
-    </label>
+    <div
+      className={clsx(
+        'rounded-3xl border border-border bg-card/80 backdrop-blur-xl px-5 py-4 shadow-xl flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between',
+        className
+      )}
+    >
+      <div>
+        <p className="text-sm font-semibold text-foreground">Dashboard Theme</p>
+        <p className="text-xs text-muted-foreground">
+          Choose an immersive palette and toggle light or dark mode.
+        </p>
+      </div>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+          <Switch checked={dashboardDark} onCheckedChange={(value) => setDashboardDark(Boolean(value))} />
+          {dashboardDark ? 'Dark mode' : 'Light mode'}
+        </label>
+        <Select value={dashboardTheme} onValueChange={(value: DashboardTheme) => setDashboardTheme(value)}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder="Select theme" />
+          </SelectTrigger>
+          <SelectContent>
+            {dashboardThemeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   )
 }
