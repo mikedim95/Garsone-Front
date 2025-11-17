@@ -46,7 +46,21 @@ export const DashboardThemeToggle = ({ className }: DashboardThemeToggleProps) =
           <SelectContent>
             {dashboardThemeOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                <div className="flex items-center gap-3">
+                  <span
+                    className="inline-flex h-6 w-10 rounded-full border border-border/70"
+                    style={{
+                      background: `linear-gradient(120deg, ${option.preview[0]}, ${option.preview[1]})`,
+                    }}
+                    aria-hidden
+                  />
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-foreground">{option.label}</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      {option.subtitle}
+                    </p>
+                  </div>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>

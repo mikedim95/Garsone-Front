@@ -11,12 +11,44 @@ export type DashboardTheme =
   | 'modern-mist'
   | 'velvet-dusk';
 
-export const dashboardThemeOptions: Array<{ value: DashboardTheme; label: string }> = [
-  { value: 'classic', label: 'Garsoné Classic' },
-  { value: 'luxe-ember', label: 'Luxe Ember' },
-  { value: 'nocturne-marina', label: 'Nocturne Marina' },
-  { value: 'modern-mist', label: 'Modern Mist' },
-  { value: 'velvet-dusk', label: 'Velvet Dusk' },
+type DashboardThemeOption = {
+  value: DashboardTheme;
+  label: string;
+  subtitle: string;
+  preview: [string, string];
+};
+
+export const dashboardThemeOptions: DashboardThemeOption[] = [
+  {
+    value: 'classic',
+    label: 'Garsoné Classic',
+    subtitle: 'Violet primary + neutral surfaces',
+    preview: ['#7a5bff', '#0f172a'],
+  },
+  {
+    value: 'luxe-ember',
+    label: 'Luxe Ember',
+    subtitle: 'Copper warmth with obsidian dark',
+    preview: ['#d98f4a', '#151828'],
+  },
+  {
+    value: 'nocturne-marina',
+    label: 'Nocturne Marina',
+    subtitle: 'Deep navy & teal gradients',
+    preview: ['#1c2b4a', '#2782a6'],
+  },
+  {
+    value: 'modern-mist',
+    label: 'Modern Mist',
+    subtitle: 'Soft neutrals with sand copper',
+    preview: ['#edf1f8', '#f5a05f'],
+  },
+  {
+    value: 'velvet-dusk',
+    label: 'Velvet Dusk',
+    subtitle: 'Rose gold layered on midnight',
+    preview: ['#f3c9b8', '#1b1f32'],
+  },
 ];
 
 export const dashboardThemeClassNames = dashboardThemeOptions
