@@ -24,7 +24,7 @@ export const Testimonials = () => {
           Trusted by Leading Restaurants
         </h2>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Join hundreds of restaurants already using OrderFlow to streamline their operations
+          Join hundreds of restaurants already using Garsone to streamline their operations
         </p>
       </div>
 

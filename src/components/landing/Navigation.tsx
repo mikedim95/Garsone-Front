@@ -19,10 +19,10 @@ export const Navigation = () => {
           {/* Logo */}
           <div className="flex items-center gap-2 mr-8">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-lg">
-              <span className="text-white font-black text-lg">OF</span>
+              <span className="text-white font-black text-lg">G</span>
             </div>
             <span className="text-xl font-black bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              OrderFlow
+              Garsone
             </span>
           </div>
 

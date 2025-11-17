@@ -44,7 +44,7 @@ export const Features = () => {
           <div className="relative z-10">
             <h3 className="text-4xl md:text-5xl font-black mb-6 text-white">Ready to modernize?</h3>
             <p className="text-xl text-white/90 mb-12 max-w-2xl mx-auto font-light">
-              Join the future of dining with OrderFlow. Setup in minutes, delight customers instantly.
+              Join the future of dining with Garsone. Setup in minutes, delight customers instantly.
             </p>
             <div className="flex gap-6 justify-center flex-wrap">
               <div className="glass-dark px-8 py-5 rounded-2xl shadow-xl">

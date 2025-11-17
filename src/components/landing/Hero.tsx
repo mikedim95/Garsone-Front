@@ -68,7 +68,7 @@ export const Hero = () => {
           <div className="absolute -inset-8 bg-gradient-to-r from-purple-400 via-blue-400 to-purple-400 rounded-3xl blur-3xl opacity-30 animate-glow" />
           <img 
             src={HERO_IMAGE} 
-            alt="OrderFlow" 
+            alt="Garsone" 
             className="relative rounded-3xl shadow-2xl ring-1 ring-gray-200 hover:scale-[1.02] transition-transform duration-500" 
           />
         </div>

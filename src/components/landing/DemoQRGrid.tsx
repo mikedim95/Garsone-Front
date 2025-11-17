@@ -62,7 +62,7 @@ export const DemoQRGrid = () => {
             className="group p-10 text-center bg-white rounded-3xl border border-gray-100 hover:border-purple-200 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
           >
             <h3 className="text-2xl font-bold mb-2 text-gray-900">Live Store</h3>
-            <p className="text-purple-600 font-medium mb-8">Random active table from the real OrderFlow backend</p>
+            <p className="text-purple-600 font-medium mb-8">Random active table from the real Garsone backend</p>
             <div className="flex-1 flex items-center justify-center mb-8">
               <div className="glass p-6 rounded-3xl border-2 border-purple-100 w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
                 {liveUrl ? (

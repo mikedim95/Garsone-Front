@@ -40,7 +40,7 @@ const AppLayout: React.FC = () => {
         <div className="relative z-10 max-w-7xl mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-12 mb-12">
             <div>
-              <h3 className="text-3xl font-black mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">OrderFlow</h3>
+              <h3 className="text-3xl font-black mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Garsone</h3>
               <p className="text-gray-400 text-sm leading-relaxed">Modern QR ordering system with real-time notifications and multi-language support.</p>
             </div>
             <div>
@@ -63,13 +63,13 @@ const AppLayout: React.FC = () => {
             <div>
               <h4 className="font-bold mb-4 text-white">Contact</h4>
               <ul className="space-y-3 text-sm text-gray-400">
-                <li>info@orderflow.app</li>
+                <li>info@garsone.app</li>
                 <li>+30 123 456 7890</li>
               </ul>
             </div>
           </div>
           <div className="border-t border-gray-800 pt-8 text-center">
-            <p className="text-gray-400 mb-2">© 2025 OrderFlow. All rights reserved.</p>
+            <p className="text-gray-400 mb-2">© 2025 Garsone. All rights reserved.</p>
             <p className="text-sm text-gray-500">Built with React + TypeScript + Tailwind CSS + MQTT</p>
           </div>
         </div>
