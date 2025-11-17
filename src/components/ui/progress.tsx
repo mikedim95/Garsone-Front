@@ -24,8 +24,8 @@ const Progress = React.forwardRef<
       className={cn(
         "h-full w-full flex-1 transition-all duration-300 ease-in-out",
         variant === "default" && "bg-primary",
-        variant === "success" && "bg-green-500",
-        variant === "warning" && "bg-yellow-500",
+        variant === "success" && "bg-primary",
+        variant === "warning" && "bg-accent",
         variant === "error" && "bg-destructive",
       )}
       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -6,28 +6,52 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '@/lib/api';
-// import { uploadPublicObject } from '@/lib/supabase';
+import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, MenuData, Modifier, ModifierOption } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { title: string; price: string };
 type CustomModifier = { title: string; required: boolean; options: CustomOption[] };
+type ItemForm = {
+  title: string;
+  description: string;
+  imageUrl: string;
+  price: string;
+  categoryId: string;
+  newCategoryTitle: string;
+  isAvailable: boolean;
+};
+type EditableModifierOption = { id?: string; title: string; price: string };
+type ModifierEditState = {
+  id: string;
+  title: string;
+  required: boolean;
+  options: EditableModifierOption[];
+};
 
 export const ManagerMenuPanel = () => {
   const { toast } = useToast();
 
-  const [items, setItems] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  
+  const [items, setItems] = useState<ManagerItemSummary[]>([]);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+
   const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<any | null>(null);
-  const [form, setForm] = useState({ title: '', description: '', imageUrl: '', price: '0.00', categoryId: '', newCategoryTitle: '', isAvailable: true });
+  const [editing, setEditing] = useState<ManagerItemSummary | null>(null);
+  const [form, setForm] = useState<ItemForm>({
+    title: '',
+    description: '',
+    imageUrl: '',
+    price: '0.00',
+    categoryId: '',
+    newCategoryTitle: '',
+    isAvailable: true,
+  });
   const [savingItem, setSavingItem] = useState(false);
 
   // Read-only modifiers for the currently editing item
-  const [itemMods, setItemMods] = useState<any[]>([]);
+  const [itemMods, setItemMods] = useState<Modifier[]>([]);
 
   // Per-item custom modifiers builder
   const [customMods, setCustomMods] = useState<CustomModifier[]>([]);
@@ -35,55 +59,92 @@ export const ManagerMenuPanel = () => {
   // Edit existing modifier modal
   const [modEditOpen, setModEditOpen] = useState(false);
   const [modEditSaving, setModEditSaving] = useState(false);
-  const [modEdit, setModEdit] = useState<{ id: string; title: string; required: boolean; options: Array<{ id?: string; title: string; price: string }> }>({ id: '', title: '', required: false, options: [] });
+  const [modEdit, setModEdit] = useState<ModifierEditState>({
+    id: '',
+    title: '',
+    required: false,
+    options: [],
+  });
   const [modEditOriginalIds, setModEditOriginalIds] = useState<string[]>([]);
 
   // UI helpers
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
   const [showDisabled, setShowDisabled] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
-  
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
 
-  const load = async () => {
-  const its = (await api.listItems()) as any; setItems(its.items || []);
-  const cats = (await api.listCategories()) as any; setCategories(cats.categories || []);
-};
+  const load = useCallback(async () => {
+    try {
+      const [itemsRes, categoriesRes] = await Promise.all([api.listItems(), api.listCategories()]);
+      setItems(itemsRes.items ?? []);
+      setCategories(categoriesRes.categories ?? []);
+    } catch (error) {
+      console.error('Failed to load menu data', error);
+      toast({ title: 'Load failed', description: 'Could not load menu data' });
+    }
+  }, [toast]);
 
-useEffect(() => {
-  (async () => {
-    try { const s = (await api.getStore()) as any; if (s?.store?.slug) setStoreSlug(s.store.slug); } catch {}
-  })();
-}, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const store = await api.getStore();
+        if (store?.store?.slug) setStoreSlug(store.store.slug);
+      } catch (error) {
+        console.error('Failed to load store info', error);
+      }
+    })();
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const openAdd = (prefCategoryId?: string) => {
     setEditing(null);
-    setForm({ title: '', description: '', imageUrl: '', price: '0.00', categoryId: prefCategoryId || categories[0]?.id || '', newCategoryTitle: '', isAvailable: true });
+    const fallbackCategory = prefCategoryId || categories[0]?.id || '';
+    setForm({
+      title: '',
+      description: '',
+      imageUrl: '',
+      price: '0.00',
+      categoryId: fallbackCategory,
+      newCategoryTitle: '',
+      isAvailable: true,
+    });
     setItemMods([]);
     setCustomMods([]);
     setModalOpen(true);
   };
 
-  const openEdit = async (it: any) => {
-    setEditing(it);
-    setForm({ title: it.title, description: it.description || '', imageUrl: it.imageUrl || '', price: (it.priceCents/100).toFixed(2), categoryId: it.categoryId, newCategoryTitle: '', isAvailable: !!it.isAvailable });
+  const openEdit = async (item: ManagerItemSummary) => {
+    setEditing(item);
+    setForm({
+      title: item.title ?? item.name ?? '',
+      description: item.description ?? '',
+      imageUrl: item.image ?? item.imageUrl ?? '',
+      price: typeof item.priceCents === 'number' ? (item.priceCents / 100).toFixed(2) : (item.price ?? 0).toFixed(2),
+      categoryId: item.categoryId ?? '',
+      newCategoryTitle: '',
+      isAvailable: item.isAvailable ?? item.available ?? true,
+    });
     try {
-      const m = (await api.getMenu()) as any;
-      const found = (m.items || []).find((x:any)=>x.id===it.id);
-      setItemMods(found?.modifiers || []);
-    } catch {}
+      const menu: MenuData = await api.getMenu();
+      const found = menu.items.find((x) => x.id === item.id);
+      setItemMods(found?.modifiers ?? []);
+    } catch (error) {
+      console.error('Failed to load item modifiers', error);
+    }
     setCustomMods([]);
     setModalOpen(true);
   };
 
-  const grouped = categories.map((c:any)=>({
-    cat: c,
+  const grouped = categories.map((category) => ({
+    cat: category,
     items: items
-      .filter((it:any)=> it.categoryId === c.id || it.category === c.title)
-      .filter((it:any)=> showDisabled ? true : it.isAvailable !== false),
+      .filter((item) => item.categoryId === category.id || item.category === category.title)
+      .filter((item) => (showDisabled ? true : item.isAvailable !== false)),
   }));
 
   return (
@@ -95,8 +156,14 @@ useEffect(() => {
             const title = window.prompt('Add new category');
             const t = (title || '').trim();
             if (!t) return;
-            try { await api.createCategory(t); await load(); toast({ title: 'Category added', description: t }); }
-            catch(e:any){ toast({ title: 'Create failed', description: e?.message || 'Could not create category' }); }
+            try {
+              await api.createCategory(t);
+              await load();
+              toast({ title: 'Category added', description: t });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Could not create category';
+              toast({ title: 'Create failed', description: message });
+            }
           }}><Plus className="h-4 w-4"/> Add Category</Button>
           <Button
             variant="ghost"
@@ -121,75 +188,133 @@ useEffect(() => {
         {grouped.map(({cat, items}) => (
           <section key={cat.id}>
             <div className="flex items-center gap-3 mb-3">
-              <h3 className="text-lg font-semibold text-gray-800 flex-1">{cat.title}</h3>
+              <h3 className="text-lg font-semibold text-foreground flex-1">{cat.title}</h3>
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="outline" className="gap-1" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const title = window.prompt('Rename category', cat.title);
                   if (!title || title.trim() === cat.title) return;
-                  try { await api.updateCategory(cat.id, { title: title.trim() }); await load(); toast({ title: 'Category renamed', description: title.trim() }); }
-                  catch(e:any){ toast({ title: 'Rename failed', description: e?.message || 'Could not rename category' }); }
+                  try {
+                    await api.updateCategory(cat.id, { title: title.trim() });
+                    await load();
+                    toast({ title: 'Category renamed', description: title.trim() });
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Could not rename category';
+                    toast({ title: 'Rename failed', description: message });
+                  }
                 }}><Pencil className="h-4 w-4"/></Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const yes = window.confirm('Delete this category? Items will remain but may appear uncategorized.');
                   if (!yes) return;
-                  try { await api.deleteCategory(cat.id); await load(); toast({ title: 'Category deleted', description: cat.title }); }
-                  catch(e:any){ toast({ title: 'Delete failed', description: e?.message || 'Could not delete category' }); }
+                  try {
+                    await api.deleteCategory(cat.id);
+                    await load();
+                    toast({ title: 'Category deleted', description: cat.title });
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Could not delete category';
+                    toast({ title: 'Delete failed', description: message });
+                  }
                 }}><Trash2 className="h-4 w-4"/></Button>
               </div>
             </div>
             <div className="space-y-2">
               {items.length === 0 ? (
-                <div className="text-xs text-gray-500">No items in this category.</div>
-              ) : items.map((it:any)=> (
-                <div key={it.id} className={`flex items-center justify-between border rounded-lg p-3 ${it.isAvailable===false ? 'opacity-60' : ''}`}>
+                <div className="text-xs text-muted-foreground">No items in this category.</div>
+              ) : items.map((item)=> (
+                <div key={item.id} className={`flex items-center justify-between border rounded-lg p-3 ${item.isAvailable === false ? 'opacity-60' : ''}`}>
                   <div>
-                    <div className="font-medium">{it.title} <span className="text-xs text-gray-500">€{(it.priceCents/100).toFixed(2)}</span></div>
-                    <div className="text-xs text-gray-500">{it.description || '—'}</div>
+                    <div className="font-medium">
+                      {item.title ?? item.name}
+                      <span className="text-xs text-muted-foreground">
+                        €{((item.priceCents ?? Math.round((item.price ?? 0) * 100)) / 100).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{item.description || '—'}</div>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={async ()=>{ 
-                      setLoadingIds(prev=> new Set(prev).add(`toggle:${it.id}`));
-                      try { 
-                        await api.updateItem(it.id, { isAvailable: !it.isAvailable }); 
-                        await load(); 
-                        toast({ title: it.isAvailable? 'Disabled' : 'Enabled', description: it.title }); 
-                      } catch(e:any){ 
-                        toast({ title: 'Update failed', description: e?.message || 'Could not update item' }); 
-                      } finally {
-                        setLoadingIds(prev=>{ const n = new Set(prev); n.delete(`toggle:${it.id}`); return n; });
-                      }
-                    }} disabled={loadingIds.has(`toggle:${it.id}`)}>
-                      {loadingIds.has(`toggle:${it.id}`) && <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin"/>}
-                      {it.isAvailable ? 'Disable' : 'Enable'}
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-1" onClick={()=>openEdit(it)}><Pencil className="h-4 w-4"/> Edit</Button>
-                    <Button variant="destructive" size="sm" className="gap-1" onClick={async ()=>{
-                      setLoadingIds(prev=> new Set(prev).add(`del:${it.id}`));
-                      try {
-                        await api.deleteItem(it.id);
-                        await load();
-                        toast({ title: 'Item deleted', description: it.title });
-                      } catch(e:any) {
-                        const msg = e?.message || 'Cannot delete item (it may be referenced by orders)';
-                        const referential = msg.toLowerCase().includes('referenced') || e?.status === 400;
-                        if (referential) {
-                          const confirmArchive = window.confirm('This item has been ordered before and cannot be deleted. Do you want to disable (archive) it instead?');
-                          if (confirmArchive) {
-                            try { await api.updateItem(it.id, { isAvailable: false }); await load(); toast({ title: 'Item archived', description: it.title }); }
-                            catch (err:any) { toast({ title: 'Archive failed', description: err?.message || 'Could not disable item' }); }
-                          } else {
-                            toast({ title: 'Delete failed', description: msg });
-                          }
-                        } else {
-                          toast({ title: 'Delete failed', description: msg });
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!item.id) return;
+                        setLoadingIds((prev) => new Set(prev).add(`toggle:${item.id}`));
+                        try {
+                          await api.updateItem(item.id, { isAvailable: !item.isAvailable });
+                          await load();
+                          toast({
+                            title: item.isAvailable ? 'Disabled' : 'Enabled',
+                            description: item.title ?? item.name ?? '',
+                          });
+                        } catch (error) {
+                          const message = error instanceof Error ? error.message : 'Could not update item';
+                          toast({ title: 'Update failed', description: message });
+                        } finally {
+                          setLoadingIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(`toggle:${item.id}`);
+                            return next;
+                          });
                         }
-                      } finally {
-                        setLoadingIds(prev=>{ const n = new Set(prev); n.delete(`del:${it.id}`); return n; });
-                      }
-                    }} disabled={loadingIds.has(`del:${it.id}`)}>
-                      {loadingIds.has(`del:${it.id}`) && <span className="h-4 w-4 mr-1 border-2 border-white/60 border-t-transparent rounded-full animate-spin"/>}
-                      <Trash2 className="h-4 w-4"/> Delete
+                      }}
+                      disabled={item.id ? loadingIds.has(`toggle:${item.id}`) : false}
+                    >
+                      {item.id && loadingIds.has(`toggle:${item.id}`) && (
+                        <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                      )}
+                      {item.isAvailable ? 'Disable' : 'Enable'}
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-1" onClick={() => openEdit(item)}>
+                      <Pencil className="h-4 w-4" /> Edit
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="gap-1"
+                      onClick={async () => {
+                        if (!item.id) return;
+                        setLoadingIds((prev) => new Set(prev).add(`del:${item.id}`));
+                        try {
+                          await api.deleteItem(item.id);
+                          await load();
+                          toast({ title: 'Item deleted', description: item.title ?? item.name ?? '' });
+                        } catch (error) {
+                          const message =
+                            error instanceof Error ? error.message : 'Cannot delete item (it may be referenced by orders)';
+                          const referential =
+                            message.toLowerCase().includes('referenced') ||
+                            (typeof (error as { status?: number }).status === 'number' &&
+                              (error as { status?: number }).status === 400);
+                          if (referential) {
+                            const confirmArchive =
+                              window.confirm('This item has prior orders and cannot be deleted. Disable it instead?');
+                            if (confirmArchive) {
+                              try {
+                                await api.updateItem(item.id, { isAvailable: false });
+                                await load();
+                                toast({ title: 'Item archived', description: item.title ?? item.name ?? '' });
+                              } catch (archiveErr) {
+                                const archiveMessage =
+                                  archiveErr instanceof Error ? archiveErr.message : 'Could not disable item';
+                                toast({ title: 'Archive failed', description: archiveMessage });
+                              }
+                            }
+                          } else {
+                            toast({ title: 'Delete failed', description: message });
+                          }
+                        } finally {
+                          setLoadingIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(`del:${item.id}`);
+                            return next;
+                          });
+                        }
+                      }}
+                      disabled={item.id ? loadingIds.has(`del:${item.id}`) : false}
+                    >
+                      {item.id && loadingIds.has(`del:${item.id}`) && (
+                        <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                      )}
+                      <Trash2 className="h-4 w-4" /> Delete
                     </Button>
                   </div>
                 </div>
@@ -210,12 +335,12 @@ useEffect(() => {
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             <Input placeholder="Title" value={form.title} onChange={(e)=>setForm({...form, title: e.target.value})}/>
             <Textarea placeholder="Description" value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})}/>
-            <Input placeholder="Image URL (https://...)" value={(form as any).imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
+            <Input placeholder="Image URL (https://...)" value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
             <div className="text-xs text-muted-foreground">
               Or upload an image: <input type="file" accept="image/*" onChange={(e)=>{
                 const f = e.target.files?.[0] || null;
                 setImageFile(f);
-                setImagePreview(f ? URL.createObjectURL(f) : (form as any).imageUrl || '');
+                setImagePreview(f ? URL.createObjectURL(f) : form.imageUrl || '');
               }} />
               {imagePreview && (
                 <div className="mt-2">
@@ -227,15 +352,15 @@ useEffect(() => {
             <Input placeholder="Price (€)" type="number" min={0} step={0.01} value={form.price} onChange={(e)=>setForm({...form, price: e.target.value})}/>
               {editing ? (
                 <select
-                  className="border rounded p-2 bg-white text-gray-900 dark:bg-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   value={form.categoryId}
                   onChange={(e)=>setForm({...form, categoryId: e.target.value})}
                 >
-                  {categories.map((c:any)=>(<option key={c.id} value={c.id}>{c.title}</option>))}
+                  {categories.map((category)=>(<option key={category.id} value={category.id}>{category.title}</option>))}
                 </select>
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  Category: <span className="font-medium text-foreground">{categories.find((c:any)=>c.id===form.categoryId)?.title || '—'}</span>
+                  Category: <span className="font-medium text-foreground">{categories.find((category)=>category.id===form.categoryId)?.title || '—'}</span>
                 </div>
               )}
             </div>
@@ -251,13 +376,13 @@ useEffect(() => {
                 {itemMods.length === 0 && (
                   <div className="text-xs text-muted-foreground">No modifiers yet.</div>
                 )}
-                {itemMods.map((m:any)=> (
-                  <div key={m.id} className="flex items-start justify-between gap-3">
+                {itemMods.map((modifier)=> (
+                  <div key={modifier.id} className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-medium">{m.name}{m.required ? ' (required)' : ''}</div>
-                      <ul className="ml-4 text-sm text-gray-600 list-disc">
-                        {(m.options||[]).map((o:any)=> (
-                          <li key={o.id}>{o.label}{(o.priceDelta ?? 0) > 0 ? ` +€${(o.priceDelta).toFixed(2)}` : ''}</li>
+                      <div className="font-medium">{modifier.name}{modifier.required ? ' (required)' : ''}</div>
+                      <ul className="ml-4 text-sm text-muted-foreground list-disc">
+                        {(modifier.options ?? []).map((option)=> (
+                          <li key={option.id}>{option.label}{(option.priceDelta ?? 0) > 0 ? ` +€${(option.priceDelta).toFixed(2)}` : ''}</li>
                         ))}
                       </ul>
                     </div>
@@ -265,30 +390,37 @@ useEffect(() => {
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => {
                           setModEdit({
-                            id: m.id,
-                            title: m.name,
-                            required: !!m.required,
-                            options: (m.options||[]).map((o:any)=>({ id: o.id, title: o.label, price: ((o.priceDelta ?? 0)).toFixed(2) }))
+                            id: modifier.id,
+                            title: modifier.name ?? '',
+                            required: !!modifier.required,
+                            options: (modifier.options ?? []).map((option) => ({
+                              id: option.id,
+                              title: option.label,
+                              price: ((option.priceDelta ?? 0)).toFixed(2),
+                            })),
                           });
-                          setModEditOriginalIds((m.options||[]).map((o:any)=>o.id));
+                          setModEditOriginalIds(
+                            (modifier.options ?? [])
+                              .map((option) => option.id ?? '')
+                              .filter((id): id is string => Boolean(id))
+                          );
                           setModEditOpen(true);
                         }}>Edit</Button>
                         <Button variant="destructive" size="sm" onClick={async ()=>{
                           const yes = window.confirm('Unlink this modifier from the item? You can optionally delete it if unused.');
                           if (!yes) return;
                           try {
-                            await api.unlinkItemModifier(editing.id, m.id);
-                            // Try to delete modifier if not used elsewhere
-                            try { await api.deleteModifier(m.id); } catch {}
-                            // refresh
+                            await api.unlinkItemModifier(editing.id, modifier.id);
                             try {
-                              const menu = (await api.getMenu()) as any;
-                              const found = (menu.items||[]).find((x:any)=>x.id===editing.id);
-                              setItemMods(found?.modifiers || []);
-                            } catch {}
-                            toast({ title:'Modifier unlinked', description: m.name });
-                          } catch(e:any) {
-                            toast({ title:'Failed', description: e?.message || 'Could not unlink modifier' });
+                              await api.deleteModifier(modifier.id);
+                            }
+                            // eslint-disable-next-line no-empty -- best-effort cleanup; orphaned modifier is harmless
+                            catch {}
+                            setItemMods((prev) => prev.filter((existing) => existing.id !== modifier.id));
+                            toast({ title: 'Modifier unlinked', description: modifier.name ?? '' });
+                          } catch(error) {
+                            const message = error instanceof Error ? error.message : 'Could not unlink modifier';
+                            toast({ title: 'Failed', description: message });
                           }
                         }}><Trash2 className="h-4 w-4"/></Button>
                       </div>
@@ -351,60 +483,75 @@ useEffect(() => {
                 <Button
                   onClick={async ()=>{
                     if (!canSave) return;
-                  setSavingItem(true);
-                  try {
+                    setSavingItem(true);
+                    try {
                       const categoryId = form.categoryId;
-                      if (!categoryId) return; // safety: add always has category preset
-                        const payload: any = { title: form.title.trim(), description: form.description, priceCents: Math.round((parseFloat(form.price||"0")||0)*100), categoryId, isAvailable: form.isAvailable };
-                      const typedImageUrl = (form as any).imageUrl?.trim();
+                      if (!categoryId) return;
+                      const payload: ManagerItemPayload = {
+                        title: form.title.trim(),
+                        description: form.description,
+                        priceCents: Math.round((parseFloat(form.price || '0') || 0) * 100),
+                        categoryId,
+                        isAvailable: form.isAvailable,
+                      };
+                      const typedImageUrl = form.imageUrl.trim();
 
-                        let itemId = editing?.id as string | undefined;
-                      let finalImageUrl: string | null = typedImageUrl && typedImageUrl.length > 0 ? typedImageUrl : null;
+                      let itemId = editing?.id;
+                      let finalImageUrl: string | null = typedImageUrl.length > 0 ? typedImageUrl : null;
 
                       if (editing) {
                         if (imageFile) {
                           try {
-                            const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_\.\-]/g, '-')}`;
-                            const path = `${storeSlug}/${editing.id}/${safeName}`;
-                            const res = await api.managerUploadImage(imageFile, { itemId });
-                            finalImageUrl = (res as any).publicUrl;
-                          } catch (e:any) {
-                            toast({ title: 'Upload failed', description: e?.message || 'Could not upload image' });
+                            const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
+                            const res = await api.managerUploadImage(imageFile, { itemId: editing.id, storeSlug });
+                            finalImageUrl = res.publicUrl;
+                          } catch (error) {
+                            const message = error instanceof Error ? error.message : 'Could not upload image';
+                            toast({ title: 'Upload failed', description: message });
                           }
                         }
-                        payload.imageUrl = finalImageUrl;
-                        await api.updateItem(editing.id, payload);
+                        await api.updateItem(editing.id, { ...payload, imageUrl: finalImageUrl ?? undefined });
                         itemId = editing.id;
                       } else {
-                        const created = (await api.createItem(payload)) as any;
-                        itemId = created?.item?.id;
-                        if (itemId && imageFile) {
+                        const created = await api.createItem(payload);
+                        itemId = created.item?.id;
+                        if (itemId && (imageFile || finalImageUrl)) {
                           try {
-                            const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_\.\-]/g, '-')}`;
-                            const path = `${storeSlug}/${itemId}/${safeName}`;
-                            const res2 = await api.managerUploadImage(imageFile, { itemId });
-                            finalImageUrl = (res2 as any).publicUrl;
-                            await api.updateItem(itemId, { imageUrl: finalImageUrl });
-                          } catch (e:any) {
-                            toast({ title: 'Upload failed', description: e?.message || 'Could not upload image' });
+                            if (imageFile) {
+                              const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
+                              const res2 = await api.managerUploadImage(imageFile, { itemId, storeSlug });
+                              finalImageUrl = res2.publicUrl;
+                            }
+                            if (finalImageUrl) {
+                              await api.updateItem(itemId, { imageUrl: finalImageUrl });
+                            }
+                          } catch (error) {
+                            const message = error instanceof Error ? error.message : 'Could not upload image';
+                            toast({ title: 'Upload failed', description: message });
                           }
-                        } else if (itemId && finalImageUrl) {
-                          await api.updateItem(itemId, { imageUrl: finalImageUrl });
                         }
                       }
                       if (itemId) {
-                        // Create custom modifiers and options then link
                         for (const cm of customMods) {
                           if (!cm.title.trim()) continue;
-                          const created = (await api.createModifier({ title: cm.title, minSelect: cm.required ? 1 : 0, maxSelect: null })) as any;
-                          const mid = created.modifier.id;
-                          let idx = 0;
+                          const createdModifier = await api.createModifier({
+                            title: cm.title,
+                            minSelect: cm.required ? 1 : 0,
+                            maxSelect: null,
+                          });
+                          const modifierId = createdModifier.modifier.id;
+                          let index = 0;
                           for (const opt of cm.options) {
                             if (!opt.title.trim()) continue;
-                            const priceCents = Math.round((parseFloat(opt.price || '0')||0)*100);
-                            await api.createModifierOption({ modifierId: mid, title: opt.title, priceDeltaCents: priceCents, sortOrder: idx++ });
+                            const priceCents = Math.round((parseFloat(opt.price || '0') || 0) * 100);
+                            await api.createModifierOption({
+                              modifierId,
+                              title: opt.title,
+                              priceDeltaCents: priceCents,
+                              sortOrder: index++,
+                            });
                           }
-                          await api.linkItemModifier(itemId, mid, cm.required);
+                          await api.linkItemModifier(itemId, modifierId, cm.required);
                         }
                       }
                       await load();
@@ -416,7 +563,7 @@ useEffect(() => {
                   disabled={savingItem || !canSave}
                   className="inline-flex items-center gap-2"
                 >
-                  {savingItem && <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin"/>}
+              {savingItem && <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin"/>}
                   Save
                 </Button>
               );
@@ -479,7 +626,7 @@ useEffect(() => {
                     await api.updateModifierOption(o.id, { title: o.title, priceDeltaCents: priceCents, sortOrder: i });
                   } else {
                     const created = await api.createModifierOption({ modifierId: modEdit.id, title: o.title, priceDeltaCents: priceCents, sortOrder: i });
-                    keep.add((created as any).option.id);
+                    keep.add(created.option.id);
                   }
                 }
                 // Delete removed options
@@ -488,16 +635,18 @@ useEffect(() => {
                 }
                 // Refresh item modifiers view
                 try {
-                  const m = (await api.getMenu()) as any;
-                  const found = (m.items || []).find((x:any)=>x.id===editing.id);
-                  setItemMods(found?.modifiers || []);
-                } catch {}
+                  const menu = await api.getMenu();
+                  const found = menu.items.find((x)=>x.id===editing.id);
+                  setItemMods(found?.modifiers ?? []);
+                } catch (error) {
+                  console.warn('Failed to refresh modifiers', error);
+                }
                 setModEditOpen(false);
               } finally {
                 setModEditSaving(false);
               }
             }}>
-              {modEditSaving && <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin"/>}
+              {modEditSaving && <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin"/>}
               Save
             </Button>
           </DialogFooter>
@@ -506,12 +655,3 @@ useEffect(() => {
     </Card>
   );
 };
-
-
-
-
-
-
-
-
-

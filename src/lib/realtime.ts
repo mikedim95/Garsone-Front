@@ -1,7 +1,8 @@
 import { useAuthStore } from "@/store/authStore";
 import { API_BASE, isOffline as apiIsOffline } from "./api";
 
-type RealtimeCallback = (message: any) => void;
+type RealtimeMessage = unknown; // Messages vary per topic; callers narrow as needed.
+type RealtimeCallback = (message: RealtimeMessage) => void;
 
 function topicMatches(filter: string, topic: string): boolean {
   if (filter === topic) return true;
@@ -18,6 +19,8 @@ function topicMatches(filter: string, topic: string): boolean {
   }
   return fl === tl || f[fl - 1] === "#";
 }
+
+type LandingAwareWindow = Window & { __OF_LANDING__?: boolean };
 
 class MockRealtimeService {
   private subscribers: Map<string, RealtimeCallback[]> = new Map();
@@ -39,7 +42,7 @@ class MockRealtimeService {
     if (!arr.includes(callback)) arr.push(callback);
   }
 
-  publish(topic: string, message: any) {
+  publish(topic: string, message: RealtimeMessage) {
     setTimeout(() => {
       for (const [filter, cbs] of this.subscribers.entries()) {
         if (topicMatches(filter, topic)) cbs.forEach((cb) => cb(message));
@@ -70,7 +73,9 @@ class MockRealtimeService {
           detail: { connected: this.connected, mock: true },
         })
       );
-    } catch {}
+    } catch (error) {
+      console.warn("Mock realtime status dispatch failed", error);
+    }
   }
 }
 
@@ -109,10 +114,12 @@ class WebSocketRealtimeService {
   subscribe(topic: string, cb: RealtimeCallback) {
     if (!this.topics.has(topic)) this.topics.set(topic, new Set());
     this.topics.get(topic)!.add(cb);
-    this.connect().catch(() => {});
+    this.connect().catch((error) => {
+      console.warn("Realtime subscribe connect attempt failed", error);
+    });
   }
 
-  publish(topic: string, message: any) {
+  publish(topic: string, message: RealtimeMessage) {
     const token = useAuthStore.getState().token;
     if (appOffline() || !API_BASE) {
       return Promise.reject(new Error("Offline"));
@@ -126,11 +133,23 @@ class WebSocketRealtimeService {
       body: JSON.stringify({ topic, payload: message }),
     }).then(async (res) => {
       if (!res.ok) {
-        let err: any = {};
+        let err: unknown = null;
         try {
           err = await res.json();
-        } catch {}
-        throw new Error(err?.error || err?.message || "Publish failed");
+        } catch (parseError) {
+          console.warn("Realtime publish error payload parse failed", parseError);
+        }
+        const errorMessage =
+          (typeof err === "object" &&
+            err !== null &&
+            typeof (err as { error?: unknown }).error === "string" &&
+            (err as { error: string }).error) ||
+          (typeof err === "object" &&
+            err !== null &&
+            typeof (err as { message?: unknown }).message === "string" &&
+            (err as { message: string }).message) ||
+          "Publish failed";
+        throw new Error(errorMessage);
       }
     });
   }
@@ -146,7 +165,9 @@ class WebSocketRealtimeService {
     if (this.socket) {
       try {
         this.socket.close();
-      } catch {}
+      } catch (error) {
+        console.warn("Realtime socket close failed", error);
+      }
     }
     this.socket = null;
     this.connected = false;
@@ -161,7 +182,9 @@ class WebSocketRealtimeService {
     if (this.socket) {
       try {
         this.socket.close();
-      } catch {}
+      } catch (error) {
+        console.warn("Realtime socket restart close failed", error);
+      }
     }
     this.socket = null;
     this.connected = false;
@@ -169,7 +192,9 @@ class WebSocketRealtimeService {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.connect().catch(() => {});
+    this.connect().catch((error) => {
+      console.warn("Realtime restart connect attempt failed", error);
+    });
   }
 
   private openSocket() {
@@ -208,7 +233,7 @@ class WebSocketRealtimeService {
     };
   }
 
-  private dispatch(topic: string, payload: any) {
+  private dispatch(topic: string, payload: RealtimeMessage) {
     for (const [filter, callbacks] of this.topics.entries()) {
       if (!callbacks.size) continue;
       if (!topicMatches(filter, topic)) continue;
@@ -230,7 +255,9 @@ class WebSocketRealtimeService {
           detail: { connected: this.connected },
         })
       );
-    } catch {}
+    } catch (error) {
+      console.warn("Realtime status dispatch failed", error);
+    }
   }
 }
 
@@ -245,7 +272,9 @@ export const realtimeService = {
         window.dispatchEvent(
           new CustomEvent("realtime-status", { detail: { connected: false } })
         );
-      } catch {}
+      } catch (error) {
+        console.warn("Realtime offline status dispatch failed", error);
+      }
       return;
     }
     if (!(realtimeServiceImpl instanceof WebSocketRealtimeService)) {
@@ -256,7 +285,7 @@ export const realtimeService = {
   subscribe(topic: string, cb: RealtimeCallback) {
     realtimeServiceImpl.subscribe(topic, cb);
   },
-  publish(topic: string, message: any) {
+  publish(topic: string, message: RealtimeMessage) {
     return realtimeServiceImpl.publish(topic, message);
   },
   unsubscribe(topic: string) {
@@ -286,8 +315,11 @@ function buildWebSocketUrl(): string | null {
 
 function appOffline(): boolean {
   if (apiIsOffline()) return true;
-  if (typeof window !== "undefined" && (window as any).__OF_LANDING__) {
-    return true;
+  if (typeof window !== "undefined") {
+    const landingWindow = window as LandingAwareWindow;
+    if (landingWindow.__OF_LANDING__) {
+      return true;
+    }
   }
   return false;
 }

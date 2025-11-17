@@ -3,7 +3,19 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useOrdersStore } from '@/store/ordersStore';
-import type { Order, OrderStatus } from '@/types';
+import type {
+  CartItem,
+  ManagerItemSummary,
+  ManagerTableSummary,
+  MenuCategory,
+  MenuItem,
+  Modifier,
+  Order,
+  OrderStatus,
+  Table,
+  WaiterSummary,
+  WaiterTableAssignment,
+} from '@/types';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
@@ -34,6 +46,7 @@ import {
   PieChart,
   Pie,
 } from 'recharts';
+import type { NameType, TooltipPayload, TooltipProps, ValueType } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -50,10 +63,134 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { realtimeService } from '@/lib/realtime';
 
+type ManagerMode = 'basic' | 'pro';
+type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
+type EconRange = 'today' | 'week' | 'month';
+type CategoryMode = 'eur' | 'share';
+type MenuCategoryMode = 'units' | 'share';
+type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
+type TableSummary = { id: string; label: string; active: boolean };
+interface WaiterForm {
+  email: string;
+  displayName: string;
+  password: string;
+}
+type WaiterAssignedTable = { id: string; label: string; active: boolean };
+
 const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
   PLACED: 10,
   PREPARING: 15,
   READY: 8,
+};
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const pickLabel = (value?: unknown) => (isNonEmptyString(value) ? value.trim() : null);
+
+const normalizeTableSummary = (table: Partial<Table> & { id?: string; label?: string }): TableSummary => ({
+  id: table.id ?? '',
+  label: table.label ?? '',
+  active: table.isActive ?? table.active ?? true,
+});
+
+const extractMenuItem = (source?: unknown): Partial<MenuItem> | null => {
+  if (!source || typeof source !== 'object') return null;
+  if ('item' in source && typeof (source as { item?: unknown }).item === 'object') {
+    return ((source as { item?: Partial<MenuItem> }).item) ?? null;
+  }
+  return source as Partial<MenuItem>;
+};
+
+const getLineQuantity = (line?: CartItem | { quantity?: number; qty?: number }) => {
+  if (!line) return 1;
+  const raw = 'quantity' in line ? line.quantity : 'qty' in line ? line.qty : undefined;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : 1;
+};
+
+const isWaiterCallEvent = (payload: unknown): payload is { tableId?: string; action?: string; ts?: string } =>
+  isRecord(payload) && (typeof payload.tableId === 'string' || typeof payload.action === 'string');
+
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d: Date, days: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+const toISODate = (d: Date) => d.toISOString().slice(0, 10);
+const withinRange = (d: Date | null, start: Date, end: Date) => {
+  if (!d) return false;
+  const endExclusive = addDays(end, 1);
+  return d >= start && d < endExclusive;
+};
+
+const parseDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getPlacedDate = (order: Order) =>
+  parseDate(order.placedAt) || parseDate(order.createdAt) || new Date();
+
+const getUpdatedDate = (order: Order) =>
+  parseDate(order.updatedAt) ||
+  parseDate(order.placedAt) ||
+  parseDate(order.createdAt) ||
+  new Date();
+
+const getServedDate = (order: Order) =>
+  parseDate(order.servedAt) || (order.status === 'SERVED' ? getUpdatedDate(order) : null);
+
+const getOrderTotalCents = (order: Order) => {
+  if (typeof order.totalCents === 'number' && Number.isFinite(order.totalCents)) {
+    return order.totalCents;
+  }
+  return Math.round((order.total ?? 0) * 100);
+};
+
+const minutesBetween = (start: Date | null, end: Date | null) => {
+  if (!start || !end) return null;
+  const minutes = (end.getTime() - start.getTime()) / 60000;
+  return Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
+};
+
+const median = (values: number[]) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+const percentile = (values: number[], p: number) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length) - 1;
+  const idx = Math.min(Math.max(rank, 0), sorted.length - 1);
+  return sorted[idx];
+};
+
+const formatMinutesValue = (value: number | null) => {
+  if (value == null) return '—';
+  if (value >= 100) return Math.round(value).toString();
+  return value.toFixed(1);
+};
+
+const orderLabel = (order: Order) =>
+  order.ticketNumber != null ? `Ticket #${order.ticketNumber}` : `#${order.id.slice(-6).toUpperCase()}`;
+
+const daypartOf = (date: Date) => {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 11) return 'Breakfast';
+  if (hour >= 11 && hour < 15) return 'Lunch';
+  if (hour >= 15 && hour < 18) return 'Afternoon';
+  if (hour >= 18 && hour < 22) return 'Evening';
+  return 'Late';
+};
+
+const unitPrice = (line?: CartItem | { item?: Partial<MenuItem> }) => {
+  const item = extractMenuItem(line);
+  if (!item) return 0;
+  if (typeof item.price === 'number') return item.price;
+  if (typeof item.priceCents === 'number') return item.priceCents / 100;
+  return 0;
 };
 export default function ManagerDashboard() {
   const { t } = useTranslation();
@@ -63,21 +200,21 @@ export default function ManagerDashboard() {
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
 
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [waiters, setWaiters] = useState<any[]>([]);
-  const [tables, setTables] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<WaiterTableAssignment[]>([]);
+  const [waiters, setWaiters] = useState<WaiterSummary[]>([]);
+  const [tables, setTables] = useState<TableSummary[]>([]);
   const [loadingWaiters, setLoadingWaiters] = useState(true);
-  const [managerTables, setManagerTables] = useState<any[]>([]);
+  const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [activeWaiter, setActiveWaiter] = useState<any | null>(null);
+  const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
   const [initialTableSelection, setInitialTableSelection] = useState<Set<string>>(new Set());
   const [tableSelection, setTableSelection] = useState<Set<string>>(new Set());
   const [savingWaiter, setSavingWaiter] = useState(false);
 
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [newWaiter, setNewWaiter] = useState({ email: '', displayName: '', password: '' });
+  const [newWaiter, setNewWaiter] = useState<WaiterForm>({ email: '', displayName: '', password: '' });
   const [addingWaiter, setAddingWaiter] = useState(false);
   const [deletingWaiterId, setDeletingWaiterId] = useState<string | null>(null);
   const [tableModalOpen, setTableModalOpen] = useState(false);
@@ -88,7 +225,7 @@ export default function ManagerDashboard() {
   const [savingTable, setSavingTable] = useState(false);
   const [tableDeletingId, setTableDeletingId] = useState<string | null>(null);
   const [menuCategoryLookup, setMenuCategoryLookup] = useState<Map<string, string>>(new Map());
-  const [managerMode, setManagerMode] = useState<'basic' | 'pro'>(() => {
+  const [managerMode, setManagerMode] = useState<ManagerMode>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('MANAGER_MODE');
@@ -99,8 +236,8 @@ export default function ManagerDashboard() {
     }
     return 'basic';
   });
-  const [activeTab, setActiveTab] = useState<'economics' | 'orders' | 'personnel' | 'menu'>('economics');
-  const [econRange, setEconRange] = useState<'today' | 'week' | 'month'>(() => {
+  const [activeTab, setActiveTab] = useState<ManagerTab>('economics');
+  const [econRange, setEconRange] = useState<EconRange>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('MANAGER_ECON_RANGE');
@@ -111,8 +248,8 @@ export default function ManagerDashboard() {
     }
     return 'week';
   });
-  const [econCategoryMode, setEconCategoryMode] = useState<'eur' | 'share'>('eur');
-  const [menuCategoryMode, setMenuCategoryMode] = useState<'units' | 'share'>('units');
+  const [econCategoryMode, setEconCategoryMode] = useState<CategoryMode>('eur');
+  const [menuCategoryMode, setMenuCategoryMode] = useState<MenuCategoryMode>('units');
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -130,8 +267,8 @@ export default function ManagerDashboard() {
     const initOrders = async () => {
       try {
         if (ordersAll.length === 0) {
-          const ordersRes = (await api.getOrders()) as any;
-          setOrdersLocal(ordersRes.orders || []);
+          const ordersRes = await api.getOrders();
+          setOrdersLocal(ordersRes.orders ?? []);
         }
       } catch (error) {
         console.error('Failed to load orders', error);
@@ -143,9 +280,9 @@ export default function ManagerDashboard() {
   const loadWaiterData = async () => {
     setLoadingWaiters(true);
     try {
-      const data = (await api.getWaiterTables()) as any;
-      setAssignments(data.assignments || []);
-      setWaiters(data.waiters || []);
+      const data = await api.getWaiterTables();
+      setAssignments(data.assignments ?? []);
+      setWaiters(data.waiters ?? []);
     } catch (error) {
       console.error('Failed to load waiter data', error);
     } finally {
@@ -156,16 +293,22 @@ export default function ManagerDashboard() {
   const loadManagerTables = async () => {
     setLoadingTables(true);
     try {
-      const data = (await api.managerListTables()) as any;
-      const list = (data.tables || []).map((table: any) => ({
+      const data = await api.managerListTables();
+      const list: ManagerTableSummary[] = (data.tables ?? []).map((table) => ({
         id: table.id,
         label: table.label,
-        isActive: typeof table.isActive === 'boolean' ? table.isActive : Boolean(table.active),
+        isActive: table.isActive,
         waiterCount: table.waiterCount ?? 0,
         orderCount: table.orderCount ?? 0,
       }));
       setManagerTables(list);
-      setTables(list.map((table) => ({ id: table.id, label: table.label, active: table.isActive })));
+      setTables(
+        list.map((table) => ({
+          id: table.id,
+          label: table.label,
+          active: table.isActive,
+        }))
+      );
     } catch (error) {
       console.error('Failed to load tables', error);
     } finally {
@@ -205,32 +348,33 @@ export default function ManagerDashboard() {
           api.listModifiers?.() ?? Promise.resolve({ modifiers: [] }),
         ]);
         const categoriesMap = new Map<string, string>();
-        (categoriesRes?.categories || []).forEach((category: any) => {
-          const label =
-            (typeof category?.title === 'string' && category.title.trim()) ||
-            (typeof category?.name === 'string' && category.name.trim());
-          if (category?.id && label) {
+        (categoriesRes?.categories ?? []).forEach((category: MenuCategory) => {
+          if (!category?.id) return;
+          const label = pickLabel(category.title);
+          if (label) {
             categoriesMap.set(category.id, label);
           }
         });
         const lookup = new Map<string, string>();
-        (itemsRes?.items || []).forEach((item: any) => {
+        (itemsRes?.items ?? []).forEach((item: ManagerItemSummary) => {
           if (!item?.id) return;
           const label =
-            (typeof item?.category?.title === 'string' && item.category.title.trim()) ||
-            (typeof item?.category?.name === 'string' && item.category.name.trim()) ||
-            categoriesMap.get(item.categoryId) ||
-            (typeof item?.categoryTitle === 'string' && item.categoryTitle.trim()) ||
-            (typeof item?.categoryName === 'string' && item.categoryName.trim()) ||
-            (typeof item?.category === 'string' && item.category.trim());
+            pickLabel(item.category?.title) ??
+            pickLabel(item.category?.name) ??
+            (item.categoryId ? categoriesMap.get(item.categoryId) ?? null : null) ??
+            pickLabel((item as { categoryTitle?: string }).categoryTitle) ??
+            pickLabel((item as { categoryName?: string }).categoryName) ??
+            pickLabel(item.category);
           if (label) {
             lookup.set(item.id, label);
           }
         });
         setMenuCategoryLookup(lookup);
         const modLookup = new Map<string, string>();
-        (modifiersRes?.modifiers || []).forEach((m: any) => {
-          if (m?.id && typeof m?.title === 'string') modLookup.set(m.id, m.title);
+        (modifiersRes?.modifiers ?? []).forEach((modifier: Modifier) => {
+          if (modifier?.id && pickLabel(modifier.title)) {
+            modLookup.set(modifier.id, pickLabel(modifier.title)!);
+          }
         });
         setModifierLookup(modLookup);
       } catch (error) {
@@ -243,26 +387,24 @@ export default function ManagerDashboard() {
   }, [isAuthenticated, user]);
 
   const waiterAssignmentsMap = useMemo(() => {
-    const map = new Map<string, any[]>();
+    const map = new Map<string, Table[]>();
     assignments.forEach((assignment) => {
-      const current = map.get(assignment.waiterId) || [];
-      current.push(assignment.table);
-      map.set(assignment.waiterId, current);
+      if (!assignment.waiterId || !assignment.table) return;
+      const current = map.get(assignment.waiterId);
+      if (current) {
+        current.push(assignment.table);
+      } else {
+        map.set(assignment.waiterId, [assignment.table]);
+      }
     });
     return map;
   }, [assignments]);
 
-  const daypartOf = (date: Date) => {
-    const hour = date.getHours();
-    if (hour >= 5 && hour < 11) return 'Breakfast';
-    if (hour >= 11 && hour < 15) return 'Lunch';
-    if (hour >= 15 && hour < 18) return 'Afternoon';
-    if (hour >= 18 && hour < 22) return 'Evening';
-    return 'Late';
-  };
-
-  const openEditWaiter = (waiter: any) => {
-    const assignedIds = (waiterAssignmentsMap.get(waiter.id) || []).map((table: any) => table.id);
+  const openEditWaiter = (waiter: WaiterSummary) => {
+    const assigned = waiterAssignmentsMap.get(waiter.id) ?? [];
+    const assignedIds = assigned
+      .map((table) => table.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
     setActiveWaiter({ ...waiter, originalDisplayName: waiter.displayName });
     setTableSelection(new Set(assignedIds));
     setInitialTableSelection(new Set(assignedIds));
@@ -270,9 +412,11 @@ export default function ManagerDashboard() {
   };
 
   const tablesById = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, TableSummary>();
     tables.forEach((table) => {
-      map.set(table.id, table);
+      if (table.id) {
+        map.set(table.id, table);
+      }
     });
     return map;
   }, [tables]);
@@ -303,12 +447,6 @@ export default function ManagerDashboard() {
   const formatCurrency = (value: number) => currencyFormatter.format(value || 0);
   const PIE_COLORS = ['#6366f1','#22d3ee','#f59e0b','#ef4444','#10b981','#a855f7','#ec4899','#14b8a6'];
 
-  const getOrderTotalCents = (order: Order) => {
-    const cents = (order as any).totalCents;
-    if (typeof cents === 'number' && Number.isFinite(cents)) return cents;
-    return Math.round((order.total ?? 0) * 100);
-  };
-
   const servedOrders = useMemo(
     () => ordersAll.filter((order) => order.status === 'SERVED'),
     [ordersAll]
@@ -319,14 +457,6 @@ export default function ManagerDashboard() {
   );
 
   // Economics date-range helpers and derived ranges
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const addDays = (d: Date, days: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
-  const toISODate = (d: Date) => d.toISOString().slice(0, 10);
-  const withinRange = (d: Date | null, start: Date, end: Date) => {
-    if (!d) return false;
-    const endExclusive = addDays(end, 1);
-    return d >= start && d < endExclusive;
-  };
   const rangeInfo = useMemo(() => {
     const now = new Date();
     const end = startOfDay(now);
@@ -349,14 +479,6 @@ export default function ManagerDashboard() {
     cancelledOrders.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100;
 
   // Date parsing helpers used across analytics
-  const parseDate = (value?: string | null) => {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  };
-  const getPlacedDate = (order: Order) =>
-    parseDate(order.placedAt) || parseDate(order.createdAt) || new Date();
-
   // Economics tab (range-scoped)
   const servedInRange = useMemo(
     () =>
@@ -423,25 +545,29 @@ export default function ManagerDashboard() {
   }, [servedInRange, servedPrevRange, rangeInfo]);
 
   const resolveCategoryLabel = useCallback(
-    (item?: any) => {
-      const pick = (value?: any) =>
-        typeof value === 'string' && value.trim().length ? value.trim() : null;
+    (source?: unknown) => {
+      if (typeof source === 'string' && pickLabel(source)) {
+        return source.trim();
+      }
+      const item = extractMenuItem(source);
+      const category = item?.category;
       const direct =
-        pick(item?.category?.title) ??
-        pick(item?.category?.name) ??
-        pick(item?.categoryTitle) ??
-        pick(item?.categoryName) ??
-        pick(item?.categoryLabel) ??
-        pick(item?.category?.label) ??
-        pick(item?.category) ??
-        (typeof item === 'string' ? pick(item) : null);
+        (typeof category === 'string' && pickLabel(category)) ??
+        (typeof category === 'object'
+          ? pickLabel((category as { title?: string }).title) ??
+            pickLabel((category as { name?: string }).name) ??
+            pickLabel((category as { label?: string }).label)
+          : null) ??
+        pickLabel((item as { categoryTitle?: string }).categoryTitle) ??
+        pickLabel((item as { categoryName?: string }).categoryName) ??
+        pickLabel((item as { categoryLabel?: string }).categoryLabel);
       if (direct) return direct;
       const itemId =
         item?.id ??
-        item?.itemId ??
-        item?.item?.id ??
-        item?.itemId ??
-        (typeof item === 'object' ? item?.item?.id : undefined);
+        (item as { itemId?: string }).itemId ??
+        (typeof source === 'object' && source && 'item' in source
+          ? ((source as { item?: { id?: string } }).item?.id ?? null)
+          : null);
       if (itemId && menuCategoryLookup.has(itemId)) {
         return menuCategoryLookup.get(itemId)!;
       }
@@ -449,19 +575,12 @@ export default function ManagerDashboard() {
     },
     [menuCategoryLookup]
   );
-
-  const unitPrice = (item: any) => {
-    if (typeof item?.item?.price === 'number') return item.item.price;
-    if (typeof item?.item?.priceCents === 'number') return item.item.priceCents / 100;
-    return 0;
-  };
-
   const categoryRevenue = useMemo(() => {
     const buckets = new Map<string, number>();
     servedInRange.forEach((order) => {
-      (order.items || []).forEach((item: any) => {
-        const category = resolveCategoryLabel(item?.item ?? item);
-        const revenue = unitPrice(item) * (item?.quantity ?? 1);
+      (order.items ?? []).forEach((item) => {
+        const category = resolveCategoryLabel(item.item ?? item);
+        const revenue = unitPrice(item) * getLineQuantity(item);
         buckets.set(category, (buckets.get(category) ?? 0) + revenue);
       });
     });
@@ -493,9 +612,9 @@ export default function ManagerDashboard() {
   const hasCostData = useMemo(
     () =>
       servedOrders.some((order) =>
-        (order.items || []).some(
-          (line: any) =>
-            typeof line?.item?.costCents === 'number' || typeof line?.item?.cost === 'number'
+        (order.items ?? []).some(
+          (line) =>
+            typeof line.item?.costCents === 'number' || typeof line.item?.cost === 'number'
         )
       ),
     [servedOrders]
@@ -504,14 +623,14 @@ export default function ManagerDashboard() {
     if (!hasCostData) return [] as Array<{ category: string; margin: number }>;
     const buckets = new Map<string, number>();
     servedInRange.forEach((order) => {
-      (order.items || []).forEach((line: any) => {
-        const category = resolveCategoryLabel(line?.item ?? line);
+      (order.items ?? []).forEach((line) => {
+        const category = resolveCategoryLabel(line.item ?? line);
         const price = unitPrice(line);
-        const qty = Number(line?.quantity ?? 1) || 1;
+        const qty = getLineQuantity(line);
         const cost =
-          typeof line?.item?.costCents === 'number'
+          typeof line.item?.costCents === 'number'
             ? line.item.costCents / 100
-            : typeof line?.item?.cost === 'number'
+            : typeof line.item?.cost === 'number'
             ? line.item.cost
             : undefined;
         if (typeof cost === 'number') {
@@ -529,10 +648,14 @@ export default function ManagerDashboard() {
   const topItems = useMemo(() => {
     const map = new Map<string, { name: string; revenue: number }>();
     servedOrders.forEach((order) => {
-      (order.items || []).forEach((item: any) => {
-        const name = item?.item?.name || 'Item';
-        const revenue = unitPrice(item) * (item?.quantity ?? 1);
-        const current = map.get(name) || { name, revenue: 0 };
+      (order.items ?? []).forEach((line) => {
+        const name =
+          line.item?.name ??
+          line.item?.title ??
+          pickLabel((line.item as { label?: string })?.label) ??
+          'Item';
+        const revenue = unitPrice(line) * getLineQuantity(line);
+        const current = map.get(name) ?? { name, revenue: 0 };
         current.revenue += revenue;
         map.set(name, current);
       });
@@ -560,49 +683,15 @@ export default function ManagerDashboard() {
   );
 
 
-  const getUpdatedDate = (order: Order) =>
-    parseDate(order.updatedAt) ||
-    parseDate(order.placedAt) ||
-    parseDate(order.createdAt) ||
-    new Date();
-  const getServedDate = (order: Order) =>
-    parseDate(order.servedAt) || (order.status === 'SERVED' ? getUpdatedDate(order) : null);
-  const minutesBetween = (start: Date | null, end: Date | null) => {
-    if (!start || !end) return null;
-    const minutes = (end.getTime() - start.getTime()) / 60000;
-    return Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
-  };
-  const median = (values: number[]) => {
-    if (!values.length) return null;
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 1) return sorted[mid];
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  };
-  const percentile = (values: number[], p: number) => {
-    if (!values.length) return null;
-    const sorted = [...values].sort((a, b) => a - b);
-    const rank = Math.ceil((p / 100) * sorted.length) - 1;
-    const idx = Math.min(Math.max(rank, 0), sorted.length - 1);
-    return sorted[idx];
-  };
-  const formatMinutesValue = (value: number | null) => {
-    if (value == null) return '—';
-    if (value >= 100) return Math.round(value).toString();
-    return value.toFixed(1);
-  };
-  const orderLabel = (order: Order) =>
-    order.ticketNumber != null ? `Ticket #${order.ticketNumber}` : `#${order.id.slice(-6).toUpperCase()}`;
-
   const orderLineItems = useMemo(() => {
     return ordersAll.flatMap((order) =>
-      (order.items || []).map((line: any) => ({
+      (order.items ?? []).map((line) => ({
         orderId: order.id,
-        itemId: line.item?.id ?? line.itemId ?? '',
-        name: line.item?.name || line.item?.title || 'Item',
+        itemId: line.item?.id ?? '',
+        name: line.item?.name ?? line.item?.title ?? 'Item',
         category: resolveCategoryLabel(line.item ?? line),
-        quantity: Number(line.quantity ?? 1) || 1,
-        selectedModifiers: line.selectedModifiers || {},
+        quantity: getLineQuantity(line),
+        selectedModifiers: line.selectedModifiers ?? {},
         placedAt: getPlacedDate(order),
       }))
     );
@@ -810,17 +899,22 @@ export default function ManagerDashboard() {
     const sumBy = (periodStart: Date, periodEnd: Date) => {
       const map = new Map<string, { units: number; margin: number }>();
       servedOrders.forEach((order) => {
-        const d = getPlacedDate(order); if (d < periodStart || d > addDays(periodEnd,1)) return;
-        (order.items || []).forEach((line: any) => {
-          const name = line?.item?.name || line?.name || 'Item';
-          const qty = Number(line?.quantity ?? 1) || 1;
+        const d = getPlacedDate(order);
+        if (d < periodStart || d > addDays(periodEnd, 1)) return;
+        (order.items ?? []).forEach((line) => {
+          const name = line.item?.name ?? line.item?.title ?? 'Item';
+          const qty = getLineQuantity(line);
           const price = unitPrice(line);
-          const cost = typeof line?.item?.costCents === 'number' ? line.item.costCents/100
-            : typeof line?.item?.cost === 'number' ? line.item.cost : undefined;
-          const m = map.get(name) || { units: 0, margin: 0 };
-          m.units += qty;
-          if (typeof cost === 'number') m.margin += (price - cost) * qty;
-          map.set(name, m);
+          const cost =
+            typeof line.item?.costCents === 'number'
+              ? line.item.costCents / 100
+              : typeof line.item?.cost === 'number'
+              ? line.item.cost
+              : undefined;
+          const existing = map.get(name) ?? { units: 0, margin: 0 };
+          existing.units += qty;
+          if (typeof cost === 'number') existing.margin += (price - cost) * qty;
+          map.set(name, existing);
         });
       });
       return map;
@@ -847,21 +941,19 @@ export default function ManagerDashboard() {
     let subscribed = false;
     realtimeService.connect().then(() => {
       const topic = `${storeSlug}/waiter/call`;
-      realtimeService.subscribe(topic, (msg: any) => {
-        const tableId = msg?.tableId;
-        const action = msg?.action;
-        const ts = msg?.ts ? new Date(msg.ts) : new Date();
-        if (!tableId || !action) return;
-        if (action === 'called') {
-          lastCallByTable.current.set(tableId, ts);
-        } else if (action === 'accepted') {
-          const started = lastCallByTable.current.get(tableId);
+      realtimeService.subscribe(topic, (payload) => {
+        if (!isWaiterCallEvent(payload) || !payload.tableId || !payload.action) return;
+        const ts = payload.ts ? new Date(payload.ts) : new Date();
+        if (payload.action === 'called') {
+          lastCallByTable.current.set(payload.tableId, ts);
+        } else if (payload.action === 'accepted') {
+          const started = lastCallByTable.current.get(payload.tableId);
           if (started) {
             const mins = (ts.getTime() - started.getTime()) / 60000;
             if (Number.isFinite(mins) && mins >= 0) {
               setCallResponseDurations((arr) => [...arr, mins]);
             }
-            lastCallByTable.current.delete(tableId);
+            lastCallByTable.current.delete(payload.tableId);
           }
         }
       });
@@ -892,25 +984,26 @@ export default function ManagerDashboard() {
 
   const waiterDetails = useMemo(() => {
     return sortedWaiters.map((waiter) => {
-      const assignedRaw = waiterAssignmentsMap.get(waiter.id) || [];
-      const assignedTables = assignedRaw
-        .map((assignment: any) => {
-          const stored = tablesById.get(assignment.id);
+      const assignedRaw = waiterAssignmentsMap.get(waiter.id) ?? [];
+      const assignedTables: WaiterAssignedTable[] = assignedRaw
+        .map((assignmentTable) => {
+          const stored = assignmentTable.id ? tablesById.get(assignmentTable.id) : undefined;
           const label =
             stored?.label ??
-            stored?.code ??
-            assignment.label ??
-            assignment.code ??
-            assignment.title ??
+            pickLabel((assignmentTable as { label?: string }).label) ??
+            pickLabel((assignmentTable as { code?: string }).code) ??
+            pickLabel((assignmentTable as { title?: string }).title) ??
             '—';
+          const id = assignmentTable.id ?? stored?.id ?? '';
           return {
-            id: assignment.id,
-            label,
-            active: stored?.active ?? assignment.active ?? true,
+            id,
+            label: label ?? '—',
+            active: stored?.active ?? assignmentTable.active ?? assignmentTable.isActive ?? true,
           };
         })
-        .sort((a: any, b: any) => a.label.localeCompare(b.label));
-      const tableIds = assignedTables.map((table) => table.id).filter(Boolean);
+        .filter((table): table is WaiterAssignedTable => Boolean(table.id))
+        .sort((a, b) => a.label.localeCompare(b.label));
+      const tableIds = assignedTables.map((table) => table.id);
       const orders = tableIds.flatMap((tableId) => ordersByTable.get(tableId) ?? []);
       const served = orders.filter((order) => order.status === 'SERVED');
       const ready = orders.filter((order) => order.status === 'READY');
@@ -969,14 +1062,13 @@ export default function ManagerDashboard() {
     );
     const coveredTableIds = new Set<string>();
     activeWaiterIds.forEach((wid) => {
-      (waiterAssignmentsMap.get(wid) || []).forEach((t: any) => {
-        if (t?.id && (t.active ?? t.isActive ?? true)) coveredTableIds.add(t.id);
+      (waiterAssignmentsMap.get(wid) ?? []).forEach((table) => {
+        if (table?.id && (table.active ?? table.isActive ?? true)) coveredTableIds.add(table.id);
       });
     });
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
-    const byHour: Record<number, { orders: number; coveredOrders: number }> = {} as any;
-    for (let h = 0; h < 24; h++) byHour[h] = { orders: 0, coveredOrders: 0 };
+    const byHour = Array.from({ length: 24 }, () => ({ orders: 0, coveredOrders: 0 }));
     ordersAll.forEach((o) => {
       const d = getPlacedDate(o);
       if (d < start) return;
@@ -984,9 +1076,10 @@ export default function ManagerDashboard() {
       byHour[h].orders += 1;
       if (coveredTableIds.has(o.tableId)) byHour[h].coveredOrders += 1;
     });
-    const gaps = Object.entries(byHour)
-      .filter(([, v]) => v.orders > 0 && v.coveredOrders === 0)
-      .map(([h]) => Number(h));
+    const gaps = byHour
+      .map((value, hour) => ({ hour, ...value }))
+      .filter(({ orders, coveredOrders }) => orders > 0 && coveredOrders === 0)
+      .map(({ hour }) => hour);
     return gaps;
   }, [ordersAll, waiterDetails, waiterAssignmentsMap]);
 
@@ -1145,14 +1238,15 @@ export default function ManagerDashboard() {
   const bottleneckMatrix = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, h) => h);
     const statuses: OrderStatus[] = ['PLACED', 'PREPARING', 'READY'];
-    const makeRow = () => Object.fromEntries(hours.map((h) => [h, 0])) as Record<number, number>;
+    const makeRow = (): Record<number, number> =>
+      Object.fromEntries(hours.map((h) => [h, 0])) as Record<number, number>;
     const matrix: Record<OrderStatus, Record<number, number>> = {
       PLACED: makeRow(),
       PREPARING: makeRow(),
       READY: makeRow(),
       SERVED: makeRow(),
       CANCELLED: makeRow(),
-    } as any;
+    };
     ordersAll.forEach((order) => {
       const hour = getPlacedDate(order).getHours();
       if (statuses.includes(order.status)) {
@@ -1245,8 +1339,8 @@ export default function ManagerDashboard() {
     setTableModalOpen(true);
   };
 
-  const openEditTable = (table: any) => {
-    setTableForm({ id: table.id, label: table.label, isActive: table.isActive });
+  const openEditTable = (table: TableSummary) => {
+    setTableForm({ id: table.id, label: table.label, isActive: table.active });
     setTableModalOpen(true);
   };
 
@@ -1316,7 +1410,7 @@ export default function ManagerDashboard() {
       const toAdd = Array.from(desired).filter((id) => !current.has(id));
       const toRemove = Array.from(current).filter((id) => !desired.has(id));
 
-      const ops: Promise<any>[] = [];
+      const ops: Array<Promise<unknown>> = [];
       const trimmedName = (activeWaiter.displayName || '').trim();
       const originalName = activeWaiter.originalDisplayName || '';
       if (trimmedName && trimmedName !== originalName) {
@@ -1396,8 +1490,7 @@ export default function ManagerDashboard() {
           </div>
         ) : undefined}
         icon="📊"
-        gradientFrom="from-purple-500"
-        gradientTo="to-pink-600"
+        tone="accent"
         burgerActions={
           <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
             <LogOut className="mr-2 h-4 w-4" /> {t('actions.logout')}
@@ -1477,7 +1570,7 @@ export default function ManagerDashboard() {
                       const delta = prev > 0 ? ((curr - prev) / prev) * 100 : curr > 0 ? 100 : 0;
                       const up = delta > 0.5;
                       const down = delta < -0.5;
-                      const color = up ? 'text-green-600' : down ? 'text-red-600' : 'text-muted-foreground';
+                      const color = up ? 'text-primary' : down ? 'text-destructive' : 'text-muted-foreground';
                       return (
                         <div>
                           <div className={`text-2xl font-semibold ${color}`}>
@@ -1547,9 +1640,14 @@ export default function ManagerDashboard() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="category" />
                     <YAxis tickFormatter={(v) => (econCategoryMode === 'share' ? `${Math.round(Number(v))}%` : String(v))} domain={econCategoryMode === 'share' ? [0, 100] : ['auto', 'auto']} />
-                    <Tooltip formatter={(value: any, name: any) =>
-                      econCategoryMode === 'share' ? [`${(value as number).toFixed(1)}%`, 'Share'] : [formatCurrency(value as number), 'Revenue']
-                    } />
+                    <Tooltip
+                      formatter={(value: ValueType) => {
+                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+                        return econCategoryMode === 'share'
+                          ? [`${numericValue.toFixed(1)}%`, 'Share']
+                          : [formatCurrency(numericValue), 'Revenue'];
+                      }}
+                    />
                     <Bar dataKey={econCategoryMode === 'share' ? 'share' : 'revenue'} fill="hsl(var(--primary))" />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1601,7 +1699,12 @@ export default function ManagerDashboard() {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="daypart" />
                         <YAxis tickFormatter={(v) => formatCurrency(Number(v))} />
-                        <Tooltip formatter={(value: any) => [formatCurrency(value as number), 'Avg ticket']} />
+                        <Tooltip
+                          formatter={(value: ValueType) => {
+                            const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+                            return [formatCurrency(numericValue), 'Avg ticket'];
+                          }}
+                        />
                         <Bar dataKey="avg" fill="hsl(var(--primary))" />
                       </BarChart>
                     </ResponsiveContainer>
@@ -1711,8 +1814,8 @@ export default function ManagerDashboard() {
                 <div className="text-xs font-semibold text-muted-foreground">
                   {(() => {
                     const d = ordersTimelineTrend.deltaPct;
-                    if (d > 0.5) return <span className="text-green-600">↑ {Math.abs(d).toFixed(1)}%</span>;
-                    if (d < -0.5) return <span className="text-red-600">↓ {Math.abs(d).toFixed(1)}%</span>;
+                    if (d > 0.5) return <span className="text-primary">↑ {Math.abs(d).toFixed(1)}%</span>;
+                    if (d < -0.5) return <span className="text-destructive">↓ {Math.abs(d).toFixed(1)}%</span>;
                     return <span className="">↔ 0.0%</span>;
                   })()}
                 </div>
@@ -2014,7 +2117,7 @@ export default function ManagerDashboard() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {detail.assignedTables.length ? (
-                          detail.assignedTables.map((table: any) => (
+                          detail.assignedTables.map((table) => (
                             <Badge
                               key={table.id ?? table.label}
                               variant={table.active ? 'secondary' : 'outline'}
@@ -2066,7 +2169,17 @@ export default function ManagerDashboard() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                      <Tooltip formatter={(value: number, _name: any, ctx: any) => [`${value}% (${ctx?.payload?.count ?? 0})`, 'Orders']} />
+                      <Tooltip
+                        formatter={(
+                          value: ValueType,
+                          _name: NameType,
+                          ctx?: TooltipPayload<ValueType, NameType>
+                        ) => {
+                          const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+                          const count = typeof ctx?.payload?.count === 'number' ? ctx.payload.count : 0;
+                          return [`${numericValue}% (${count})`, 'Orders'];
+                        }}
+                      />
                       <Bar dataKey="percent" fill="hsl(var(--primary))" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -2299,7 +2412,19 @@ export default function ManagerDashboard() {
                     <div className="h-72">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Tooltip formatter={(value: any, _n, ctx: any) => menuCategoryMode === 'share' ? [`${(value as number).toFixed(1)}%`, ctx?.payload?.name] : [String(value), ctx?.payload?.name]} />
+                          <Tooltip
+                            formatter={(
+                              value: ValueType,
+                              _name: NameType,
+                              ctx?: TooltipPayload<ValueType, NameType>
+                            ) => {
+                              const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+                              const label = typeof ctx?.payload?.name === 'string' ? ctx.payload.name : '';
+                              return menuCategoryMode === 'share'
+                                ? [`${numericValue.toFixed(1)}%`, label]
+                                : [numericValue.toString(), label];
+                            }}
+                          />
                           <Legend />
                           <Pie
                             data={categoryUnits.map((c) => ({ name: c.category, value: menuCategoryMode === 'share' ? c.share : c.units }))}
@@ -2332,7 +2457,17 @@ export default function ManagerDashboard() {
                     <div className="h-72">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Tooltip formatter={(value: any, _n, ctx: any) => [`${value}`, ctx?.payload?.name]} />
+                          <Tooltip
+                            formatter={(
+                              value: ValueType,
+                              _name: NameType,
+                              ctx?: TooltipPayload<ValueType, NameType>
+                            ) => {
+                              const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
+                              const label = typeof ctx?.payload?.name === 'string' ? ctx.payload.name : '';
+                              return [numericValue.toString(), label];
+                            }}
+                          />
                           <Legend />
                           <Pie
                             data={daypartMix.map((d) => ({ name: d.daypart, value: d.count }))}
@@ -2375,8 +2510,8 @@ export default function ManagerDashboard() {
                           <td className="py-2">
                             {(() => {
                               const pct = menuTrendInfo.deltaPct.get(item.name) ?? 0;
-                              if (pct > 0.5) return <span className="text-green-600">↑ {Math.abs(pct).toFixed(1)}%</span>;
-                              if (pct < -0.5) return <span className="text-red-600">↓ {Math.abs(pct).toFixed(1)}%</span>;
+                              if (pct > 0.5) return <span className="text-primary">↑ {Math.abs(pct).toFixed(1)}%</span>;
+                              if (pct < -0.5) return <span className="text-destructive">↓ {Math.abs(pct).toFixed(1)}%</span>;
                               return <span className="text-muted-foreground">↔ 0.0%</span>;
                             })()}
                           </td>
@@ -2413,8 +2548,8 @@ export default function ManagerDashboard() {
                           <td className="py-2">
                             {(() => {
                               const pct = menuTrendInfo.deltaPct.get(item.name) ?? 0;
-                              if (pct > 0.5) return <span className="text-green-600">↑ {Math.abs(pct).toFixed(1)}%</span>;
-                              if (pct < -0.5) return <span className="text-red-600">↓ {Math.abs(pct).toFixed(1)}%</span>;
+                              if (pct > 0.5) return <span className="text-primary">↑ {Math.abs(pct).toFixed(1)}%</span>;
+                              if (pct < -0.5) return <span className="text-destructive">↓ {Math.abs(pct).toFixed(1)}%</span>;
                               return <span className="text-muted-foreground">↔ 0.0%</span>;
                             })()}
                           </td>
@@ -2498,8 +2633,6 @@ export default function ManagerDashboard() {
               </div>
             </Card>
 
-            {false && managerMode === 'pro' && null}
-
             {managerMode === 'pro' && (
               <>
                 <Card className="p-4 sm:p-6">
@@ -2524,8 +2657,8 @@ export default function ManagerDashboard() {
                           {cannibalizationPairs.map((p, i) => (
                             <tr key={`${p.category}-${i}`} className="border-b last:border-b-0">
                               <td className="py-2">{p.category}</td>
-                              <td className="py-2 text-green-600">↑ {p.a.item} ({p.a.pct.toFixed(0)}%)</td>
-                              <td className="py-2 text-red-600">↓ {p.b.item} ({Math.abs(p.b.pct).toFixed(0)}%)</td>
+                              <td className="py-2 text-primary">↑ {p.a.item} ({p.a.pct.toFixed(0)}%)</td>
+                              <td className="py-2 text-destructive">↓ {p.b.item} ({Math.abs(p.b.pct).toFixed(0)}%)</td>
                             </tr>
                           ))}
                         </tbody>
@@ -2622,7 +2755,7 @@ export default function ManagerDashboard() {
                   id="waiter-name"
                   value={activeWaiter.displayName}
                   onChange={(e) =>
-                    setActiveWaiter((prev: any) =>
+                    setActiveWaiter((prev) =>
                       prev ? { ...prev, displayName: e.target.value } : prev
                     )
                   }
@@ -2772,8 +2905,3 @@ export default function ManagerDashboard() {
     </div>
   );
 }
-
-
-
-
-

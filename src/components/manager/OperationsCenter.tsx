@@ -23,8 +23,31 @@ import { ResponsiveContainer, LineChart, Line, Tooltip, BarChart, Bar, XAxis, YA
 import { cn } from '@/lib/utils';
 
 type ItemRecord = { id: string; title?: string; name?: string; priceCents?: number; categoryId?: string; category?: string; isAvailable?: boolean };
-
+type DisabledItemRecord = { until?: number; reason?: string };
 type DiscountRecord = { type: 'percent'|'amount'; value: number; reason?: string; createdAt: number };
+type WaiterSummary = { id: string; displayName?: string; email?: string };
+
+const logOpsError = (scope: string, error: unknown) => {
+  console.warn(`[OperationsCenter] ${scope}`, error);
+};
+
+const readDisabledMap = (): Record<string, DisabledItemRecord> => {
+  try {
+    const raw = localStorage.getItem('mgr:86');
+    return raw ? (JSON.parse(raw) as Record<string, DisabledItemRecord>) : {};
+  } catch (error) {
+    logOpsError('readDisabledMap', error);
+    return {};
+  }
+};
+
+const writeDisabledMap = (map: Record<string, DisabledItemRecord>) => {
+  try {
+    localStorage.setItem('mgr:86', JSON.stringify(map));
+  } catch (error) {
+    logOpsError('writeDisabledMap', error);
+  }
+};
 
 function useNow(tickMs = 30000) {
   const [now, setNow] = useState(() => Date.now());
@@ -59,28 +82,32 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
   useEffect(() => {
     (async () => {
       try {
-        const its = (await api.listItems()) as any;
-        setItems(its.items || []);
-      } catch {}
+        const response = await api.listItems();
+        setItems(response?.items ?? []);
+      } catch (error) {
+        logOpsError('listItems', error);
+      }
     })();
   }, []);
 
   // Auto re-enable items whose 86 window has expired
   useEffect(() => {
     const check = async () => {
-      try {
-        const map = JSON.parse(localStorage.getItem('mgr:86')||'{}');
-        const nowMs = Date.now();
-        let changed = false;
-        for (const [id, rec] of Object.entries<any>(map)) {
-          if (rec?.until && nowMs >= rec.until) {
-            try { await api.updateItem(id, { isAvailable: true }); } catch {}
-            delete map[id];
-            changed = true;
+      const map = readDisabledMap();
+      const nowMs = Date.now();
+      let changed = false;
+      for (const [id, record] of Object.entries(map)) {
+        if (record.until && nowMs >= record.until) {
+          try {
+            await api.updateItem(id, { isAvailable: true });
+          } catch (error) {
+            logOpsError(`auto re-enable item ${id}`, error);
           }
+          delete map[id];
+          changed = true;
         }
-        if (changed) localStorage.setItem('mgr:86', JSON.stringify(map));
-      } catch {}
+      }
+      if (changed) writeDisabledMap(map);
     };
     check();
     const id = setInterval(check, 60000);
@@ -213,10 +240,17 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
 
   // Reassign waiter modal
   const [reassignModal, setReassignModal] = useState<{ open: boolean; orderId?: string; tableId?: string }>({ open: false });
-  const [waiters, setWaiters] = useState<Array<{ id: string; displayName?: string; email?: string }>>([]);
+  const [waiters, setWaiters] = useState<WaiterSummary[]>([]);
   const [selectedWaiter, setSelectedWaiter] = useState<string>('');
   useEffect(() => {
-    (async () => { try { const res = (await api.listWaiters()) as any; setWaiters(res.waiters||[]); } catch {} })();
+    (async () => {
+      try {
+        const res = await api.listWaiters();
+        setWaiters(res.waiters || []);
+      } catch (error) {
+        logOpsError('listWaiters', error);
+      }
+    })();
   }, []);
 
   return (
@@ -236,7 +270,7 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
               <p className="text-sm text-muted-foreground">Revenue Today</p>
               <p className="text-2xl font-bold">€{revenueToday.toFixed(2)}</p>
             </div>
-            <DollarSign className="h-6 w-6 text-green-600"/>
+            <DollarSign className="h-6 w-6 text-primary"/>
           </div>
           <div className="mt-2">{tinySparkline(trendRevenue, 'hsl(var(--chart-2))')}</div>
         </Card>
@@ -246,7 +280,7 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
               <p className="text-sm text-muted-foreground">Orders In Queue</p>
               <p className="text-2xl font-bold">{ordersInQueue}</p>
             </div>
-            <Clock className="h-6 w-6 text-blue-600"/>
+            <Clock className="h-6 w-6 text-accent"/>
           </div>
           <div className="mt-2">{tinySparkline(trendOrders, 'hsl(var(--primary))')}</div>
         </Card>
@@ -256,7 +290,7 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
               <p className="text-sm text-muted-foreground">Avg Prep Time</p>
               <p className="text-2xl font-bold">{avgPrepMins}m</p>
             </div>
-            <Rocket className="h-6 w-6 text-purple-600"/>
+            <Rocket className="h-6 w-6 text-accent"/>
           </div>
           <div className="mt-2 text-xs text-muted-foreground">Across PREPARING + READY</div>
         </Card>
@@ -264,9 +298,9 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">SLA Hit Rate</p>
-              <p className={cn("text-2xl font-bold", slaHitRate >= 85 ? 'text-green-600' : slaHitRate >= 70 ? 'text-yellow-600' : 'text-red-600')}>{slaHitRate}%</p>
+              <p className={cn("text-2xl font-bold", slaHitRate >= 85 ? 'text-primary' : slaHitRate >= 70 ? 'text-accent' : 'text-destructive')}>{slaHitRate}%</p>
             </div>
-            <AlertTriangle className="h-6 w-6 text-amber-600"/>
+            <AlertTriangle className="h-6 w-6 text-destructive"/>
           </div>
           <div className="mt-2 text-xs text-muted-foreground">Ready/Served within 15m</div>
         </Card>
@@ -292,7 +326,7 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
             </thead>
             <tbody>
               {aging.map(({o, mins}) => {
-                const ageClass = mins >= 20 ? 'text-red-600 font-semibold' : mins >= 10 ? 'text-amber-600 font-semibold' : 'text-muted-foreground';
+                const ageClass = mins >= 20 ? 'text-destructive font-semibold' : mins >= 10 ? 'text-accent font-semibold' : 'text-muted-foreground';
                 const isExp = !!expedite[o.id];
                 const disc = discounts[o.id];
                 return (
@@ -302,7 +336,7 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
                     <td className="py-2"><Badge variant="outline">{o.status}</Badge></td>
                     <td className={cn('py-2', ageClass)}>{mins}m</td>
                     <td className="py-2 flex items-center gap-2">
-                      {isExp && (<Badge className="bg-amber-100 text-amber-700" variant="outline"><Zap className="h-3 w-3 mr-1"/>Expedite</Badge>)}
+                      {isExp && (<Badge className="bg-accent/30 text-accent-foreground" variant="outline"><Zap className="h-3 w-3 mr-1"/>Expedite</Badge>)}
                       {disc && (<Badge variant="outline">{disc.type==='percent' ? `${disc.value}%` : `-€${disc.value.toFixed(2)}`}</Badge>)}
                       {notes[o.id] && (<Badge variant="outline">Note</Badge>)}
                     </td>
@@ -362,42 +396,51 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
             </div>
             <div className="grid gap-2">
               {filteredItems86.length === 0 && (<div className="text-sm text-muted-foreground">No matches</div>)}
-              {filteredItems86.map(it => (
+              {filteredItems86.map(it => {
+                const isDisabled = it.isAvailable === false;
+                return (
                 <div key={it.id} className="flex items-center justify-between border rounded p-2">
                   <div>
                     <div className="font-medium">{it.title || it.name}</div>
-                    <div className="text-xs text-muted-foreground">{(it as any).isAvailable===false ? 'Currently disabled' : 'Available'}</div>
+                    <div className="text-xs text-muted-foreground">{isDisabled ? 'Currently disabled' : 'Available'}</div>
                   </div>
                   <Button
                     size="sm"
-                    variant={(it as any).isAvailable===false? 'default' : 'destructive'}
+                    variant={isDisabled ? 'default' : 'destructive'}
                     disabled={saving86}
                     onClick={async ()=>{
                       setSaving86(true);
                       try {
-                        const disable = !((it as any).isAvailable===false);
-                        await api.updateItem(it.id, { isAvailable: !disable ? true : false });
-                        // record until if provided
-                        const mins = parseInt(minutes86 || '');
-                        if (disable && Number.isFinite(mins) && mins > 0) {
-                          const until = Date.now() + mins*60000;
-                          const map = JSON.parse(localStorage.getItem('mgr:86')||'{}');
-                          map[it.id] = { until, reason: reason86 };
-                          localStorage.setItem('mgr:86', JSON.stringify(map));
+                        const nextAvailability = isDisabled ? true : false;
+                        await api.updateItem(it.id, { isAvailable: nextAvailability });
+
+                        const mins = parseInt(minutes86 || '', 10);
+                        const disabledMap = readDisabledMap();
+                        if (!isDisabled && Number.isFinite(mins) && mins > 0) {
+                          const until = Date.now() + mins * 60000;
+                          disabledMap[it.id] = { until, reason: reason86 || undefined };
+                        } else {
+                          delete disabledMap[it.id];
                         }
-                        // refresh items list
+                        writeDisabledMap(disabledMap);
+
                         try {
-                          const its = (await api.listItems()) as any; setItems(its.items || []);
-                        } catch {}
+                          const latest = await api.listItems();
+                          setItems(latest?.items ?? []);
+                        } catch (error) {
+                          logOpsError('refresh items after toggle', error);
+                        }
+                      } catch (error) {
+                        logOpsError('toggle item availability', error);
                       } finally {
                         setSaving86(false);
                       }
                     }}
                   >
-                    {saving86 ? <Loader2 className="h-4 w-4 animate-spin"/> : ((it as any).isAvailable===false ? 'Enable' : 'Disable')}
+                    {saving86 ? <Loader2 className="h-4 w-4 animate-spin"/> : (isDisabled ? 'Enable' : 'Disable')}
                   </Button>
                 </div>
-              ))}
+              )})}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -491,8 +534,13 @@ export function OperationsCenter({ orders }: { orders: Order[] }) {
             <Button
               disabled={!selectedWaiter || !reassignModal.tableId}
               onClick={async ()=>{
-                try { await api.assignWaiterTable(selectedWaiter, reassignModal.tableId!); }
-                finally { setReassignModal({ open: false }); }
+                try {
+                  await api.assignWaiterTable(selectedWaiter, reassignModal.tableId!);
+                } catch (error) {
+                  logOpsError('assignWaiterTable', error);
+                } finally {
+                  setReassignModal({ open: false });
+                }
               }}
             >
               Assign

@@ -16,15 +16,35 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       token: null,
       login: (user, token) => {
-        const role = (user as any)?.role || 'guest'
-        try { localStorage.setItem('ROLE', role); } catch {}
-        try { window.dispatchEvent(new CustomEvent('role-changed', { detail: { role } })); } catch {}
-        set({ user, token })
+        const role = user.role ?? 'guest';
+        try {
+          localStorage.setItem('ROLE', role);
+        } catch (error) {
+          console.warn('Failed to persist role', error);
+        }
+        if (typeof window !== 'undefined') {
+          try {
+            window.dispatchEvent(new CustomEvent('role-changed', { detail: { role } }));
+          } catch (error) {
+            console.warn('Failed to dispatch role change event', error);
+          }
+        }
+        set({ user, token });
       },
       logout: () => {
-        try { localStorage.setItem('ROLE', 'guest'); } catch {}
-        try { window.dispatchEvent(new CustomEvent('role-changed', { detail: { role: 'guest' } })); } catch {}
-        set({ user: null, token: null })
+        try {
+          localStorage.setItem('ROLE', 'guest');
+        } catch (error) {
+          console.warn('Failed to reset stored role', error);
+        }
+        if (typeof window !== 'undefined') {
+          try {
+            window.dispatchEvent(new CustomEvent('role-changed', { detail: { role: 'guest' } }));
+          } catch (error) {
+            console.warn('Failed to dispatch logout role change event', error);
+          }
+        }
+        set({ user: null, token: null });
       },
       isAuthenticated: () => !!get().token,
     }),

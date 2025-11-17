@@ -1,5 +1,4 @@
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -36,15 +35,33 @@
     --ring: 262 83% 58%;
 
     --radius: 1rem;
-    
-    --gradient-primary: linear-gradient(135deg, hsl(262 83% 58%), hsl(242 83% 68%));
-    --gradient-secondary: linear-gradient(135deg, hsl(190 80% 50%), hsl(262 83% 58%));
-    --gradient-accent: linear-gradient(135deg, hsl(290 80% 60%), hsl(340 80% 65%));
-    --gradient-card: linear-gradient(to bottom right, hsl(0 0% 100%), hsl(240 4.8% 98%));
-    
+
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(262 83% 58%),
+      hsl(242 83% 68%)
+    );
+    --gradient-secondary: linear-gradient(
+      135deg,
+      hsl(190 80% 50%),
+      hsl(262 83% 58%)
+    );
+    --gradient-accent: linear-gradient(
+      135deg,
+      hsl(290 80% 60%),
+      hsl(340 80% 65%)
+    );
+    --gradient-card: linear-gradient(
+      to bottom right,
+      hsl(0 0% 100%),
+      hsl(240 4.8% 98%)
+    );
+
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
-    --shadow-lg: 0 10px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05),
+      0 2px 4px -2px rgb(0 0 0 / 0.05);
+    --shadow-lg: 0 10px 25px -5px rgb(0 0 0 / 0.08),
+      0 8px 10px -6px rgb(0 0 0 / 0.05);
     --shadow-glow: 0 0 60px hsl(262 83% 58% / 0.3);
     --shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.12);
 
@@ -115,7 +132,8 @@
     scroll-behavior: smooth;
   }
 
-  html, body {
+  html,
+  body {
     overflow-x: hidden;
   }
 
@@ -127,7 +145,8 @@
     @apply bg-background text-foreground font-sans dark:bg-background dark:text-foreground antialiased;
   }
 
-  pre, code {
+  pre,
+  code {
     @apply font-mono;
   }
 }
@@ -150,8 +169,25 @@
     animation: gradient 8s ease infinite;
   }
 
+  .bg-gradient-primary {
+    background-image: var(--gradient-primary);
+  }
+
+  .bg-gradient-secondary {
+    background-image: var(--gradient-secondary);
+  }
+
+  .bg-gradient-accent {
+    background-image: var(--gradient-accent);
+  }
+
+  .bg-gradient-card {
+    background-image: var(--gradient-card);
+  }
+
   @keyframes float {
-    0%, 100% {
+    0%,
+    100% {
       transform: translateY(0px);
     }
     50% {
@@ -164,7 +200,8 @@
       box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
     }
     to {
-      box-shadow: 0 0 60px rgba(139, 92, 246, 0.6), 0 0 100px rgba(139, 92, 246, 0.3);
+      box-shadow: 0 0 60px rgba(139, 92, 246, 0.6),
+        0 0 100px rgba(139, 92, 246, 0.3);
     }
   }
 
@@ -224,17 +261,24 @@
 @layer base {
   /* Increase base font-size on small screens for better readability */
   @media (max-width: 640px) {
-    html { font-size: 17px; }
+    html {
+      font-size: 17px;
+    }
   }
   @media (max-width: 420px) {
-    html { font-size: 18px; }
+    html {
+      font-size: 18px;
+    }
   }
 }
 
 @layer utilities {
   /* Ensure tiny helper text is still legible on phones */
   @media (max-width: 640px) {
-    .text-xs { font-size: 0.8rem; line-height: 1.2rem; }
+    .text-xs {
+      font-size: 0.8rem;
+      line-height: 1.2rem;
+    }
   }
 }
 

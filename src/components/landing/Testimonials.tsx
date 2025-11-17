@@ -16,11 +16,11 @@ const logos = [
 
 export const Testimonials = () => {
   return (
-    <section className="relative py-20 overflow-hidden bg-gradient-to-b from-background to-muted/20">
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5" />
+    <section className="relative py-20 overflow-hidden bg-gradient-card">
+      <div className="absolute inset-0 bg-gradient-accent opacity-40" />
       
       <div className="relative z-10 max-w-7xl mx-auto px-4 mb-12 text-center">
-        <h2 className="text-3xl md:text-4xl font-black mb-4">
+        <h2 className="text-3xl md:text-4xl font-black mb-4 text-foreground">
           Trusted by Leading Restaurants
         </h2>
         <p className="text-muted-foreground max-w-2xl mx-auto">

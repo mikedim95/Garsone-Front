@@ -1,5 +1,5 @@
 import { Switch } from '@/components/ui/switch'
-import { useTheme } from '@/components/theme-provider'
+import { useTheme } from '@/components/theme-provider-context'
 
 export const AppThemeSwitch = () => {
   const { theme, setTheme } = useTheme()

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Sun, Moon, Monitor } from 'lucide-react'
-import { useTheme } from '@/components/theme-provider'
+import { useTheme, type Theme } from '@/components/theme-provider-context'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +31,7 @@ export const ThemeToggle = () => {
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={theme} onValueChange={(v)=> setTheme(v as any)}>
+        <DropdownMenuRadioGroup value={theme} onValueChange={(value: Theme)=> setTheme(value)}>
           <DropdownMenuRadioItem value="light"><Sun className="h-4 w-4 mr-2"/> Light</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark"><Moon className="h-4 w-4 mr-2"/> Dark</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="system"><Monitor className="h-4 w-4 mr-2"/> System</DropdownMenuRadioItem>

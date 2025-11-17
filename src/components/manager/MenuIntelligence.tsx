@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
-import type { Order } from '@/types';
+import type { Order, MenuData, MenuItem, Modifier } from '@/types';
 import {
   ResponsiveContainer,
   BarChart,
@@ -13,19 +13,44 @@ import {
   Tooltip,
 } from 'recharts';
 
-type MenuData = {
-  items: Array<{ id: string; name?: string; title?: string; price?: number; priceCents?: number; category?: string; categoryId?: string }>;
-  categories?: Array<{ id: string; title: string }>;
+type OrderItemLike = Order['items'][number] & {
+  itemId?: string;
+  title?: string;
+  name?: string;
+  price?: number;
+  priceCents?: number;
+  selectedModifiers?: Record<string, string>;
 };
 
-function getItemName(it: any) {
-  return it?.name || it?.title || 'Unknown';
-}
-function getItemPrice(it: any) {
-  if (typeof it?.price === 'number') return it.price;
-  if (typeof it?.priceCents === 'number') return it.priceCents / 100;
+const getItemName = (item?: MenuItem | null) => item?.name ?? item?.title ?? 'Unknown';
+
+const getItemPrice = (item?: MenuItem | null) => {
+  if (!item) return 0;
+  if (typeof item.price === 'number') return item.price;
+  if (typeof item.priceCents === 'number') return item.priceCents / 100;
   return 0;
-}
+};
+
+const getItemModifiers = (item?: MenuItem | null): Modifier[] => item?.modifiers ?? [];
+
+const coerceQuantity = (line: OrderItemLike) => {
+  if (typeof line.quantity === 'number') return line.quantity;
+  if (typeof (line as { qty?: number }).qty === 'number') return (line as { qty?: number }).qty as number;
+  return 1;
+};
+
+const extractItemId = (line: OrderItemLike) => line.item?.id ?? line.itemId ?? null;
+
+const getSelectedModifiers = (line: OrderItemLike): Record<string, string> => line.selectedModifiers ?? {};
+
+const resolveMenuItem = (line: OrderItemLike, lookup: Map<string, MenuItem>) => {
+  const id = extractItemId(line);
+  if (line.item) return line.item;
+  if (id && lookup.has(id)) return lookup.get(id) ?? null;
+  return null;
+};
+
+const formatModifierName = (modifier?: Modifier) => modifier?.name ?? 'Modifier';
 
 function daypartOf(date: Date) {
   const h = date.getHours();
@@ -52,37 +77,41 @@ export function MenuIntelligence({
   useEffect(() => {
     (async () => {
       try {
-        const m = (await api.getMenu()) as any;
-        setMenu({ items: m.items || [], categories: m.categories || [] });
-      } catch {
-        // ignore
+        const menuResponse = await api.getMenu();
+        setMenu({
+          items: menuResponse?.items ?? [],
+          categories: menuResponse?.categories ?? [],
+        });
+      } catch (error) {
+        console.warn('Failed to fetch menu for intelligence', error);
       }
     })();
   }, []);
 
   const itemMap = useMemo(() => {
-    const map = new Map<string, any>();
-    (menu.items || []).forEach((it) => map.set(it.id, it));
+    const map = new Map<string, MenuItem>();
+    menu.items.forEach((it) => map.set(it.id, it));
     return map;
   }, [menu.items]);
 
   const perItem = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; qty: number; revenue: number; price: number }>();
-    orders.forEach((o) => {
-      (o.items || []).forEach((ci: any) => {
-        const id = ci.item?.id;
+    const aggregate = new Map<string, { id: string; name: string; qty: number; revenue: number; price: number }>();
+    orders.forEach((order) => {
+      (order.items ?? []).forEach((line) => {
+        const id = extractItemId(line);
         if (!id) return;
-        const base = getItemPrice(ci.item) || getItemPrice(itemMap.get(id));
-        const name = getItemName(ci.item) || getItemName(itemMap.get(id));
-        const qty = Number(ci.quantity || 1);
-        const revenue = base * qty;
-        const prev = map.get(id) || { id, name, qty: 0, revenue: 0, price: base };
-        prev.qty += qty;
+        const menuItem = resolveMenuItem(line as OrderItemLike, itemMap);
+        const price = getItemPrice(menuItem);
+        const quantity = coerceQuantity(line as OrderItemLike);
+        const name = getItemName(menuItem);
+        const revenue = price * quantity;
+        const prev = aggregate.get(id) ?? { id, name, qty: 0, revenue: 0, price };
+        prev.qty += quantity;
         prev.revenue += revenue;
-        map.set(id, prev);
+        aggregate.set(id, prev);
       });
     });
-    return Array.from(map.values());
+    return Array.from(aggregate.values());
   }, [orders, itemMap]);
 
   const perDaypart = useMemo(() => {
@@ -99,16 +128,17 @@ export function MenuIntelligence({
     let orderItemsWithMods = 0;
     let totalOrderItems = 0;
     orders.forEach((o) => {
-      (o.items || []).forEach((ci: any) => {
+      (o.items || []).forEach((line) => {
         totalOrderItems += 1;
-        const selected = ci.selectedModifiers || {};
+        const selected = getSelectedModifiers(line as OrderItemLike);
         if (Object.keys(selected).length > 0) {
           orderItemsWithMods += 1;
         }
-        const itemMods = (ci.item?.modifiers || []) as any[];
+        const menuItem = resolveMenuItem(line as OrderItemLike, itemMap);
+        const itemMods = getItemModifiers(menuItem);
         Object.entries(selected).forEach(([modId]) => {
           const mod = itemMods.find((m) => m.id === modId);
-          const name = mod?.name || 'Modifier';
+          const name = formatModifierName(mod);
           const key = `${modId}:${name}`;
           modCounts[key] = { name, count: (modCounts[key]?.count || 0) + 1 };
         });
@@ -121,7 +151,7 @@ export function MenuIntelligence({
       orderItemsWithMods,
       percent,
     };
-  }, [orders]);
+  }, [orders, itemMap]);
 
   const topItems = useMemo(() => perItem.slice().sort((a, b) => b.revenue - a.revenue).slice(0, 5), [perItem]);
   const bottomItems = useMemo(() => perItem.slice().sort((a, b) => a.qty - b.qty).slice(0, 5), [perItem]);
@@ -129,10 +159,9 @@ export function MenuIntelligence({
   const categoryLookup = useMemo(() => {
     const map = new Map<string, string>();
     const catMap = new Map<string, string>();
-    (menu.categories || []).forEach((cat) => catMap.set(cat.id, cat.title));
-    (menu.items || []).forEach((it) => {
-      const catTitle =
-        catMap.get(String(it.categoryId)) || it.category || 'Other';
+    menu.categories?.forEach((cat) => catMap.set(cat.id, cat.title));
+    menu.items.forEach((it) => {
+      const catTitle = (it.categoryId && catMap.get(it.categoryId)) || it.category || 'Other';
       map.set(it.id, catTitle);
     });
     return map;

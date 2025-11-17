@@ -13,9 +13,9 @@
                      "mqtt":  "Real-time Alerts",
                      "mqtt_desc":  "MQTT-powered notifications",
                      "i18n":  "Multi-language",
-                     "i18n_desc":  "English \\u0026 Greek support",
+                    "i18n_desc":  "English & Greek support",
                      "roles":  "Role Dashboards",
-                     "roles_desc":  "Waiter \\u0026 Manager views"
+                    "roles_desc":  "Waiter & Manager views"
                  },
     "menu":  {
                  "title":  "Menu",
@@ -33,7 +33,7 @@
     "manager":  {
                     "dashboard":  "Manager Dashboard",
                     "menu_editor":  "Menu Editor",
-                    "tables":  "Tables \\u0026 Staff",
+                    "tables":  "Tables & Staff",
                     "edit_waiter":  "Edit waiter",
                     "display_name":  "Display name",
                     "assigned_tables":  "Assigned tables",

@@ -9,6 +9,17 @@ import { api, ApiError } from "@/lib/api";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { HomeLink } from "@/components/HomeLink";
 
+type RealtimeStatusDetail = { connected?: boolean };
+
+const readOfflineFlag = () => {
+  try {
+    return localStorage.getItem("OFFLINE") === "1";
+  } catch (error) {
+    console.warn("Failed to read OFFLINE flag", error);
+    return false;
+  }
+};
+
 export default function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -19,18 +30,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   // Show dummy login choices instantly when Offline is toggled
   const envDebug =
-    String((import.meta as any).env?.VITE_ENABLE_DEBUG_LOGIN || "").toLowerCase() ===
-    "true";
-  const [offline, setOffline] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("OFFLINE") === "1";
-    } catch {
-      return false;
-    }
-  });
+    String(import.meta.env.VITE_ENABLE_DEBUG_LOGIN ?? "").toLowerCase() === "true";
+  const [offline, setOffline] = useState<boolean>(() => readOfflineFlag());
   useEffect(() => {
-    const onRealtimeStatus = (e: any) => {
-      const connected = Boolean(e?.detail?.connected);
+    const onRealtimeStatus = (event: Event) => {
+      const custom = event as CustomEvent<RealtimeStatusDetail>;
+      const connected = Boolean(custom?.detail?.connected);
       setOffline(!connected);
     };
     const onStorage = (e: StorageEvent) => {
@@ -38,10 +43,10 @@ export default function Login() {
         setOffline(e.newValue === "1");
       }
     };
-    window.addEventListener("realtime-status", onRealtimeStatus as any);
+    window.addEventListener("realtime-status", onRealtimeStatus as EventListener);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener("realtime-status", onRealtimeStatus as any);
+      window.removeEventListener("realtime-status", onRealtimeStatus as EventListener);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -57,7 +62,7 @@ export default function Login() {
       if (user.role === "manager") navigate("/manager");
       else if (user.role === "cook") navigate("/cook");
       else navigate("/waiter");
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) setError("Invalid email or password.");
         else if (err.status === 0) setError("Cannot reach server. Check network or server status.");
@@ -71,20 +76,24 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-primary flex items-center justify-center p-4">
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <button
           type="button"
           onClick={() => {
             const next = !offline;
-            try { localStorage.setItem('OFFLINE', next ? '1' : '0'); } catch {}
+            try { localStorage.setItem('OFFLINE', next ? '1' : '0'); } catch (error) {
+              console.warn("Failed to toggle OFFLINE flag", error);
+            }
             setOffline(next);
-            try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: !next } })); } catch {}
+            try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: !next } })); } catch (error) {
+              console.warn("Failed to dispatch realtime status", error);
+            }
           }}
           title={(offline ? 'Offline' : 'Connected') + ' — click to ' + (offline ? 'go online' : 'go offline')}
           className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-3 py-2 text-xs font-medium text-foreground/80 hover:bg-accent/50 transition-colors"
         >
-          <span className={`inline-block h-2.5 w-2.5 rounded-full ${offline ? 'bg-amber-500' : 'bg-green-500'}`} />
+          <span className={`inline-block h-2.5 w-2.5 rounded-full ${offline ? 'bg-destructive' : 'bg-primary'}`} />
           {offline ? 'Offline' : 'Connected'}
         </button>
         <LanguageSwitcher />
@@ -96,7 +105,7 @@ export default function Login() {
         </h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div role="alert" aria-live="polite" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+            <div role="alert" aria-live="polite" className="text-sm text-destructive bg-destructive/10 border border-destructive/40 rounded-md px-3 py-2">
               {error}
             </div>
           )}
@@ -128,13 +137,13 @@ export default function Login() {
             {loading ? "Signing in…" : t("auth.sign_in")}
           </Button>
         </form>
-        <p className="mt-4 text-sm text-gray-500 text-center">
+        <p className="mt-4 text-sm text-muted-foreground text-center">
           Demo: waiter1@demo.local / manager@demo.local
         </p>
 
         {debugEnabled && (
-          <div className="mt-6 pt-6 border-t">
-            <p className="text-xs text-gray-400 mb-3 text-center">
+          <div className="mt-6 pt-6 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-3 text-center">
               Debug login (no backend)
             </p>
             <div className="grid grid-cols-3 gap-2">
@@ -193,7 +202,7 @@ export default function Login() {
                 Manager
               </Button>
             </div>
-            <p className="mt-2 text-[11px] text-center text-gray-400">
+            <p className="mt-2 text-[11px] text-center text-muted-foreground">
               This bypasses API auth and may show empty data if backend is
               offline.
             </p>

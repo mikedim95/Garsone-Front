@@ -20,20 +20,20 @@ export const AnimatedMockup = () => {
   }, []);
 
   return (
-    <div className="py-32 bg-white overflow-hidden">
+    <div className="py-32 bg-background overflow-hidden">
       <div className="max-w-6xl mx-auto px-4">
         <div className="text-center mb-20">
-          <h2 className="text-6xl md:text-7xl font-black mb-6 text-gray-900 tracking-tight">
+          <h2 className="text-6xl md:text-7xl font-black mb-6 text-foreground tracking-tight">
             How It Works
           </h2>
-          <p className="text-xl text-gray-500 max-w-2xl mx-auto font-light">
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto font-light">
             A seamless ordering experience in five simple steps
           </p>
         </div>
 
         <div className="relative">
           {/* Connection lines */}
-          <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-purple-200 via-blue-200 to-purple-200 -translate-y-1/2" />
+          <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-secondary -translate-y-1/2" />
           
           <div className="grid grid-cols-1 md:grid-cols-5 gap-8 relative">
             {steps.map((step, idx) => (
@@ -46,28 +46,28 @@ export const AnimatedMockup = () => {
                   <div 
                     className={`w-20 h-20 rounded-full flex items-center justify-center font-black text-2xl transition-all duration-500 ${
                       idx === currentStep
-                        ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-2xl animate-glow'
+                        ? 'bg-gradient-primary text-primary-foreground shadow-2xl animate-glow'
                         : idx < currentStep
-                        ? 'bg-gray-900 text-white'
-                        : 'bg-gray-100 text-gray-400'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
                     }`}
                   >
                     {step.number}
                   </div>
                   {idx < steps.length - 1 && (
                     <ArrowRight className={`hidden md:block absolute -right-10 top-1/2 -translate-y-1/2 w-8 h-8 transition-colors ${
-                      idx < currentStep ? 'text-gray-900' : 'text-gray-300'
+                      idx < currentStep ? 'text-foreground' : 'text-muted-foreground'
                     }`} />
                   )}
                 </div>
                 <h3 
                   className={`text-lg font-bold mb-2 text-center transition-colors ${
-                    idx === currentStep ? 'text-purple-600' : 'text-gray-900'
+                    idx === currentStep ? 'text-primary' : 'text-foreground'
                   }`}
                 >
                   {step.text}
                 </h3>
-                <p className="text-sm text-gray-500 text-center">{step.desc}</p>
+                <p className="text-sm text-muted-foreground text-center">{step.desc}</p>
               </div>
             ))}
           </div>

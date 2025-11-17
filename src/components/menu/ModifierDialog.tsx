@@ -1,4 +1,4 @@
-﻿import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -16,28 +16,31 @@ interface Props {
   initialQty?: number;
 }
 
+const getModifierPriceDelta = (option: Modifier['options'][number]) => {
+  if (typeof option.priceDelta === 'number') return option.priceDelta;
+  if (typeof option.priceDeltaCents === 'number') return option.priceDeltaCents / 100;
+  return 0;
+};
+
 export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected, initialQty = 1 }: Props) => {
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
   const [qty, setQty] = useState<number>(initialQty || 1);
-  // Currency formatter (defaults to EUR, can be overridden via localStorage key CURRENCY)
-  const currency = (typeof window !== 'undefined' ? (window.localStorage.getItem('CURRENCY') || 'EUR') : 'EUR');
-  const formatCurrency = (v: number) => {
+  const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
+  const formatter = useMemo(() => {
     try {
-      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v);
-    } catch {
-      return `€${v.toFixed(2)}`;
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency });
+    } catch (error) {
+      console.warn('Failed to create currency formatter', error);
+      return null;
     }
-  };
-  // reset when item or initialSelected changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const _resetKey = (item ? item.id : 'none') + JSON.stringify(initialSelected || {}) + `:${initialQty}`;
-  // React to changes
-  // simple approach: re-create selected
-  // Note: using key on DialogContent would also work
-  // but keeping controlled state here
-  // @ts-ignore
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useState(() => { setSelected(initialSelected || {}); setQty(initialQty || 1); return undefined; }, [_resetKey]);
+  }, [currency]);
+  const formatCurrency = (value: number) =>
+    formatter ? formatter.format(value) : `€${value.toFixed(2)}`;
+
+  useEffect(() => {
+    setSelected(initialSelected || {});
+    setQty(initialQty || 1);
+  }, [initialSelected, initialQty, item?.id, open]);
 
   const effectiveModifiers: Modifier[] = useMemo(() => item?.modifiers || [], [item]);
 
@@ -76,7 +79,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
                   <h4 className="font-medium">
                     {mod.name}
                     {mod.required || (mod.minSelect ?? 0) > 0 ? (
-                      <span className="ml-2 text-xs text-red-500">(required)</span>
+                      <span className="ml-2 text-xs text-destructive">(required)</span>
                     ) : null}
                   </h4>
                 </div>
@@ -85,7 +88,9 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
                   onValueChange={(val) => handlePick(mod.id, val)}
                   className="grid grid-cols-1 gap-2"
                 >
-                  {mod.options.map((opt) => (
+                  {mod.options.map((opt) => {
+                    const delta = getModifierPriceDelta(opt);
+                    return (
                     <Label
                       key={opt.id}
                       htmlFor={`${mod.id}-${opt.id}`}
@@ -93,13 +98,13 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
                     >
                       <RadioGroupItem id={`${mod.id}-${opt.id}`} value={opt.id} />
                       <span className="flex-1">{opt.label}</span>
-                      {opt.priceDelta !== 0 && (
+                      {delta !== 0 && (
                         <span className="text-sm text-muted-foreground">
-                          {(opt.priceDelta > 0 ? '+' : '-') + formatCurrency(Math.abs(opt.priceDelta))}
+                          {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
                         </span>
                       )}
                     </Label>
-                  ))}
+                  )})}
                 </RadioGroup>
               </div>
             ))

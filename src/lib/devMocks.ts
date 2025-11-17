@@ -1,6 +1,8 @@
 // Lightweight in-browser mock backend for offline testing.
 // Persists to localStorage under key "devMocks" so state survives reloads.
 
+import type { CreateOrderPayload, CreateOrderPayloadItem } from "@/types";
+
 type Id = string;
 
 type Category = { id: Id; title: string; sortOrder: number };
@@ -28,6 +30,90 @@ type Db = {
 
 const LS_KEY = 'devMocks';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const normalizeTableRecord = (table: unknown): Table => {
+  if (!isRecord(table)) {
+    return { id: uid('table'), label: 'Table', isActive: true };
+  }
+  const id = typeof table.id === 'string' ? table.id : uid('table');
+  const label =
+    typeof table.label === 'string'
+      ? table.label
+      : typeof table.title === 'string'
+        ? table.title
+        : typeof table.code === 'string'
+          ? table.code
+          : 'Table';
+  const isActive =
+    typeof table.isActive === 'boolean'
+      ? table.isActive
+      : typeof table.active === 'boolean'
+        ? table.active
+        : true;
+  return { id, label, isActive };
+};
+
+const normalizeWaiterRecord = (waiter: unknown): Waiter => {
+  if (!isRecord(waiter)) {
+    const id = uid('waiter');
+    return { id, email: `${id}@demo.local`, displayName: 'Waiter' };
+  }
+  const id = typeof waiter.id === 'string' ? waiter.id : uid('waiter');
+  const email = typeof waiter.email === 'string' ? waiter.email : `${id}@demo.local`;
+  const displayName =
+    typeof waiter.displayName === 'string'
+      ? waiter.displayName
+      : email || 'Waiter';
+  const password = typeof waiter.password === 'string' ? waiter.password : undefined;
+  return { id, email, displayName, password };
+};
+
+const isWaiterAssignment = (assignment: unknown): assignment is WaiterAssignment =>
+  isRecord(assignment) &&
+  typeof assignment.waiterId === 'string' &&
+  typeof assignment.tableId === 'string';
+
+const normalizeModifierMap = (value: unknown): Record<string, string> => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return normalizeModifierMap(JSON.parse(value));
+    } catch (error) {
+      console.warn('Failed to parse modifier payload', error);
+      return {};
+    }
+  }
+  if (!isRecord(value)) return {};
+  return Object.entries(value).reduce<Record<string, string>>((acc, [modifierId, option]) => {
+    if (typeof option === 'string') acc[modifierId] = option;
+    return acc;
+  }, {});
+};
+
+const mapToSelections = (source: CreateOrderPayloadItem['modifiers']): NonNullable<OrderItem['modifiers']> => {
+  const modifierMap = normalizeModifierMap(source);
+  return Object.entries(modifierMap).map(([modifierId, optionId]) => ({
+    modifierId,
+    optionIds: [optionId],
+  }));
+};
+
+const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
+  items.map((item) => {
+    const qty =
+      typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0
+        ? item.quantity
+        : 1;
+    const selections = mapToSelections(item.modifiers);
+    return {
+      itemId: item.itemId,
+      qty,
+      modifiers: selections.length ? selections : undefined,
+    };
+  });
+
 function uid(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -36,22 +122,22 @@ function save(db: Db) {
   localStorage.setItem(LS_KEY, JSON.stringify(db));
 }
 
+type StoredDb = Partial<Db> & {
+  tables?: unknown;
+  waiters?: unknown;
+  waiterAssignments?: unknown;
+};
+
 function load(): Db {
   const raw = localStorage.getItem(LS_KEY);
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as Partial<Db> & { tables?: any[]; waiters?: any[]; waiterAssignments?: any[] };
-      const tables: Table[] = (parsed.tables ?? []).map((table: any) => ({
-        id: table.id ?? uid('table'),
-        label: table.label ?? table.title ?? table.code ?? 'Table',
-        isActive: typeof table.isActive === 'boolean' ? table.isActive : true,
-      }));
-      const waiters: Waiter[] = (parsed.waiters ?? []).map((waiter: any) => ({
-        id: waiter.id ?? uid('waiter'),
-        email: waiter.email,
-        displayName: waiter.displayName ?? waiter.email ?? 'Waiter',
-        password: waiter.password,
-      }));
+      const parsed = JSON.parse(raw) as StoredDb;
+      const tables = Array.isArray(parsed.tables) ? parsed.tables.map(normalizeTableRecord) : [];
+      const waiters = Array.isArray(parsed.waiters) ? parsed.waiters.map(normalizeWaiterRecord) : [];
+      const assignments = Array.isArray(parsed.waiterAssignments)
+        ? parsed.waiterAssignments.filter(isWaiterAssignment)
+        : [];
       return {
         store: parsed.store ?? { id: 'store_1', name: 'Demo Cafe' },
         categories: parsed.categories ?? [],
@@ -61,9 +147,11 @@ function load(): Db {
         tables,
         orders: parsed.orders ?? [],
         waiters,
-        waiterAssignments: parsed.waiterAssignments ?? [],
+        waiterAssignments: assignments,
       };
-    } catch {}
+    } catch (error) {
+      console.warn('Failed to parse devMocks snapshot', error);
+    }
   }
   // Seed with demo data
   const catCoffee: Category = { id: uid('cat'), title: 'Coffee', sortOrder: 0 };
@@ -145,9 +233,12 @@ function seedOrdersIfEmpty(db: Db) {
   const sugar1 = sugar?.options.find(o=>o.title==='1 tsp');
 
   const now = Date.now();
+  const cappuccinoModifiers: NonNullable<OrderItem['modifiers']> = [];
+  if (milk && oat) cappuccinoModifiers.push({ modifierId: milk.id, optionIds: [oat.id] });
+  if (sugar && sugar1) cappuccinoModifiers.push({ modifierId: sugar.id, optionIds: [sugar1.id] });
   db.orders = [
     { id: uid('ord'), tableId: t2.id, status: 'PLACED', createdAt: now - 60_000,
-      items: [ { itemId: cappuccino.id, qty: 1, modifiers: [ milk && oat ? { modifierId: milk.id, optionIds: [oat.id] } : undefined, sugar && sugar1 ? { modifierId: sugar.id, optionIds: [sugar1.id] } : undefined ].filter(Boolean) as any } ], note: 'No cocoa on top' },
+      items: [ { itemId: cappuccino.id, qty: 1, modifiers: cappuccinoModifiers } ], note: 'No cocoa on top' },
     { id: uid('ord'), tableId: t1.id, status: 'PREPARING', createdAt: now - 5*60_000,
       items: [ { itemId: espresso.id, qty: 2, modifiers: [] } ], note: '' },
     { id: uid('ord'), tableId: t3.id, status: 'READY', createdAt: now - 12*60_000,
@@ -202,9 +293,16 @@ export const devMocks = {
     ).length;
     return Promise.resolve({ ahead });
   },
-  createOrder(data: { tableId: Id; items: any[]; note?: string }) {
+  createOrder(data: CreateOrderPayload) {
     const db = snapshot();
-    const order: Order = { id: uid('ord'), tableId: data.tableId, status: 'PLACED', createdAt: Date.now(), items: data.items as any, note: data.note };
+    const order: Order = {
+      id: uid('ord'),
+      tableId: data.tableId,
+      status: 'PLACED',
+      createdAt: Date.now(),
+      items: normalizeOrderItems(data.items),
+      note: data.note,
+    };
     db.orders.unshift(order);
     save(db);
     return Promise.resolve({ order });

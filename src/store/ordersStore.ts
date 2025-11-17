@@ -36,8 +36,7 @@ export const useOrdersStore = create<OrdersStore>()(
             return { ...o, priority: idx >= 0 ? idx + 1 : undefined };
           }
           // READY/SERVED/CANCELLED/PLACED -> no priority
-          const { priority, ...rest } = o as any;
-          return rest as Order;
+          return { ...o, priority: undefined };
         });
         return { orders: withPriorities, priorityQueue: nextQueue };
       }),
@@ -48,7 +47,7 @@ export const useOrdersStore = create<OrdersStore>()(
           let nextOrders: Order[];
           if (existingIdx >= 0) {
             nextOrders = state.orders.slice();
-            nextOrders[existingIdx] = { ...nextOrders[existingIdx], ...order } as Order;
+            nextOrders[existingIdx] = { ...nextOrders[existingIdx], ...order };
           } else {
             nextOrders = [order, ...state.orders].slice(0, 200);
           }
@@ -61,7 +60,7 @@ export const useOrdersStore = create<OrdersStore>()(
           }
           // Apply priorities
           nextOrders = nextOrders.map((o) =>
-            o.status === 'PREPARING' ? { ...o, priority: queue.indexOf(o.id) + 1 || undefined } : ({ ...o, priority: undefined } as Order)
+            o.status === 'PREPARING' ? { ...o, priority: queue.indexOf(o.id) + 1 || undefined } : { ...o, priority: undefined }
           );
           return { orders: nextOrders, priorityQueue: queue };
         }),
@@ -80,7 +79,7 @@ export const useOrdersStore = create<OrdersStore>()(
           }
           // Apply priorities per queue
           const nextOrders = orders.map((o) =>
-            o.status === 'PREPARING' ? { ...o, priority: queue.indexOf(o.id) + 1 || undefined } : ({ ...o, priority: undefined } as Order)
+            o.status === 'PREPARING' ? { ...o, priority: queue.indexOf(o.id) + 1 || undefined } : { ...o, priority: undefined }
           );
           return { orders: nextOrders, priorityQueue: queue };
         }),

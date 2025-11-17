@@ -6,28 +6,38 @@ import { Loader2, CheckCircle2, ShoppingCart, Trash2, Pencil } from 'lucide-reac
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { ModifierDialog } from '@/components/menu/ModifierDialog';
-import type { MenuItem } from '@/types';
+import type { OrderQueueSummary, SubmittedOrderSummary } from '@/types';
 import { api } from '@/lib/api';
 
-const computeOrderTotal = (order: any) => {
+const computeOrderTotal = (order?: SubmittedOrderSummary | null) => {
   if (!order) return 0;
   if (typeof order.total === 'number') return order.total;
   if (typeof order.totalCents === 'number') return order.totalCents / 100;
   return 0;
 };
 
-const formatOrderTime = (order: any) => {
-  const ts = order?.createdAt ? new Date(order.createdAt) : new Date();
-  return ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const formatOrderTime = (order?: SubmittedOrderSummary | null) => {
+  if (!order?.createdAt) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<any> }) => {
+const getErrorMessage = (error: unknown, fallback = 'Unexpected error') =>
+  error instanceof Error ? error.message : fallback;
+
+const getItemName = (item: { name?: string; title?: string }) =>
+  item.name ?? item.title ?? 'Item';
+
+interface CartProps {
+  onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;
+}
+
+export const Cart = ({ onCheckout }: CartProps) => {
   const { t } = useTranslation();
   const { items, removeItem, getTotal } = useCartStore();
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
-  const [submittedOrder, setSubmittedOrder] = useState<any | null>(null);
+  const [submittedOrder, setSubmittedOrder] = useState<SubmittedOrderSummary | null>(null);
   const [note, setNote] = useState('');
   const [placing, setPlacing] = useState(false);
 
@@ -41,8 +51,6 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
   const [qtyOpen, setQtyOpen] = useState(false);
   const [qtyIndex, setQtyIndex] = useState<number | null>(null);
   const [qtyValue, setQtyValue] = useState<number>(1);
-  const [swipeX, setSwipeX] = useState<Record<number, number>>({});
-  const [touchStart, setTouchStart] = useState<number | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
@@ -52,14 +60,14 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
       setQueueError(null);
       api
         .getOrderQueueSummary()
-        .then((res: any) => {
+        .then((res: OrderQueueSummary) => {
           if (!active) return;
           const ahead = Number(res?.ahead ?? 0);
           setQueueAhead(Number.isFinite(ahead) ? ahead : 0);
         })
-        .catch((err: any) => {
+        .catch((error: unknown) => {
           if (!active) return;
-          setQueueError(err?.message || 'Unable to load queue');
+          setQueueError(getErrorMessage(error, 'Unable to load queue'));
           setQueueAhead(null);
         })
         .finally(() => {
@@ -80,7 +88,7 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
       <Button className="fixed bottom-4 right-4 rounded-full h-14 w-14 shadow-lg" onClick={() => setCartOpen(true)}>
         <ShoppingCart className="h-6 w-6" />
         {items.length > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
             {items.length}
           </span>
         )}
@@ -96,91 +104,110 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
               <p className="text-muted-foreground text-center py-8">Cart is empty</p>
             ) : (
               <>
-                {items.map((cartItem, idx) => (
-                  <div key={idx} className="relative overflow-hidden select-none rounded-lg">
-                    {/* Top-right controls: either Edit (with modifiers) or -/+ (no modifiers) */}
-                    <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20 pointer-events-auto">
-                      {/* Show Edit only when item has modifiers */}
-                      {((((cartItem.item as any)?.modifiers) || []).length > 0) && (
+                {items.map((cartItem, idx) => {
+                  const hasModifiers = (cartItem.item.modifiers?.length ?? 0) > 0;
+                  const displayName = getItemName(cartItem.item);
+                  return (
+                    <div key={idx} className="relative overflow-hidden select-none rounded-lg">
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20 pointer-events-auto">
+                        {hasModifiers && (
+                          <Button
+                            variant="secondary"
+                            size="icon"
+                            className="shadow-sm w-8 h-8 rounded-full p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModifyIndex(idx);
+                              setModifyOpen(true);
+                            }}
+                            title="Edit"
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {!hasModifiers && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="w-8 h-8 rounded-full p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                useCartStore.getState().updateQuantity(
+                                  cartItem.item.id,
+                                  Math.max(1, cartItem.quantity - 1)
+                                );
+                              }}
+                              aria-label="Decrease"
+                            >
+                              -
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="w-8 h-8 rounded-full p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                useCartStore.getState().updateQuantity(
+                                  cartItem.item.id,
+                                  cartItem.quantity + 1
+                                );
+                              }}
+                              aria-label="Increase"
+                            >
+                              +
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                      <div className="absolute bottom-2 right-2 z-20 pointer-events-auto">
                         <Button
-                          variant="secondary"
+                          variant="destructive"
                           size="icon"
                           className="shadow-sm w-8 h-8 rounded-full p-0"
                           onClick={(e) => {
                             e.stopPropagation();
+                            removeItem(cartItem.item.id);
+                          }}
+                          title="Delete"
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div
+                        className="flex items-center gap-3 py-3 border-b bg-card/50 backdrop-blur-sm pl-3 pr-16 rounded-lg transition-shadow hover:shadow-md"
+                        onClick={() => {
+                          if (hasModifiers) {
                             setModifyIndex(idx);
                             setModifyOpen(true);
-                          }}
-                          title="Edit"
-                          aria-label="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-
-                      {/* For items without modifiers: quick -/+ only */}
-                      {((((cartItem.item as any)?.modifiers) || []).length === 0) && (
-                        <>
-                          <Button variant="outline" size="icon" className="w-8 h-8 rounded-full p-0"
-                            onClick={(e) => { e.stopPropagation(); useCartStore.getState().updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1)); }}
-                            aria-label="Decrease">
-                            -
-                          </Button>
-                          <Button variant="outline" size="icon" className="w-8 h-8 rounded-full p-0"
-                            onClick={(e) => { e.stopPropagation(); useCartStore.getState().updateQuantity(cartItem.item.id, cartItem.quantity + 1); }}
-                            aria-label="Increase">
-                            +
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                    {/* Bottom-right: Delete always visible */}
-                    <div className="absolute bottom-2 right-2 z-20 pointer-events-auto">
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="shadow-sm w-8 h-8 rounded-full p-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeItem(cartItem.item.id);
+                          }
                         }}
-                        title="Delete"
-                        aria-label="Delete"
+                        title="Edit item"
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div
-                      className="flex items-center gap-3 py-3 border-b bg-card/50 backdrop-blur-sm pl-3 pr-16 rounded-lg transition-shadow hover:shadow-md"
-                      onClick={() => {
-                        const it = items[idx];
-                        const hasMods = (((it?.item as any)?.modifiers) || []).length > 0;
-                        if (hasMods) { setModifyIndex(idx); setModifyOpen(true); }
-                      }}
-                      title="Edit item"
-                    >
-                      <img src={cartItem.item.image} alt={cartItem.item.name} className="w-16 h-16 rounded object-cover" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">{cartItem.item.name}</h4>
-                        <p className="text-xs text-muted-foreground">Qty: {cartItem.quantity}</p>
-                        <div className="text-xs text-muted-foreground">
-                          {Object.entries(cartItem.selectedModifiers || {}).map(([modId, optId]) => {
-                            const mod = cartItem.item.modifiers?.find((m) => m.id === modId);
-                            const opt = mod?.options.find((o) => o.id === optId);
-                            return (
-                              <div key={modId}>
-                                {mod?.name}: {opt?.label}
-                              </div>
-                            );
-                          })}
+                        <img src={cartItem.item.image} alt={displayName} className="w-16 h-16 rounded object-cover" />
+                        <div className="flex-1">
+                          <h4 className="font-medium">{displayName}</h4>
+                          <p className="text-xs text-muted-foreground">Qty: {cartItem.quantity}</p>
+                          <div className="text-xs text-muted-foreground">
+                            {Object.entries(cartItem.selectedModifiers || {}).map(([modId, optId]) => {
+                              const mod = cartItem.item.modifiers?.find((m) => m.id === modId);
+                              const opt = mod?.options.find((o) => o.id === optId);
+                              return (
+                                <div key={modId}>
+                                  {mod?.name}: {opt?.label}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                        
+                      </div>
                     </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="pt-2 pb-1 space-y-3">
-                  <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-2xl px-5 py-4 shadow-sm backdrop-blur-sm">
+                  <div className="bg-primary/5 border border-primary/20 rounded-2xl px-5 py-4 shadow-sm backdrop-blur-sm">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-muted-foreground">{t('menu.total')}</span>
                       <span className="text-2xl font-bold text-primary">€{getTotal().toFixed(2)}</span>
@@ -249,27 +276,30 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
               </div>
             </div>
 
-            {items.map((cartItem, idx) => (
-              <div key={idx} className="flex items-start gap-3 pb-3 border-b">
-                <img src={cartItem.item.image} alt={cartItem.item.name} className="w-14 h-14 rounded object-cover" />
-                <div className="flex-1">
-                  <div className="font-medium">
-                    {cartItem.item.name} — {cartItem.quantity}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {Object.entries(cartItem.selectedModifiers || {}).map(([modId, optId]) => {
-                      const mod = cartItem.item.modifiers?.find((m) => m.id === modId);
-                      const opt = mod?.options.find((o) => o.id === optId);
-                      return (
-                        <div key={modId}>
-                          {mod?.name}: {opt?.label}
-                        </div>
-                      );
-                    })}
+            {items.map((cartItem, idx) => {
+              const displayName = getItemName(cartItem.item);
+              return (
+                <div key={idx} className="flex items-start gap-3 pb-3 border-b">
+                  <img src={cartItem.item.image} alt={displayName} className="w-14 h-14 rounded object-cover" />
+                  <div className="flex-1">
+                    <div className="font-medium">
+                      {displayName} — {cartItem.quantity}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {Object.entries(cartItem.selectedModifiers || {}).map(([modId, optId]) => {
+                        const mod = cartItem.item.modifiers?.find((m) => m.id === modId);
+                        const opt = mod?.options.find((o) => o.id === optId);
+                        return (
+                          <div key={modId}>
+                            {mod?.name}: {opt?.label}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div>
               <label className="block text-sm font-medium mb-2">Order note (optional)</label>
@@ -301,7 +331,7 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
               disabled={placing}
               className="inline-flex items-center gap-2"
             >
-              {placing && <span className="animate-spin h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full" />}
+              {placing && <span className="animate-spin h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full" />}
               {placing ? 'Placing…' : 'Place order'}
             </Button>
           </DialogFooter>
@@ -317,7 +347,7 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
       }}>
         <DialogContent className="sm:max-w-md">
           <div className="flex items-center gap-3">
-            <span className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+            <span className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
               <CheckCircle2 className="h-6 w-6" />
             </span>
             <div>
@@ -346,14 +376,16 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
               </div>
 
               <div className="space-y-2">
-                {(submittedOrder.items || []).map((item: any, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-foreground">
-                      {item?.title ?? item?.item?.name ?? `Item ${idx + 1}`}
-                    </span>
-                    <span className="text-muted-foreground">×{item?.quantity ?? item?.qty ?? 1}</span>
-                  </div>
-                ))}
+                {(submittedOrder.items ?? []).map((item, idx) => {
+                  const lineLabel = item?.title ?? item?.name ?? item?.item?.name ?? `Item ${idx + 1}`;
+                  const quantity = item?.quantity ?? item?.qty ?? 1;
+                  return (
+                    <div key={`${lineLabel}-${idx}`} className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-foreground">{lineLabel}</span>
+                      <span className="text-muted-foreground">×{quantity}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -368,7 +400,7 @@ export const Cart = ({ onCheckout }: { onCheckout: (note?: string) => Promise<an
 
       <ModifierDialog
         open={modifyOpen}
-        item={modifyIndex != null ? (items[modifyIndex]?.item as unknown as MenuItem) : null}
+        item={modifyIndex != null ? items[modifyIndex]?.item ?? null : null}
         initialSelected={modifyIndex != null ? items[modifyIndex]?.selectedModifiers : undefined}
         initialQty={modifyIndex != null ? (items[modifyIndex]?.quantity ?? 1) : 1}
         onClose={() => {

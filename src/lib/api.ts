@@ -1,8 +1,34 @@
 // API service with auth + robust JSON/error handling
 import { useAuthStore } from "@/store/authStore";
+import type {
+  AuthResponse,
+  CategoryPayload,
+  CreateOrderPayload,
+  ImageUploadPayload,
+  ImageUploadResponse,
+  ManagerItemPayload,
+  ManagerItemSummary,
+  ManagerTableSummary,
+  MenuCategory,
+  MenuData,
+  Modifier,
+  ModifierOption,
+  ModifierInput,
+  ModifierOptionPayload,
+  ModifierOptionUpdatePayload,
+  OkResponse,
+  OrderQueueSummary,
+  OrderResponse,
+  OrdersResponse,
+  OrderStatus,
+  StoreInfo,
+  Table,
+  WaiterSummary,
+  WaiterTableOverview,
+} from "@/types";
 import { devMocks } from "./devMocks";
 
-const ENV_API: string | undefined = (import.meta as any).env?.VITE_API_URL;
+const ENV_API: string | undefined = import.meta.env.VITE_API_URL;
 export const API_BASE = (() => {
   // Use env only if it isn't pointing to localhost (which breaks on phones)
   if (ENV_API && ENV_API.trim().length > 0 && !/^https?:\/\/(localhost|127\.)/i.test(ENV_API.trim())) {
@@ -21,8 +47,10 @@ export function isOffline() {
   try {
     const ls = typeof window !== 'undefined' ? window.localStorage?.getItem('OFFLINE') : null;
     if (ls === '1' || ls === 'true') return true;
-  } catch {}
-  const v = (import.meta as any).env?.VITE_OFFLINE;
+  } catch (error) {
+    console.warn('Failed to read OFFLINE flag', error);
+  }
+  const v = import.meta.env.VITE_OFFLINE;
   return String(v ?? '').toLowerCase() === '1' || String(v ?? '').toLowerCase() === 'true';
 }
 
@@ -32,6 +60,15 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+
+type ManagerTableCreateInput = { label: string; isActive?: boolean };
+type ManagerTableUpdateInput = Partial<ManagerTableCreateInput>;
+type OrderStatusUpdateOptions = { cancelReason?: string; skipMqtt?: boolean };
+type CreateWaiterPayload = { email: string; password: string; displayName: string };
+type UpdateWaiterPayload = Partial<CreateWaiterPayload>;
+type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
+type ModifierUpdatePayload = Partial<Modifier>;
+type EditOrderPayload = CreateOrderPayload;
 
 async function fetchApi<T>(
   endpoint: string,
@@ -69,20 +106,39 @@ async function fetchApi<T>(
 
 export const api = {
   // Store & tables
-  getStore: () => isOffline() ? devMocks.getStore() : fetchApi("/store"),
-  getTables: () => isOffline() ? devMocks.getTables() : fetchApi("/tables"),
+  getStore: (): Promise<{ store: StoreInfo }> =>
+    isOffline() ? devMocks.getStore() : fetchApi<{ store: StoreInfo }>("/store"),
+  getTables: (): Promise<{ tables: Table[] }> =>
+    isOffline() ? devMocks.getTables() : fetchApi<{ tables: Table[] }>("/tables"),
 
   // Manager: table management
-  managerListTables: () => isOffline() ? devMocks.managerListTables() as any : fetchApi("/manager/tables"),
-  managerCreateTable: (data: { label: string; isActive?: boolean }) => isOffline()
-    ? devMocks.managerCreateTable(data) as any
-    : fetchApi("/manager/tables", { method: "POST", body: JSON.stringify(data) }),
-  managerUpdateTable: (id: string, data: { label?: string; isActive?: boolean }) => isOffline()
-    ? devMocks.managerUpdateTable(id, data) as any
-    : fetchApi(`/manager/tables/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  managerDeleteTable: (id: string) => isOffline()
-    ? devMocks.managerDeleteTable(id) as any
-    : fetchApi(`/manager/tables/${id}`, { method: "DELETE" }),
+  managerListTables: (): Promise<{ tables: ManagerTableSummary[] }> =>
+    isOffline()
+      ? devMocks.managerListTables()
+      : fetchApi<{ tables: ManagerTableSummary[] }>("/manager/tables"),
+  managerCreateTable: (data: ManagerTableCreateInput): Promise<{ table: ManagerTableSummary }> =>
+    isOffline()
+      ? devMocks.managerCreateTable(data)
+      : fetchApi<{ table: ManagerTableSummary }>("/manager/tables", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  managerUpdateTable: (
+    id: string,
+    data: ManagerTableUpdateInput
+  ): Promise<{ table: ManagerTableSummary }> =>
+    isOffline()
+      ? devMocks.managerUpdateTable(id, data)
+      : fetchApi<{ table: ManagerTableSummary }>(`/manager/tables/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  managerDeleteTable: (id: string): Promise<{ table: ManagerTableSummary }> =>
+    isOffline()
+      ? devMocks.managerDeleteTable(id)
+      : fetchApi<{ table: ManagerTableSummary }>(`/manager/tables/${id}`, {
+          method: "DELETE",
+        }),
   managerUploadImage: async (file: File, opts?: { storeSlug?: string; itemId?: string }) => {
     const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
       const r = new FileReader();
@@ -91,59 +147,76 @@ export const api = {
       r.readAsDataURL(f);
     });
     const base64 = await toBase64(file);
-    const payload = {
+    const payload: ImageUploadPayload = {
       fileName: file.name,
       mimeType: file.type || 'application/octet-stream',
       base64,
       itemId: opts?.itemId || undefined,
-    } as any;
-    return fetchApi<{ publicUrl: string; path: string }>(`/manager/uploads/image`, { method: 'POST', body: JSON.stringify(payload) });
-  },
-
-  // Auth
-  signIn: (email: string, password: string) => {
-    if (isOffline()) return devMocks.signIn(email, password) as any;
-    return fetchApi<{ accessToken: string; user: any }>("/auth/signin", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
+      storeSlug: opts?.storeSlug || undefined,
+    };
+    return fetchApi<ImageUploadResponse>(`/manager/uploads/image`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
 
+  // Auth
+  signIn: (email: string, password: string): Promise<AuthResponse> =>
+    isOffline()
+      ? devMocks.signIn(email, password)
+      : fetchApi<AuthResponse>("/auth/signin", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        }),
+
   // Menu & orders (public device endpoints for create + call waiter)
-  getMenu: () => isOffline() ? devMocks.getMenu() : fetchApi("/menu"),
-  createOrder: (data: any) => isOffline()
-    ? devMocks.createOrder(data) as any
-    : fetchApi("/orders", { method: "POST", body: JSON.stringify(data) }),
-  editOrder: (orderId: string, data: any) => isOffline()
-    ? (devMocks as any).editOrder?.(orderId, data) as any ?? devMocks.createOrder(data) as any
-    : fetchApi(`/orders/${orderId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  getMenu: (): Promise<MenuData> =>
+    isOffline() ? devMocks.getMenu() : fetchApi<MenuData>("/menu"),
+  createOrder: (data: CreateOrderPayload): Promise<OrderResponse> =>
+    isOffline()
+      ? devMocks.createOrder(data)
+      : fetchApi<OrderResponse>("/orders", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  editOrder: (orderId: string, data: EditOrderPayload): Promise<OrderResponse> =>
+    isOffline()
+      ? devMocks.createOrder(data)
+      : fetchApi<OrderResponse>(`/orders/${orderId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
   printOrder: (orderId: string) => fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
-  callWaiter: (tableId: string) => isOffline() ? devMocks.callWaiter(tableId) as any :
-    fetchApi("/call-waiter", {
-      method: "POST",
-      body: JSON.stringify({ tableId }),
-    }),
-  getOrderQueueSummary: () => isOffline()
-    ? devMocks.getOrderQueueSummary() as any
-    : fetchApi("/orders/queue"),
+  callWaiter: (tableId: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.callWaiter(tableId)
+      : fetchApi<OkResponse>("/call-waiter", {
+          method: "POST",
+          body: JSON.stringify({ tableId }),
+        }),
+  getOrderQueueSummary: (): Promise<OrderQueueSummary> =>
+    isOffline()
+      ? devMocks.getOrderQueueSummary()
+      : fetchApi<OrderQueueSummary>("/orders/queue"),
   // Authenticated orders API
-  getOrders: (params?: { status?: string; take?: number }) => {
+  getOrders: (params?: { status?: string; take?: number }): Promise<OrdersResponse> => {
     const q: string[] = [];
     if (params?.status) q.push(`status=${encodeURIComponent(params.status)}`);
     if (params?.take) q.push(`take=${params.take}`);
     const query = q.length ? `?${q.join('&')}` : "";
-    if (isOffline()) return devMocks.getOrders(params) as any;
-    return fetchApi(`/orders${query}`);
+    if (isOffline()) return devMocks.getOrders(params);
+    return fetchApi<OrdersResponse>(`/orders${query}`);
   },
-  getOrder: (orderId: string) => isOffline() ? devMocks.getOrder(orderId) as any : fetchApi(`/orders/${orderId}`),
+  getOrder: (orderId: string): Promise<OrderResponse> =>
+    isOffline() ? devMocks.getOrder(orderId) : fetchApi<OrderResponse>(`/orders/${orderId}`),
   updateOrderStatus: (
     orderId: string,
-    status: string,
-    options?: { cancelReason?: string; skipMqtt?: boolean }
-  ) =>
+    status: OrderStatus,
+    options?: OrderStatusUpdateOptions
+  ): Promise<OrderResponse> =>
     isOffline()
-      ? devMocks.updateOrderStatus(orderId, status as any) as any
-      : fetchApi(`/orders/${orderId}/status`, {
+      ? devMocks.updateOrderStatus(orderId, status)
+      : fetchApi<OrderResponse>(`/orders/${orderId}/status`, {
           method: "PATCH",
           body: JSON.stringify({
             status,
@@ -153,52 +226,157 @@ export const api = {
         }),
 
   // Manager: waiter-table assignments
-  getWaiterTables: () => isOffline() ? devMocks.getWaiterTables() as any : fetchApi("/waiter-tables"),
-  assignWaiterTable: (waiterId: string, tableId: string) => isOffline() ? devMocks.assignWaiterTable(waiterId, tableId) as any :
-    fetchApi("/waiter-tables", {
-      method: "POST",
-      body: JSON.stringify({ waiterId, tableId }),
-    }),
-  removeWaiterTable: (waiterId: string, tableId: string) => isOffline() ? devMocks.removeWaiterTable(waiterId, tableId) as any :
-    fetchApi("/waiter-tables", {
-      method: "DELETE",
-      body: JSON.stringify({ waiterId, tableId }),
-    }),
+  getWaiterTables: (): Promise<WaiterTableOverview> =>
+    isOffline() ? devMocks.getWaiterTables() : fetchApi<WaiterTableOverview>("/waiter-tables"),
+  assignWaiterTable: (waiterId: string, tableId: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.assignWaiterTable(waiterId, tableId)
+      : fetchApi<OkResponse>("/waiter-tables", {
+          method: "POST",
+          body: JSON.stringify({ waiterId, tableId }),
+        }),
+  removeWaiterTable: (waiterId: string, tableId: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.removeWaiterTable(waiterId, tableId)
+      : fetchApi<OkResponse>("/waiter-tables", {
+          method: "DELETE",
+          body: JSON.stringify({ waiterId, tableId }),
+        }),
 
   // Manager: waiters CRUD
-  listWaiters: () => isOffline() ? devMocks.listWaiters() as any : fetchApi("/manager/waiters"),
-  createWaiter: (email: string, password: string, displayName: string) => isOffline() ? devMocks.createWaiter(email, password, displayName) as any :
-    fetchApi("/manager/waiters", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
-  updateWaiter: (id: string, data: Partial<{ email: string; password: string; displayName: string }>) => isOffline() ? devMocks.updateWaiter(id, data) as any :
-    fetchApi(`/manager/waiters/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  deleteWaiter: (id: string) => isOffline() ? devMocks.deleteWaiter(id) as any : fetchApi(`/manager/waiters/${id}`, { method: "DELETE" }),
+  listWaiters: (): Promise<{ waiters: WaiterSummary[] }> =>
+    isOffline()
+      ? devMocks.listWaiters()
+      : fetchApi<{ waiters: WaiterSummary[] }>("/manager/waiters"),
+  createWaiter: (email: string, password: string, displayName: string): Promise<{ waiter: WaiterSummary }> =>
+    isOffline()
+      ? devMocks.createWaiter(email, password, displayName)
+      : fetchApi<{ waiter: WaiterSummary }>("/manager/waiters", {
+          method: "POST",
+          body: JSON.stringify({ email, password, displayName }),
+        }),
+  updateWaiter: (id: string, data: UpdateWaiterPayload): Promise<{ waiter: WaiterSummary }> =>
+    isOffline()
+      ? devMocks.updateWaiter(id, data)
+      : fetchApi<{ waiter: WaiterSummary }>(`/manager/waiters/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  deleteWaiter: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.deleteWaiter(id)
+      : fetchApi<OkResponse>(`/manager/waiters/${id}`, { method: "DELETE" }),
 
   // Manager: items CRUD
-  listItems: () => isOffline() ? devMocks.listItems() as any : fetchApi("/manager/items"),
-  createItem: (data: any) => isOffline() ? devMocks.createItem(data) as any : fetchApi("/manager/items", { method: "POST", body: JSON.stringify(data) }),
-  updateItem: (id: string, data: any) => isOffline() ? devMocks.updateItem(id, data) as any : fetchApi(`/manager/items/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  deleteItem: (id: string) => isOffline() ? devMocks.deleteItem(id) as any : fetchApi(`/manager/items/${id}`, { method: "DELETE" }),
+  listItems: (): Promise<{ items: ManagerItemSummary[] }> => isOffline()
+    ? devMocks.listItems()
+    : fetchApi<{ items: ManagerItemSummary[] }>("/manager/items"),
+  createItem: (data: ManagerItemPayload): Promise<{ item: ManagerItemSummary }> =>
+    isOffline()
+      ? devMocks.createItem(data)
+      : fetchApi<{ item: ManagerItemSummary }>("/manager/items", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  updateItem: (id: string, data: ManagerItemUpdatePayload): Promise<{ item: ManagerItemSummary | undefined }> =>
+    isOffline()
+      ? devMocks.updateItem(id, data)
+      : fetchApi<{ item: ManagerItemSummary | undefined }>(`/manager/items/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  deleteItem: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.deleteItem(id)
+      : fetchApi<OkResponse>(`/manager/items/${id}`, { method: "DELETE" }),
 
   // Manager: modifiers CRUD
-  listModifiers: () => isOffline() ? devMocks.listModifiers() as any : fetchApi("/manager/modifiers"),
-  createModifier: (data: any) => isOffline() ? devMocks.createModifier(data) as any : fetchApi("/manager/modifiers", { method: "POST", body: JSON.stringify(data) }),
-  updateModifier: (id: string, data: any) => isOffline() ? devMocks.updateModifier(id, data) as any : fetchApi(`/manager/modifiers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  deleteModifier: (id: string) => isOffline() ? devMocks.deleteModifier(id) as any : fetchApi(`/manager/modifiers/${id}`, { method: "DELETE" }),
-  createModifierOption: (data: any) => isOffline() ? devMocks.createModifierOption(data) as any : fetchApi("/manager/modifier-options", { method: "POST", body: JSON.stringify(data) }),
-  updateModifierOption: (id: string, data: any) => isOffline() ? devMocks.updateModifierOption(id, data) as any : fetchApi(`/manager/modifier-options/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  deleteModifierOption: (id: string) => isOffline() ? devMocks.deleteModifierOption(id) as any : fetchApi(`/manager/modifier-options/${id}`, { method: "DELETE" }),
-  linkItemModifier: (itemId: string, modifierId: string, isRequired: boolean) => isOffline() ? devMocks.linkItemModifier(itemId, modifierId, isRequired) as any :
-    fetchApi("/manager/item-modifiers", { method: "POST", body: JSON.stringify({ itemId, modifierId, isRequired }) }),
-  unlinkItemModifier: (itemId: string, modifierId: string) => isOffline() ? devMocks.unlinkItemModifier(itemId, modifierId) as any :
-    fetchApi("/manager/item-modifiers", { method: "DELETE", body: JSON.stringify({ itemId, modifierId }) }),
+  listModifiers: (): Promise<{ modifiers: Modifier[] }> =>
+    isOffline()
+      ? devMocks.listModifiers()
+      : fetchApi<{ modifiers: Modifier[] }>("/manager/modifiers"),
+  createModifier: (data: ModifierInput): Promise<{ modifier: Modifier }> =>
+    isOffline()
+      ? devMocks.createModifier(data)
+      : fetchApi<{ modifier: Modifier }>("/manager/modifiers", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  updateModifier: (id: string, data: ModifierUpdatePayload): Promise<{ modifier?: Modifier }> =>
+    isOffline()
+      ? devMocks.updateModifier(id, data)
+      : fetchApi<{ modifier?: Modifier }>(`/manager/modifiers/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  deleteModifier: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.deleteModifier(id)
+      : fetchApi<OkResponse>(`/manager/modifiers/${id}`, { method: "DELETE" }),
+  createModifierOption: (data: ModifierOptionPayload): Promise<{ option: ModifierOption }> =>
+    isOffline()
+      ? devMocks.createModifierOption(data)
+      : fetchApi<{ option: ModifierOption }>("/manager/modifier-options", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  updateModifierOption: (id: string, data: ModifierOptionUpdatePayload): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.updateModifierOption(id, data)
+      : fetchApi<OkResponse>(`/manager/modifier-options/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  deleteModifierOption: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.deleteModifierOption(id)
+      : fetchApi<OkResponse>(`/manager/modifier-options/${id}`, { method: "DELETE" }),
+  linkItemModifier: (itemId: string, modifierId: string, isRequired: boolean): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.linkItemModifier(itemId, modifierId, isRequired)
+      : fetchApi<OkResponse>("/manager/item-modifiers", {
+          method: "POST",
+          body: JSON.stringify({ itemId, modifierId, isRequired }),
+        }),
+  unlinkItemModifier: (itemId: string, modifierId: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.unlinkItemModifier(itemId, modifierId)
+      : fetchApi<OkResponse>("/manager/item-modifiers", {
+          method: "DELETE",
+          body: JSON.stringify({ itemId, modifierId }),
+        }),
 
   // Manager: orders admin
-  managerDeleteOrder: (orderId: string) => isOffline() ? devMocks.managerDeleteOrder(orderId) as any : fetchApi(`/manager/orders/${orderId}`, { method: 'DELETE' }),
-  managerCancelOrder: (orderId: string) => isOffline() ? devMocks.managerCancelOrder(orderId) as any : fetchApi(`/manager/orders/${orderId}/cancel`, { method: 'PATCH' }),
+  managerDeleteOrder: (orderId: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.managerDeleteOrder(orderId)
+      : fetchApi<OkResponse>(`/manager/orders/${orderId}`, { method: 'DELETE' }),
+  managerCancelOrder: (orderId: string): Promise<OrderResponse> =>
+    isOffline()
+      ? devMocks.managerCancelOrder(orderId)
+      : fetchApi<OrderResponse>(`/manager/orders/${orderId}/cancel`, { method: 'PATCH' }),
 
   // Manager: categories
-  listCategories: () => isOffline() ? devMocks.listCategories() as any : fetchApi('/manager/categories'),
-  createCategory: (title: string, sortOrder?: number) => isOffline() ? devMocks.createCategory(title, sortOrder) as any : fetchApi('/manager/categories', { method: 'POST', body: JSON.stringify({ title, sortOrder }) }),
-  updateCategory: (id: string, data: any) => isOffline() ? devMocks.updateCategory(id, data) as any : fetchApi(`/manager/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  deleteCategory: (id: string) => isOffline() ? devMocks.deleteCategory(id) as any : fetchApi(`/manager/categories/${id}`, { method: 'DELETE' }),
+  listCategories: (): Promise<{ categories: MenuCategory[] }> =>
+    isOffline()
+      ? devMocks.listCategories()
+      : fetchApi<{ categories: MenuCategory[] }>('/manager/categories'),
+  createCategory: (title: string, sortOrder?: number): Promise<{ category: MenuCategory }> =>
+    isOffline()
+      ? devMocks.createCategory(title, sortOrder)
+      : fetchApi<{ category: MenuCategory }>('/manager/categories', {
+          method: 'POST',
+          body: JSON.stringify({ title, sortOrder }),
+        }),
+  updateCategory: (id: string, data: Partial<CategoryPayload>): Promise<{ category?: MenuCategory }> =>
+    isOffline()
+      ? devMocks.updateCategory(id, data)
+      : fetchApi<{ category?: MenuCategory }>(`/manager/categories/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+  deleteCategory: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.deleteCategory(id)
+      : fetchApi<OkResponse>(`/manager/categories/${id}`, { method: 'DELETE' }),
 };

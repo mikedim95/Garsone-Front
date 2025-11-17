@@ -12,10 +12,73 @@ import { useCartStore } from "@/store/cartStore";
 import { api } from "@/lib/api";
 import { useMenuStore } from "@/store/menuStore";
 import { realtimeService } from "@/lib/realtime";
-import { MenuItem } from "@/types";
-import { Bell, Loader2 } from "lucide-react";
+import type {
+  CreateOrderPayload,
+  MenuCategory,
+  MenuData,
+  MenuItem,
+  Modifier,
+  ModifierOption,
+  OrderResponse,
+  SubmittedOrderItem,
+  SubmittedOrderSummary,
+} from "@/types";
+import { Bell } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+
+type CategorySummary = Pick<MenuCategory, "id" | "title">;
+type MenuModifierLink = { itemId: string; modifierId: string; isRequired?: boolean };
+interface MenuStateData {
+  categories: CategorySummary[];
+  items: MenuItem[];
+  modifiers: Modifier[];
+  modifierOptions: ModifierOption[];
+  itemModifiers: MenuModifierLink[];
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const mapCategories = (categories?: Array<{ id?: string; title?: string }>): CategorySummary[] =>
+  (categories ?? []).reduce<CategorySummary[]>((acc, category, index) => {
+    if (!category) return acc;
+    const id = category.id ?? `cat-${index}`;
+    const title = category.title ?? "";
+    if (!title) return acc;
+    acc.push({ id, title });
+    return acc;
+  }, []);
+
+const buildMenuState = (payload?: Partial<MenuStateData> & { categories?: Array<{ id?: string; title?: string }>; items?: MenuItem[] }): MenuStateData => ({
+  categories: mapCategories(payload?.categories),
+  items: payload?.items ?? [],
+  modifiers: payload?.modifiers ?? [],
+  modifierOptions: payload?.modifierOptions ?? [],
+  itemModifiers: payload?.itemModifiers ?? [],
+});
+
+const matchesCategory = (item: MenuItem, categoryId: string, categoryList: CategorySummary[]): boolean => {
+  if (item.categoryId === categoryId) return true;
+  const category = categoryList.find((cat) => cat.id === categoryId);
+  if (!category) return false;
+  return item.category === category.title;
+};
+
+const parseStoredOrder = (value: string): SubmittedOrderSummary | null => {
+  try {
+    return JSON.parse(value) as SubmittedOrderSummary;
+  } catch (error) {
+    console.warn("Failed to parse stored order", error);
+    return null;
+  }
+};
+
+const isWaiterCallMessage = (payload: unknown): payload is { tableId: string; action?: string } =>
+  isRecord(payload) && typeof payload.tableId === "string";
+
+const isOrderEventMessage = (payload: unknown): payload is { orderId: string } =>
+  isRecord(payload) && typeof payload.orderId === "string";
 
 export default function TableMenu() {
   const { tableId } = useParams();
@@ -24,13 +87,7 @@ export default function TableMenu() {
   const { toast } = useToast();
   const { addItem, clearCart } = useCartStore();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [menuData, setMenuData] = useState<{
-    categories: Array<{ id: string; title: string }>;
-    items: MenuItem[];
-    modifiers: any[];
-    modifierOptions: any[];
-    itemModifiers: any[];
-  } | null>(null);
+  const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string>("Demo Cafe");
   const [storeSlug, setStoreSlug] = useState<string>("demo-cafe");
   const [loading, setLoading] = useState(true);
@@ -38,12 +95,13 @@ export default function TableMenu() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [calling, setCalling] = useState<"idle" | "pending" | "accepted">("idle");
-  const [lastOrder, setLastOrder] = useState<any>(() => {
+  const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(() => {
     if (typeof window === "undefined") return null;
     try {
       const stored = window.localStorage.getItem("table:last-order");
-      return stored ? JSON.parse(stored) : null;
-    } catch {
+      return stored ? parseStoredOrder(stored) : null;
+    } catch (error) {
+      console.warn("Failed to hydrate stored order", error);
       return null;
     }
   });
@@ -60,12 +118,12 @@ export default function TableMenu() {
       } else {
         window.localStorage.removeItem("table:last-order");
       }
-    } catch {
-      // ignore storage errors (private mode, etc.)
+    } catch (error) {
+      console.warn("Failed to persist last order", error);
     }
   }, [lastOrder]);
 
-  const computeOrderTotal = (order: any) => {
+  const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
     if (typeof order.total === "number") return order.total;
     if (typeof order.totalCents === "number") return order.totalCents / 100;
@@ -78,44 +136,53 @@ export default function TableMenu() {
         setLoading(true);
         const now = Date.now();
         const fresh = menuCache && now - menuTs < 60_000; // 60s TTL
-        const storeRes = await api.getStore() as any;
-        if (storeRes?.store?.name) setStoreName(storeRes.store.name);
-        if (storeRes?.store?.slug) {
-          setStoreSlug(storeRes.store.slug);
+        const storeRes = await api.getStore();
+        const store = storeRes?.store;
+        if (store?.name) setStoreName(store.name);
+        if (store?.slug) {
+          setStoreSlug(store.slug);
           try {
-            localStorage.setItem('STORE_SLUG', storeRes.store.slug);
-            window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: storeRes.store.slug } }));
-          } catch {}
+            localStorage.setItem("STORE_SLUG", store.slug);
+            window.dispatchEvent(new CustomEvent("store-slug-changed", { detail: { slug: store.slug } }));
+          } catch (error) {
+            console.warn("Failed to persist store slug", error);
+          }
         }
 
-        let data: any;
-        if (fresh) {
+        let data: MenuData | null = null;
+        if (fresh && menuCache) {
           data = menuCache;
         } else {
           data = await api.getMenu();
           setMenuCache(data);
         }
 
-        const categories = data?.categories?.map((c: any) => ({ id: c.id, title: c.title })) || [];
-        setMenuData({
-          categories,
-          items: data?.items || [],
-          modifiers: data?.modifiers || [],
-          modifierOptions: [],
-          itemModifiers: [],
-        });
+        setMenuData(
+          buildMenuState({
+            categories: data?.categories,
+            items: data?.items,
+            modifiers: [],
+            modifierOptions: [],
+            itemModifiers: [],
+          })
+        );
         setError(null);
       } catch (err) {
         console.error("Failed to fetch menu:", err);
         setError("Failed to load menu. Using offline mode.");
         const { MENU_ITEMS } = await import("@/lib/menuData");
-        setMenuData({
-          categories: Array.from(new Set(MENU_ITEMS.map((i) => i.category))).map((name, idx) => ({ id: String(idx), title: name })),
-          items: MENU_ITEMS,
-          modifiers: [],
-          modifierOptions: [],
-          itemModifiers: [],
-        });
+        const fallbackCategories: CategorySummary[] = Array.from(new Set(MENU_ITEMS.map((item) => item.category ?? `Category`))).map(
+          (name, idx) => ({ id: String(idx), title: name || `Category ${idx + 1}` })
+        );
+        setMenuData(
+          buildMenuState({
+            categories: fallbackCategories,
+            items: MENU_ITEMS,
+            modifiers: [],
+            modifierOptions: [],
+            itemModifiers: [],
+          })
+        );
       } finally {
         setLoading(false);
       }
@@ -131,17 +198,20 @@ export default function TableMenu() {
       subscribed = topic;
       realtimeService.subscribe(topic, async () => {
         try {
-          const data: any = await api.getMenu();
+          const data = await api.getMenu();
           setMenuCache(data);
-          const categories = data?.categories?.map((c: any) => ({ id: c.id, title: c.title })) || [];
-          setMenuData({
-            categories,
-            items: data?.items || [],
-            modifiers: data?.modifiers || [],
-            modifierOptions: [],
-            itemModifiers: [],
-          });
-        } catch {}
+          setMenuData(
+            buildMenuState({
+              categories: data?.categories,
+              items: data?.items,
+              modifiers: [],
+              modifierOptions: [],
+              itemModifiers: [],
+            })
+          );
+        } catch (error) {
+          console.error("Failed to refresh menu after realtime event", error);
+        }
       });
     });
     return () => {
@@ -154,15 +224,16 @@ export default function TableMenu() {
     let intervalId: number | undefined;
     let lastSnapshot: string | undefined;
 
-    const normalizeAndSet = (data: any) => {
-      const categories = data?.categories?.map((c: any) => ({ id: c.id, title: c.title })) || [];
-      setMenuData({
-        categories,
-        items: data?.items || [],
-        modifiers: data?.modifiers || [],
-        modifierOptions: [],
-        itemModifiers: [],
-      });
+    const normalizeAndSet = (data: MenuData | null) => {
+      setMenuData(
+        buildMenuState({
+          categories: data?.categories,
+          items: data?.items,
+          modifiers: [],
+          modifierOptions: [],
+          itemModifiers: [],
+        })
+      );
     };
 
     const poll = async () => {
@@ -172,18 +243,24 @@ export default function TableMenu() {
           stop();
           return;
         }
-        const data: any = await api.getMenu();
+        const data = await api.getMenu();
         // Avoid unnecessary re-renders when data is unchanged
         const snapshot = JSON.stringify({
-          items: (data?.items || []).map((i: any) => ({ id: i.id, isAvailable: i.available ?? i.isAvailable, priceCents: i.priceCents })),
-          categories: (data?.categories || []).map((c: any) => ({ id: c.id, title: c.title })),
+          items: (data?.items || []).map((item) => ({
+            id: item.id,
+            isAvailable: item.available ?? item.isAvailable,
+            priceCents: item.priceCents,
+          })),
+          categories: mapCategories(data?.categories),
         });
         if (snapshot !== lastSnapshot) {
           lastSnapshot = snapshot;
           setMenuCache(data);
           normalizeAndSet(data);
         }
-      } catch {}
+      } catch (error) {
+        console.error("Menu polling failed", error);
+      }
     };
 
     const start = () => {
@@ -223,7 +300,7 @@ export default function TableMenu() {
   const filteredItems = menuData
     ? selectedCategory === "all"
       ? menuData.items
-      : menuData.items.filter((i: any) => i.categoryId === selectedCategory || i.category === categories.find(c => c.id === selectedCategory)?.title)
+      : menuData.items.filter((item) => matchesCategory(item, selectedCategory, categories))
     : [];
 
   const handleAddItem = (item: MenuItem) => {
@@ -247,7 +324,7 @@ export default function TableMenu() {
     try {
       const cartItems = useCartStore.getState().items;
 
-      const orderData = {
+      const orderData: CreateOrderPayload = {
         tableId,
         items: cartItems.map((item) => ({
           itemId: item.item.id,
@@ -257,8 +334,8 @@ export default function TableMenu() {
         note: note ?? "",
       };
 
-      const response = (await api.createOrder(orderData)) as any;
-      const orderFromResponse = response?.order || null;
+      const response = await api.createOrder(orderData);
+      const orderFromResponse = response?.order ?? null;
       if (orderFromResponse) {
         const normalized = {
           ...orderFromResponse,
@@ -272,16 +349,17 @@ export default function TableMenu() {
       }
       // Backend publishes realtime events; avoid duplicate client emits
       clearCart();
-      const orderId = orderFromResponse?.id || response?.orderId;
+      const legacyResponse = response as OrderResponse & { orderId?: string };
+      const orderId = orderFromResponse?.id || legacyResponse.orderId;
       // pass tableId so the thanks page can subscribe to the ready topic
       const params = new URLSearchParams({ tableId });
       navigate(`/order/${orderId}/thanks?${params.toString()}`);
       return orderFromResponse;
-    } catch (err) {
-      console.error("Failed to create order:", err);
+    } catch (error) {
+      console.error("Failed to create order:", error);
       toast({
         title: "Error",
-        description: (err as any)?.message || "Failed to place order. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to place order. Please try again.",
       });
     }
     return null;
@@ -291,49 +369,42 @@ export default function TableMenu() {
     // subscribe for call acknowledgements for this table
     if (!tableId) return;
     let mounted = true;
+    const callTopic = `${storeSlug}/waiter/call`;
+    const preparingTopic = `${storeSlug}/orders/prepairing`;
+    const readyTopic = `${storeSlug}/orders/ready`;
+    const cancelledTopic = `${storeSlug}/orders/cancelled`;
     (async () => {
       await realtimeService.connect();
-      realtimeService.subscribe(`${storeSlug}/waiter/call`, (msg: any) => {
-        if (!mounted) return;
-        if (!msg || msg.tableId !== tableId) return;
-        if (msg.action === 'accepted') setCalling('accepted');
-        else if (msg.action === 'cleared') setCalling('idle');
+      realtimeService.subscribe(callTopic, (payload) => {
+        if (!mounted || !isWaiterCallMessage(payload) || payload.tableId !== tableId) return;
+        if (payload.action === 'accepted') setCalling('accepted');
+        else if (payload.action === 'cleared') setCalling('idle');
       });
-      realtimeService.subscribe(`${storeSlug}/orders/prepairing`, (msg: any) => {
-        if (!mounted) return;
-        if (msg?.orderId) {
-          setLastOrder((prev: any) =>
-            prev && prev.id === msg.orderId ? { ...prev, status: 'PREPARING' } : prev
-          );
-        }
+      realtimeService.subscribe(preparingTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status: 'PREPARING' } : prev
+        );
       });
-      realtimeService.subscribe(`${storeSlug}/orders/ready`, (msg: any) => {
-        if (!mounted) return;
-        if (msg?.orderId) {
-          setLastOrder((prev: any) =>
-            prev && prev.id === msg.orderId
-              ? { ...prev, status: 'READY' }
-              : prev
-          );
-        }
+      realtimeService.subscribe(readyTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status: 'READY' } : prev
+        );
       });
-      realtimeService.subscribe(`${storeSlug}/orders/cancelled`, (msg: any) => {
-        if (!mounted) return;
-        if (msg?.orderId) {
-          setLastOrder((prev: any) =>
-            prev && prev.id === msg.orderId
-              ? { ...prev, status: 'CANCELLED' }
-              : prev
-          );
-        }
+      realtimeService.subscribe(cancelledTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status: 'CANCELLED' } : prev
+        );
       });
     })();
     return () => {
       mounted = false;
-      realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/prepairing`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/ready`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`);
+      realtimeService.unsubscribe(callTopic);
+      realtimeService.unsubscribe(preparingTopic);
+      realtimeService.unsubscribe(readyTopic);
+      realtimeService.unsubscribe(cancelledTopic);
     };
   }, [storeSlug, tableId]);
 
@@ -348,8 +419,8 @@ export default function TableMenu() {
       });
       // safety re-enable after 45s
       setTimeout(() => setCalling((s) => (s === "pending" ? "idle" : s)), 45000);
-    } catch (err: any) {
-      const msg = err?.message || '';
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error ?? '');
       toast({
         title: "Call failed",
         description:
@@ -366,7 +437,7 @@ export default function TableMenu() {
       <header className="bg-card border-b border-border sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-purple-600">{storeName}</h1>
+            <h1 className="text-2xl font-bold text-primary">{storeName}</h1>
             <p className="text-sm text-muted-foreground">Table {tableId}</p>
           </div>
           <div className="flex gap-2 items-center">
@@ -385,8 +456,8 @@ export default function TableMenu() {
                     </span>
                   </div>
                   <div className="space-y-2 text-sm">
-                    {(lastOrder.items || []).map((item: any, idx: number) => (
-                      <div key={idx} className="flex items-center justify-between text-sm">
+                    {(lastOrder?.items ?? []).map((item: SubmittedOrderItem, idx: number) => (
+                      <div key={`last-order-${idx}`} className="flex items-center justify-between text-sm">
                         <span className="font-medium text-foreground">
                           {item?.title ?? item?.item?.name ?? `Item ${idx + 1}`}
                         </span>
@@ -408,12 +479,12 @@ export default function TableMenu() {
                 className={`w-full justify-center relative inline-flex items-center gap-2 rounded-full border px-4 py-3 text-sm transition ${
                   calling === "idle"
                     ? "bg-primary text-primary-foreground hover:bg-primary/90 border-transparent"
-                    : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-100 dark:border-blue-500/40"
+                    : "bg-muted text-muted-foreground border-border"
                 } ${calling !== "idle" ? "opacity-80 cursor-not-allowed" : ""}`}
               >
                 <span className="relative inline-flex">
                   {calling !== "idle" && (
-                    <span className="absolute inline-flex h-full w-full rounded-full animate-ping bg-blue-300 dark:bg-blue-400 opacity-60" />
+                    <span className="absolute inline-flex h-full w-full rounded-full animate-ping bg-primary/40 opacity-60" />
                   )}
                   <Bell className="h-4 w-4 relative" />
                 </span>
@@ -474,7 +545,7 @@ export default function TableMenu() {
           </div>
         ) : error ? (
           <div className="text-center py-12">
-            <p className="text-red-500 mb-4">{error}</p>
+            <p className="text-destructive mb-4">{error}</p>
             <Button onClick={() => window.location.reload()}>Retry</Button>
           </div>
         ) : (
@@ -482,7 +553,7 @@ export default function TableMenu() {
             {selectedCategory === 'all' ? (
               <div className="space-y-8">
                 {categories.map((cat) => {
-                  const catItems = menuData!.items.filter((i: any) => i.categoryId === cat.id || i.category === cat.title);
+                  const catItems = (menuData?.items ?? []).filter((item) => matchesCategory(item, cat.id, categories));
                   if (catItems.length === 0) return null;
                   return (
                     <section key={cat.id}>

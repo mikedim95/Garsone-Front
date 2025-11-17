@@ -5,11 +5,97 @@ import { useAuthStore } from "@/store/authStore";
 import { useOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
 import { realtimeService } from "@/lib/realtime";
-import { Order } from "@/types";
+import type { Order, CartItem } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
+  const record = isRecord(raw) ? raw : {};
+  const quantityCandidate = record.quantity ?? record.qty;
+  const quantity = typeof quantityCandidate === 'number' && quantityCandidate > 0 ? quantityCandidate : 1;
+  const price =
+    typeof record.unitPrice === 'number'
+      ? record.unitPrice
+      : typeof record.unitPriceCents === 'number'
+        ? record.unitPriceCents / 100
+        : typeof record.priceCents === 'number'
+          ? record.priceCents / 100
+          : typeof record.price === 'number'
+            ? record.price
+            : 0;
+  const name =
+    (typeof record.title === 'string' && record.title) ||
+    (typeof record.name === 'string' && record.name) ||
+    (typeof record.itemTitle === 'string' && record.itemTitle) ||
+    `Item ${idx + 1}`;
+  const itemId =
+    (typeof record.itemId === 'string' && record.itemId) ||
+    (typeof record.id === 'string' && record.id) ||
+    `${name}-${idx}`;
+  return {
+    item: {
+      id: itemId,
+      name,
+      description: typeof record.description === 'string' ? record.description : '',
+      price,
+      image: typeof record.image === 'string' ? record.image : '',
+      category: typeof record.category === 'string' ? record.category : '',
+      available: record.available !== false,
+    },
+    quantity,
+    selectedModifiers: {},
+  };
+};
+
+const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
+  if (!isRecord(raw)) return null;
+  const id =
+    typeof raw.id === 'string' && raw.id
+      ? raw.id
+      : typeof raw.orderId === 'string' && raw.orderId
+        ? raw.orderId
+        : `order-${fallbackIndex}-${Date.now()}`;
+  const tableId =
+    typeof raw.tableId === 'string' && raw.tableId
+      ? raw.tableId
+      : `table-${fallbackIndex}`;
+  const tableLabel =
+    (typeof raw.tableLabel === 'string' && raw.tableLabel) ||
+    (typeof raw.table === 'string' && raw.table) ||
+    tableId;
+  const status = (typeof raw.status === 'string' && raw.status) || 'PLACED';
+  const note = typeof raw.note === 'string' ? raw.note : '';
+  const total =
+    typeof raw.total === 'number'
+      ? raw.total
+      : typeof raw.totalCents === 'number'
+        ? raw.totalCents / 100
+        : 0;
+  const createdAt =
+    typeof raw.createdAt === 'string' && raw.createdAt
+      ? raw.createdAt
+      : new Date().toISOString();
+  const itemsArray = Array.isArray(raw.items) ? raw.items : [];
+  const items = itemsArray.map((item, index) => normalizeOrderItem(item, index));
+  return {
+    id,
+    tableId,
+    tableLabel,
+    status: status as Order['status'],
+    note,
+    total,
+    createdAt,
+    items,
+  };
+};
+
+const isOrderPlacedPayload = (payload: unknown): payload is { orderId?: string; tableId?: string } =>
+  isRecord(payload) && typeof payload.orderId === 'string';
 
 export default function CookDashboard() {
   const { t } = useTranslation();
@@ -40,65 +126,23 @@ export default function CookDashboard() {
   useEffect(() => {
     const init = async () => {
       try {
-        const store = (await api.getStore()) as any;
+        const store = await api.getStore();
         if (store?.store?.slug) {
           setStoreSlug(store.store.slug);
           try {
             localStorage.setItem('STORE_SLUG', store.store.slug);
             window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: store.store.slug } }));
-          } catch {}
+          } catch (error) {
+            console.warn('Failed to persist STORE_SLUG', error);
+          }
         }
-        {
-          const data = (await api.getOrders()) as any;
-          const mapped = (data.orders || []).map((o: any) => ({
-            id: o.id,
-            tableId: o.tableId,
-            tableLabel: o.tableLabel ?? o.table ?? o.tableId ?? "T",
-            status: o.status,
-            note: o.note,
-            total:
-              typeof o.total === "number"
-                ? o.total
-                : typeof o.totalCents === "number"
-                ? o.totalCents / 100
-                : 0,
-            createdAt: o.createdAt,
-            items: (o.items || []).map((it: any) => {
-              const quantity = it?.quantity ?? it?.qty ?? 1;
-              const price =
-                typeof it?.unitPrice === "number"
-                  ? it.unitPrice
-                  : typeof it?.unitPriceCents === "number"
-                  ? it.unitPriceCents / 100
-                  : typeof it?.priceCents === "number"
-                  ? it.priceCents / 100
-                  : typeof it?.price === "number"
-                  ? it.price
-                  : 0;
-              const name =
-                it?.title ??
-                it?.name ??
-                it?.itemTitle ??
-                `Item ${String(it?.itemId || "").slice(-4)}`;
-              return {
-                item: {
-                  id: it.itemId ?? it.id ?? name,
-                  name,
-                  description: "",
-                  price,
-                  image: "",
-                  category: "",
-                  available: true,
-                },
-                quantity,
-                selectedModifiers: {},
-              };
-            }),
-          })) as Order[];
-          setOrdersLocal(mapped);
-        }
-      } catch (e) {
-        console.error(e);
+        const data = await api.getOrders();
+        const mapped = (data.orders ?? [])
+          .map((order, index) => normalizeOrder(order, index))
+          .filter((order): order is Order => Boolean(order));
+        setOrdersLocal(mapped);
+      } catch (error) {
+        console.error('Failed to load cook dashboard data', error);
       }
     };
     init();
@@ -107,31 +151,23 @@ export default function CookDashboard() {
   // Realtime updates -> local store
   useEffect(() => {
     realtimeService.connect().then(() => {
-      realtimeService.subscribe(`${storeSlug}/orders/placed`, (msg: any) => {
-        if (!msg?.orderId) return;
-        const order: Order = {
-          id: msg.orderId,
-          tableId: msg.tableId,
-          tableLabel: msg.tableLabel ?? "Table",
-          status: "PLACED",
-          note: msg.note ?? "",
-          total: (msg.totalCents ?? 0) / 100,
-          createdAt: msg.createdAt ?? new Date().toISOString(),
-          items: (msg.items || []).map((it: any, idx: number) => ({
-            item: {
-              id: `ticket:${idx}:${it.title}`,
-              name: it.title,
-              description: "",
-              price: (it.unitPriceCents ?? 0) / 100,
-              image: "",
-              category: "",
-              available: true,
-            },
-            quantity: it.quantity ?? 1,
-            selectedModifiers: {},
-          })),
-        } as Order;
-        upsertOrder(order);
+      realtimeService.subscribe(`${storeSlug}/orders/placed`, (payload) => {
+        if (!isOrderPlacedPayload(payload)) return;
+        const normalized = normalizeOrder(
+          {
+            id: payload.orderId,
+            tableId: payload.tableId,
+            tableLabel: payload.tableLabel,
+            note: payload.note,
+            totalCents: payload.totalCents,
+            createdAt: payload.createdAt,
+            status: 'PLACED',
+            items: payload.items,
+          },
+          Date.now()
+        );
+        if (!normalized) return;
+        upsertOrder(normalized);
       });
     });
     return () => {
@@ -153,8 +189,8 @@ export default function CookDashboard() {
       ordersAll
         .filter((o) => o.status === "PREPARING")
         .sort((a, b) => {
-          const pa = (a as any).priority ?? Number.MAX_SAFE_INTEGER;
-          const pb = (b as any).priority ?? Number.MAX_SAFE_INTEGER;
+          const pa = a.priority ?? Number.MAX_SAFE_INTEGER;
+          const pb = b.priority ?? Number.MAX_SAFE_INTEGER;
           if (pa !== pb) return pa - pb;
           return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         }),
@@ -245,7 +281,7 @@ export default function CookDashboard() {
   const markReadyLabel = t('actions.mark_ready');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-accent/30 to-background">
+    <div className="min-h-screen bg-gradient-card">
       <DashboardHeader
         title={t('cook.dashboard') || 'Cook Dashboard'}
         subtitle={user?.displayName}
@@ -263,8 +299,7 @@ export default function CookDashboard() {
           </div>
         ) : undefined}
         icon="👨‍🍳"
-        gradientFrom="from-orange-500"
-        gradientTo="to-red-600"
+        tone="primary"
         burgerActions={
           <Button
             variant="outline"
@@ -282,11 +317,11 @@ export default function CookDashboard() {
 
       <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="h-1 w-10 sm:w-12 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full" />
+          <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
           <h2 className="text-xl sm:text-2xl font-bold text-foreground">
             {t('cook.incoming_orders')}
           </h2>
-          <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-amber-100 text-amber-700 text-xs sm:text-sm font-semibold">
+          <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
             {incoming.length}
           </div>
         </div>
@@ -294,17 +329,17 @@ export default function CookDashboard() {
           {incoming.map((o, idx) => (
             <Card
               key={o.id}
-              className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-gradient-to-br from-card to-accent/20 border border-amber-200 hover:border-amber-400 hover:shadow-xl transition-all duration-300 animate-slide-in"
+              className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-slide-in"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold shadow-md">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
                     {o.tableLabel}
                   </div>
                   <div>
                     <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
                       <span>Table {o.tableLabel}</span>
-                      <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 text-[10px] sm:text-xs px-2 py-0.5 dark:bg-amber-900/30 dark:text-amber-200">
+                      <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
                         Priority #{idx + 1}
                       </span>
                     </div>
@@ -315,12 +350,12 @@ export default function CookDashboard() {
                 </div>
               </div>
               <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                {(o.items || []).filter(Boolean).map((it: any, idx: number) => {
-                  const qty = it?.quantity ?? it?.qty ?? 1;
-                  const name = it?.item?.name ?? it?.name ?? "Item";
+                {(o.items ?? []).map((line, idx: number) => {
+                  const qty = line.quantity;
+                  const name = line.item?.name ?? line.item?.title ?? 'Item';
                   return (
                     <div key={idx} className="flex items-center gap-2">
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] sm:text-xs font-bold">
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
                         {qty}
                       </div>
                       <span className="text-foreground font-medium">
@@ -332,14 +367,14 @@ export default function CookDashboard() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <Button
-                  className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-md"
+                  className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                   onClick={() => accept(o.id)}
                   disabled={accepting.has(o.id)}
                   aria-label={acceptLabel}
                   title={acceptLabel}
                 >
                   {accepting.has(o.id) && (
-                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                    <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
                   )}
                   {!accepting.has(o.id) && (
                     <span role="img" aria-hidden="true" className="text-2xl leading-none">
@@ -348,14 +383,14 @@ export default function CookDashboard() {
                   )}
                 </Button>
                 <Button
-                  className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white shadow-md"
+                  className="w-full inline-flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-md"
                   onClick={() => acceptWithPrint(o)}
                   disabled={printing.has(o.id)}
                   aria-label={acceptWithPrintLabel}
                   title={acceptWithPrintLabel}
                 >
                   {printing.has(o.id) && (
-                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                    <span className="h-4 w-4 border-2 border-secondary-foreground/60 border-t-transparent rounded-full animate-spin" />
                   )}
                   {!printing.has(o.id) && (
                     <span role="img" aria-hidden="true" className="text-2xl leading-none">
@@ -364,7 +399,7 @@ export default function CookDashboard() {
                   )}
                 </Button>
                 <Button
-                  className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md transition-shadow"
+                  className="w-full inline-flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md transition-shadow"
                   onClick={() => cancelOrder(o.id)}
                   disabled={actingIds.has(`cancel:${o.id}`)}
                   aria-label={cancelLabel}
@@ -385,9 +420,9 @@ export default function CookDashboard() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 mt-10">
-          <div className="h-1 w-10 sm:w-12 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full" />
+          <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
           <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('cook.in_preparation')}</h2>
-          <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-blue-100 text-blue-700 text-xs sm:text-sm font-semibold">
+          <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
             {preparing.length}
           </div>
         </div>
@@ -395,19 +430,19 @@ export default function CookDashboard() {
           {preparing.map((o) => (
             <Card
               key={o.id}
-              className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-gradient-to-br from-card to-accent/20 border border-blue-200 hover:border-blue-400 hover:shadow-xl transition-all duration-300"
+              className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold shadow-md">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
                     {o.tableLabel}
                   </div>
                   <div>
                     <div className="font-semibold text-foreground text-sm sm:text-base">
                       Table {o.tableLabel}
-                      {typeof (o as any).priority === 'number' && (
-                        <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 dark:bg-blue-900/30 dark:text-blue-200">
-                          Priority #{(o as any).priority}
+                      {typeof o.priority === 'number' && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
+                          Priority #{o.priority}
                         </span>
                       )}
                     </div>
@@ -418,12 +453,12 @@ export default function CookDashboard() {
                 </div>
               </div>
               <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                {(o.items || []).filter(Boolean).map((it: any, idx: number) => {
-                  const qty = it?.quantity ?? it?.qty ?? 1;
-                  const name = it?.item?.name ?? it?.name ?? "Item";
+                {(o.items ?? []).map((line, idx: number) => {
+                  const qty = line.quantity;
+                  const name = line.item?.name ?? line.item?.title ?? 'Item';
                   return (
                     <div key={idx} className="flex items-center gap-2">
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] sm:text-xs font-bold">
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
                         {qty}
                       </div>
                       <span className="text-foreground font-medium">
@@ -435,14 +470,14 @@ export default function CookDashboard() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-md"
+                  className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                   onClick={() => markReady(o.id)}
                   disabled={actingIds.has(`ready:${o.id}`)}
                   aria-label={markReadyLabel}
                   title={markReadyLabel}
                 >
                   {actingIds.has(`ready:${o.id}`) && (
-                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                    <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
                   )}
                   {!actingIds.has(`ready:${o.id}`) && (
                     <span role="img" aria-hidden="true" className="text-2xl leading-none">

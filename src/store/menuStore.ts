@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { MenuData } from '@/types';
 
 interface MenuState {
-  data: any | null;
-  ts: number; // epoch ms
-  setMenu: (data: any) => void;
+  data: MenuData | null;
+  ts: number;
+  setMenu: (data: MenuData) => void;
   clear: () => void;
 }
 

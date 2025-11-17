@@ -23,15 +23,28 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   CANCELLED: 'hsl(var(--chart-5))',
 };
 
+const getCurrencyCode = () =>
+  typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
+
+const formatCurrencyValue = (value: number) => {
+  const currency = getCurrencyCode();
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
+  } catch {
+    return `€${value.toFixed(2)}`;
+  }
+};
+
 export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [selectedStatuses, setSelectedStatuses] = useState<OrderStatus[]>([]);
   const [panelOpen, setPanelOpen] = useState(true);
 
   const getOrderTotal = (order: Order) => {
-    const cents = (order as any)?.totalCents;
-    if (typeof cents === 'number' && Number.isFinite(cents)) return cents / 100;
     if (typeof order.total === 'number' && Number.isFinite(order.total)) return order.total;
+    if (typeof order.totalCents === 'number' && Number.isFinite(order.totalCents)) {
+      return order.totalCents / 100;
+    }
     return 0;
   };
 
@@ -320,17 +333,7 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" />
               <YAxis />
-              {(() => {
-                const currency = (typeof window !== 'undefined' ? (window.localStorage.getItem('CURRENCY') || 'EUR') : 'EUR');
-                const fmt = (v: number) => {
-                  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v); }
-                  catch { return `€${Number(v).toFixed(2)}`; }
-                };
-                // Using a fragment to inject a properly formatted Tooltip
-                return (
-                  <Tooltip formatter={(value: any) => fmt(Number(value))} />
-                );
-              })()}
+              <Tooltip formatter={(value: number) => formatCurrencyValue(Number(value))} />
               <Legend />
               <Line type="monotone" dataKey="revenue" stroke="hsl(var(--chart-2))" strokeWidth={2} name="Revenue (€)" />
             </LineChart>
@@ -339,25 +342,20 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
             <Card className="p-4">
               <p className="text-sm text-muted-foreground">Total Revenue</p>
               <p className="text-2xl font-bold">
-                {(() => {
-                  const currency = (typeof window !== 'undefined' ? (window.localStorage.getItem('CURRENCY') || 'EUR') : 'EUR');
-                  const v = servedFilteredOrders.reduce((sum, o) => sum + getOrderTotal(o), 0);
-                  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v); }
-                  catch { return `€${v.toFixed(2)}`; }
-                })()}
+                {formatCurrencyValue(
+                  servedFilteredOrders.reduce((sum, o) => sum + getOrderTotal(o), 0)
+                )}
               </p>
             </Card>
             <Card className="p-4">
               <p className="text-sm text-muted-foreground">Average Order Value</p>
               <p className="text-2xl font-bold">
-                {(() => {
-                  const currency = (typeof window !== 'undefined' ? (window.localStorage.getItem('CURRENCY') || 'EUR') : 'EUR');
-                  const v = servedFilteredOrders.length > 0
-                    ? servedFilteredOrders.reduce((sum, o) => sum + getOrderTotal(o), 0) / servedFilteredOrders.length
-                    : 0;
-                  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v); }
-                  catch { return `€${v.toFixed(2)}`; }
-                })()}
+                {formatCurrencyValue(
+                  servedFilteredOrders.length > 0
+                    ? servedFilteredOrders.reduce((sum, o) => sum + getOrderTotal(o), 0) /
+                        servedFilteredOrders.length
+                    : 0
+                )}
               </p>
             </Card>
             <Card className="p-4">
