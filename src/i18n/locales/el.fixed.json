@@ -169,7 +169,15 @@
   "nav": {
     "home": "Αρχική",
     "demo": "Demo",
-    "login": "Σύνδεση"
+    "login": "Σύνδεση",
+    "solutions": "Λύσεις",
+    "solutions_restaurants": "Για Εστιατόρια",
+    "solutions_cafes": "Για Καφέ",
+    "solutions_bars": "Για Μπαρ",
+    "resources": "Πόροι",
+    "resources_docs": "Τεκμηρίωση",
+    "resources_api": "API Reference",
+    "resources_support": "Υποστήριξη"
   },
   "actions": {
     "logout": "Αποσύνδεση",
@@ -216,7 +224,8 @@
   "app": {
     "quick_actions": "Γρήγορες ενέργειες",
     "navigation": "Πλοήγηση",
-    "preferences": "Προτιμήσεις"
+    "preferences": "Προτιμήσεις",
+    "profile": "Προφίλ"
   },
   "cart": {
     "swipe_hint": "Σύρε αριστερά σε προϊόντα για Επεξεργασία ή Διαγραφή"

@@ -36,6 +36,15 @@ export default function OrderThanks() {
         const store = await api.getStore();
         if (mounted && store?.store?.slug) {
           setStoreSlug(store.store.slug);
+        }
+        if (store?.store?.name) {
+          try {
+            localStorage.setItem('STORE_NAME', store.store.name);
+          } catch (error) {
+            console.warn('Failed to persist STORE_NAME', error);
+          }
+        }
+        if (store?.store?.slug) {
           try {
             localStorage.setItem('STORE_SLUG', store.store.slug);
             window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: store.store.slug } }));

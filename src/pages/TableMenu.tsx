@@ -189,14 +189,21 @@ export default function TableMenu() {
         const fresh = menuCache && now - menuTs < 60_000; // 60s TTL
         const storeRes = await api.getStore();
         const store = storeRes?.store;
-        if (store?.name) setStoreName(store.name);
+        if (store?.name) {
+          setStoreName(store.name);
+          try {
+            localStorage.setItem("STORE_NAME", store.name);
+          } catch (error) {
+            console.warn("Failed to persist STORE_NAME", error);
+          }
+        }
         if (store?.slug) {
           setStoreSlug(store.slug);
           try {
             localStorage.setItem("STORE_SLUG", store.slug);
             window.dispatchEvent(new CustomEvent("store-slug-changed", { detail: { slug: store.slug } }));
           } catch (error) {
-            console.warn("Failed to persist store slug", error);
+            console.warn("Failed to persist STORE_SLUG", error);
           }
         }
 
@@ -634,21 +641,52 @@ export default function TableMenu() {
         )}
 
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <Card key={`skeleton-${idx}`} className="p-0 rounded-2xl overflow-hidden">
-                <Skeleton className="w-full aspect-square" />
-                <div className="p-4 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                  <div className="flex items-center justify-between pt-2">
-                    <Skeleton className="h-6 w-16" />
-                    <Skeleton className="h-9 w-24 rounded-full" />
+          selectedCategory === 'all' ? (
+            <div className="space-y-8">
+              {Array.from({ length: 3 }).map((_, sectionIdx) => (
+                <section key={sectionIdx}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <Skeleton className="h-5 w-32" />
+                    <div className="h-px bg-border flex-1" />
                   </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <Card
+                        key={`skeleton-${sectionIdx}-${idx}`}
+                        className="p-0 rounded-2xl overflow-hidden"
+                      >
+                        <Skeleton className="w-full aspect-square" />
+                        <div className="p-4 space-y-2">
+                          <Skeleton className="h-4 w-3/4" />
+                          <Skeleton className="h-3 w-1/2" />
+                          <div className="flex items-center justify-between pt-2">
+                            <Skeleton className="h-6 w-16" />
+                            <Skeleton className="h-9 w-24 rounded-full" />
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <Card key={`skeleton-${idx}`} className="p-0 rounded-2xl overflow-hidden">
+                  <Skeleton className="w-full aspect-square" />
+                  <div className="p-4 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                    <div className="flex items-center justify-between pt-2">
+                      <Skeleton className="h-6 w-16" />
+                      <Skeleton className="h-9 w-24 rounded-full" />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )
         ) : error ? (
           <div className="text-center py-12">
             <p className="text-destructive mb-4">{error}</p>
@@ -672,8 +710,14 @@ export default function TableMenu() {
                         <div className="h-px bg-border flex-1" />
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {catItems.map((item) => (
-                          <MenuItemCard key={item.id} item={item} onAdd={handleAddItem} />
+                        {catItems.map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className="animate-slide-in"
+                            style={{ animationDelay: `${idx * 80}ms` }}
+                          >
+                            <MenuItemCard item={item} onAdd={handleAddItem} />
+                          </div>
                         ))}
                       </div>
                     </section>
@@ -682,8 +726,14 @@ export default function TableMenu() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {filteredItems.map((item) => (
-                  <MenuItemCard key={item.id} item={item} onAdd={handleAddItem} />
+                {filteredItems.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="animate-slide-in"
+                    style={{ animationDelay: `${idx * 80}ms` }}
+                  >
+                    <MenuItemCard item={item} onAdd={handleAddItem} />
+                  </div>
                 ))}
                 {filteredItems.length === 0 && (
                   <div className="col-span-full text-center text-muted-foreground py-10">

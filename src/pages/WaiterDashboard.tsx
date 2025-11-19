@@ -12,7 +12,6 @@ import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { LogOut, Check, X } from 'lucide-react';
-import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 const ORDER_FETCH_LIMIT = 50;
@@ -200,6 +199,14 @@ export default function WaiterDashboard() {
       try {
         const store = await api.getStore();
         const slug = store?.store?.slug;
+        const name = store?.store?.name;
+        if (name) {
+          try {
+            localStorage.setItem('STORE_NAME', name);
+          } catch (error) {
+            console.warn('Failed to persist STORE_NAME', error);
+          }
+        }
         if (slug) {
           setStoreSlug(slug);
           try {
@@ -413,57 +420,8 @@ export default function WaiterDashboard() {
             ) : null}
           </div>
         ) : undefined}
-        burgerActions={
-          <>
-            <div className="flex flex-col gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!lastCallTableId}
-                onClick={() => {
-                  if (!lastCallTableId) return;
-                  realtimeService.publish(`${storeSlug}/waiter/call`, {
-                    tableId: lastCallTableId,
-                    action: 'accepted',
-                    ts: new Date().toISOString(),
-                  });
-                  toast({ title: t('toasts.call_accepted'), description: t('toasts.table', { table: lastCallTableId }) });
-                }}
-                className="gap-2 w-full"
-                title={t('actions.accept_call')}
-              >
-                <Check className="h-4 w-4" /> {t('actions.accept_call')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!lastCallTableId}
-                onClick={() => {
-                  if (!lastCallTableId) return;
-                  realtimeService.publish(`${storeSlug}/waiter/call`, {
-                    tableId: lastCallTableId,
-                    action: 'cleared',
-                    ts: new Date().toISOString(),
-                  });
-                  setLastCallTableId(null);
-                  toast({ title: t('toasts.call_cleared'), description: t('toasts.table', { table: lastCallTableId }) });
-                }}
-                className="gap-2 w-full"
-                title={t('actions.clear_call')}
-              >
-                <X className="h-4 w-4" /> {t('actions.clear_call')}
-              </Button>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="w-full mt-2">
-              <LogOut className="h-4 w-4" /> {t('actions.logout')}
-            </Button>
-          </>
-        }
+        burgerActions={null}
       />
-
-      <div className="max-w-6xl mx-auto px-4 pt-4">
-        <DashboardThemeToggle />
-      </div>
 
       <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 flex-1 w-full">
         <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">

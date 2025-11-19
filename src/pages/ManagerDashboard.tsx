@@ -28,6 +28,10 @@ import {
   Loader2,
   FileText,
   Download,
+  BarChart2,
+  ListChecks,
+  Users,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ManagerMenuPanel } from './manager/ManagerMenuPanel';
@@ -63,13 +67,11 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { realtimeService } from '@/lib/realtime';
-import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 type ManagerMode = 'basic' | 'pro';
 type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
 type EconRange = 'today' | 'week' | 'month';
-type CategoryMode = 'eur' | 'share';
 type MenuCategoryMode = 'units' | 'share';
 type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
 type TableSummary = { id: string; label: string; active: boolean };
@@ -110,6 +112,12 @@ const getLineQuantity = (line?: CartItem | { quantity?: number; qty?: number }) 
   const raw = 'quantity' in line ? line.quantity : 'qty' in line ? line.qty : undefined;
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : 1;
 };
+
+const ProBadge = () => (
+  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary text-[10px] shadow-sm">
+    ★
+  </span>
+);
 
 const isWaiterCallEvent = (payload: unknown): payload is { tableId?: string; action?: string; ts?: string } =>
   isRecord(payload) && (typeof payload.tableId === 'string' || typeof payload.action === 'string');
@@ -255,7 +263,6 @@ export default function ManagerDashboard() {
     }
     return 'week';
   });
-  const [econCategoryMode, setEconCategoryMode] = useState<CategoryMode>('eur');
   const [menuCategoryMode, setMenuCategoryMode] = useState<MenuCategoryMode>('units');
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(new Map());
 
@@ -1529,56 +1536,129 @@ export default function ManagerDashboard() {
         title={t('manager.dashboard')}
         subtitle={user?.displayName}
         rightContent={user ? (
-          <div className="text-sm flex flex-col items-end gap-2">
-            <div className="flex flex-col items-end">
-              <a
-                href={user.email ? `mailto:${user.email}` : undefined}
-                className="font-medium underline underline-offset-2 hover:text-foreground"
-              >
-                {user.displayName}
-              </a>
-              {user.email ? (
-                <span className="text-muted-foreground text-xs">{user.email}</span>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <span className={managerMode === 'basic' ? 'text-primary' : 'text-muted-foreground'}>{t('manager.basic', { defaultValue: 'Basic' })}</span>
-              <Switch
-                checked={managerMode === 'pro'}
-                onCheckedChange={(checked) => setManagerMode(checked ? 'pro' : 'basic')}
-                aria-label="Toggle manager mode"
-              />
-              <span className={managerMode === 'pro' ? 'text-primary' : 'text-muted-foreground'}>{t('manager.pro', { defaultValue: 'Pro' })}</span>
-            </div>
+          <div className="text-sm flex flex-col items-end gap-1">
+            <a
+              href={user.email ? `mailto:${user.email}` : undefined}
+              className="font-medium underline underline-offset-2 hover:text-foreground"
+            >
+              {user.displayName}
+            </a>
+            {user.email ? (
+              <span className="text-muted-foreground text-xs">{user.email}</span>
+            ) : null}
           </div>
         ) : undefined}
         icon="📊"
         tone="accent"
         burgerActions={
-          <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
-            <LogOut className="mr-2 h-4 w-4" /> {t('actions.logout')}
-          </Button>
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-muted-foreground">
+              {t('manager.mode_title', { defaultValue: 'MODE' })}:{' '}
+              <span className="font-semibold text-foreground">
+                {managerMode === 'pro'
+                  ? t('manager.pro', { defaultValue: 'Pro' })
+                  : t('manager.basic', { defaultValue: 'Basic' })}
+              </span>
+            </span>
+            <Switch
+              checked={managerMode === 'pro'}
+              onCheckedChange={(checked) => setManagerMode(checked ? 'pro' : 'basic')}
+              aria-label="Toggle manager mode"
+            />
+          </div>
         }
       />
 
-      <div className="max-w-7xl mx-auto px-4 pt-4 pb-6">
-        <DashboardThemeToggle />
-      </div>
+      <div className="flex-1 flex">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex flex-1"
+        >
+          <aside className="hidden sm:flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-60 flex-col bg-card/80 border-r border-border/60">
+            <div className="px-4 py-5 border-b border-border/60">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                {t('manager.nav_title', { defaultValue: 'Dashboard' })}
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-4">
+              <TabsList className="flex flex-col w-full text-xs sm:text-sm gap-2">
+                <TabsTrigger
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  value="economics"
+                >
+                  <BarChart2 className="h-4 w-4" />
+                  <span>{t('manager.economics', { defaultValue: 'Economics' })}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  value="orders"
+                >
+                  <ListChecks className="h-4 w-4" />
+                  <span>{t('waiter.orders', { defaultValue: 'Orders' })}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  value="personnel"
+                >
+                  <Users className="h-4 w-4" />
+                  <span>{t('manager.personnel', { defaultValue: 'Personnel' })}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  value="menu"
+                >
+                  <UtensilsCrossed className="h-4 w-4" />
+                  <span>{t('menu.title')}</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </aside>
 
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 flex-1 w-full">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 sm:space-y-8">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="economics">{t('manager.economics', { defaultValue: 'Economics' })}</TabsTrigger>
-            <TabsTrigger value="orders">{t('waiter.orders', { defaultValue: 'Orders' })}</TabsTrigger>
-            <TabsTrigger value="personnel">{t('manager.personnel', { defaultValue: 'Personnel' })}</TabsTrigger>
-            <TabsTrigger value="menu">{t('menu.title')}</TabsTrigger>
-          </TabsList>
+          {/* Mobile tabs fallback */}
+          <div className="sm:hidden w-full border-b border-border/60 bg-card/80">
+            <div className="max-w-6xl mx-auto px-3 py-2">
+              <TabsList className="flex w-full text-xs gap-2 overflow-x-auto">
+                <TabsTrigger
+                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
+                  value="economics"
+                >
+                  {t('manager.economics', { defaultValue: 'Economics' })}
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
+                  value="orders"
+                >
+                  {t('waiter.orders', { defaultValue: 'Orders' })}
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
+                  value="personnel"
+                >
+                  {t('manager.personnel', { defaultValue: 'Personnel' })}
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
+                  value="menu"
+                >
+                  {t('menu.title')}
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-6 sm:space-y-8">
 
           <TabsContent value="economics" className="space-y-6">
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-muted-foreground">{t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}</p>
-                <div className="inline-flex rounded-md border bg-background overflow-hidden">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <p className="text-sm text-muted-foreground">
+                  {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
+                </p>
+                <div className="inline-flex w-full sm:w-auto rounded-md border bg-background overflow-hidden">
                   {([
                     { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
                     { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
@@ -1588,7 +1668,7 @@ export default function ManagerDashboard() {
                       key={opt.key}
                       onClick={() => setEconRange(opt.key)}
                       className={
-                        'px-3 py-1.5 text-xs border-l first:border-l-0 transition-colors ' +
+                        'flex-1 px-3 py-1.5 text-xs border-l first:border-l-0 transition-colors ' +
                         (econRange === opt.key
                           ? 'bg-primary text-primary-foreground'
                           : 'hover:bg-muted')
@@ -1621,38 +1701,6 @@ export default function ManagerDashboard() {
               </div>
             </Card>
 
-            {managerMode === 'pro' && (
-              <Card className="p-4 sm:p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{t('manager.insight', { defaultValue: 'Insight' })}</p>
-                    <h3 className="text-lg font-semibold">{t('manager.wow_revenue', { defaultValue: 'Week-over-Week Δ Revenue' })}</h3>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="secondary">⭐ Pro</Badge>
-                    <div className="text-right">
-                    {(() => {
-                      const prev = totalRevenuePrevRange;
-                      const curr = totalRevenueInRange;
-                      const delta = prev > 0 ? ((curr - prev) / prev) * 100 : curr > 0 ? 100 : 0;
-                      const up = delta > 0.5;
-                      const down = delta < -0.5;
-                      const color = up ? 'text-primary' : down ? 'text-destructive' : 'text-muted-foreground';
-                      return (
-                        <div>
-                          <div className={`text-2xl font-semibold ${color}`}>
-                            {up ? '↑' : down ? '↓' : '↔'} {Math.abs(delta).toFixed(1)}%
-                          </div>
-                          <div className="text-xs text-muted-foreground">{t('manager.vs_prior', { defaultValue: 'vs prior period' })}</div>
-                        </div>
-                      );
-                    })()}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
-
             <Card className="p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div>
@@ -1684,27 +1732,15 @@ export default function ManagerDashboard() {
             <Card className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('manager.categories', { defaultValue: 'Categories' })}</p>
-                  <h3 className="text-lg font-semibold">{t('manager.revenue_by_category', { defaultValue: 'Revenue by category' })}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t('manager.categories', { defaultValue: 'Categories' })}
+                  </p>
+                  <h3 className="text-lg font-semibold">
+                    {t('manager.revenue_by_category', { defaultValue: 'Revenue by category' })}
+                  </h3>
                 </div>
-                <div className="inline-flex rounded-md border bg-background overflow-hidden">
-                  {([
-                    { key: 'eur', label: '€' },
-                    { key: 'share', label: '%' },
-                  ] as const).map((opt) => (
-                    <button
-                      key={opt.key}
-                      onClick={() => setEconCategoryMode(opt.key)}
-                      className={
-                        'px-2 py-1 text-xs border-l first:border-l-0 transition-colors ' +
-                        (econCategoryMode === opt.key
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted')
-                      }
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                <div className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                  €
                 </div>
               </div>
               <div className="h-72">
@@ -1712,16 +1748,18 @@ export default function ManagerDashboard() {
                   <BarChart data={categoryRevenue}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="category" />
-                    <YAxis tickFormatter={(v) => (econCategoryMode === 'share' ? `${Math.round(Number(v))}%` : String(v))} domain={econCategoryMode === 'share' ? [0, 100] : ['auto', 'auto']} />
+                    <YAxis />
                     <Tooltip
                       formatter={(value: ValueType) => {
-                        const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
-                        return econCategoryMode === 'share'
-                          ? [`${numericValue.toFixed(1)}%`, 'Share']
-                          : [formatCurrency(numericValue), 'Revenue'];
+                        const numericValue =
+                          typeof value === 'number' ? value : Number(value ?? 0);
+                        return [
+                          formatCurrency(numericValue),
+                          t('manager.revenue', { defaultValue: 'Revenue' }),
+                        ];
                       }}
                     />
-                    <Bar dataKey={econCategoryMode === 'share' ? 'share' : 'revenue'} fill="hsl(var(--primary))" />
+                    <Bar dataKey="revenue" fill="hsl(var(--primary))" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1758,84 +1796,95 @@ export default function ManagerDashboard() {
 
             {managerMode === 'pro' && (
               <>
-                <Card className="p-4 sm:p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{t('manager.value', { defaultValue: 'Value' })}</p>
-                      <h3 className="text-lg font-semibold">{t('manager.avg_ticket_by_daypart', { defaultValue: 'Average Ticket by Daypart' })}</h3>
-                    </div>
-                    <Badge variant="secondary">⭐ Pro</Badge>
-                  </div>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={avgTicketByDaypart}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="daypart" />
-                        <YAxis tickFormatter={(v) => formatCurrency(Number(v))} />
-                        <Tooltip
-                          formatter={(value: ValueType) => {
-                            const numericValue = typeof value === 'number' ? value : Number(value ?? 0);
-                            return [formatCurrency(numericValue), 'Avg ticket'];
-                          }}
-                        />
-                        <Bar dataKey="avg" fill="hsl(var(--primary))" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-
-                <Card className="p-4 sm:p-6">
+                <section className="space-y-6 pt-6 border-t border-border/60">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{t('manager.leakage', { defaultValue: 'Leakage' })}</p>
-                      <h3 className="text-lg font-semibold">{t('manager.refunds_impact', { defaultValue: 'Refunds/Cancels Impact (€)' })}</h3>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="secondary">⭐ Pro</Badge>
-                      <div className="text-right">
-                      <div className="text-2xl font-semibold">{formatCurrency(refundTotalInRange)}</div>
-                      <div className="text-xs text-muted-foreground">{t('manager.in_selected_period', { defaultValue: 'in selected period' })}</div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {t('manager.pro_insights', { defaultValue: 'Advanced insights' })}
+                    </h3>
+                    <ProBadge />
+                  </div>
+
+                  <Card className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          {t('manager.insight', { defaultValue: 'Insight' })}
+                        </p>
+                        <h3 className="text-lg font-semibold">
+                          {t('manager.wow_revenue', { defaultValue: 'Week-over-Week Δ Revenue' })}
+                        </h3>
+                      </div>
+                      <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+                        <ProBadge />
+                        <div className="text-center sm:text-right">
+                          {(() => {
+                            const prev = totalRevenuePrevRange;
+                            const curr = totalRevenueInRange;
+                            const delta =
+                              prev > 0 ? ((curr - prev) / prev) * 100 : curr > 0 ? 100 : 0;
+                            const up = delta > 0.5;
+                            const down = delta < -0.5;
+                            const color = up
+                              ? 'text-primary'
+                              : down
+                                ? 'text-destructive'
+                                : 'text-muted-foreground';
+                            return (
+                              <div className="flex flex-col items-center sm:items-end gap-1">
+                                <div
+                                  className={`text-2xl sm:text-3xl font-semibold ${color} flex items-baseline gap-1`}
+                                >
+                                  <span>{up ? '↑' : down ? '↓' : '↔'}</span>
+                                  <span className="whitespace-nowrap">
+                                    {Math.abs(delta).toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {t('manager.vs_prior', { defaultValue: 'vs prior period' })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Card>
+                  </Card>
 
-                {hasCostData && (
                   <Card className="p-4 sm:p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <p className="text-sm text-muted-foreground">{t('manager.profitability', { defaultValue: 'Profitability' })}</p>
-                        <h3 className="text-lg font-semibold">{t('manager.category_margin_leaderboard', { defaultValue: 'Category Margin Leaderboard' })}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {t('manager.value', { defaultValue: 'Value' })}
+                        </p>
+                        <h3 className="text-lg font-semibold">
+                          {t('manager.avg_ticket_by_daypart', {
+                            defaultValue: 'Average Ticket by Daypart',
+                          })}
+                        </h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs text-muted-foreground border-b">
-                            <th className="py-2">{t('manager.category', { defaultValue: 'Category' })}</th>
-                            <th className="py-2">{t('manager.margin', { defaultValue: 'Margin' })}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {categoryMargin.map((row) => (
-                            <tr key={row.category} className="border-b">
-                              <td className="py-2">{row.category}</td>
-                              <td className="py-2 font-medium">{formatCurrency(row.margin)}</td>
-                            </tr>
-                          ))}
-                          {categoryMargin.length === 0 && (
-                            <tr>
-                              <td className="py-2 text-muted-foreground" colSpan={2}>
-                                {t('manager.no_margin_data', { defaultValue: 'No margin data available for selected period.' })}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={avgTicketByDaypart}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="daypart" />
+                          <YAxis tickFormatter={(v) => formatCurrency(Number(v))} />
+                          <Tooltip
+                            formatter={(value: ValueType) => {
+                              const numericValue =
+                                typeof value === 'number' ? value : Number(value ?? 0);
+                              return [formatCurrency(numericValue), 'Avg ticket'];
+                            }}
+                          />
+                          <Bar dataKey="avg" fill="hsl(var(--primary))" />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </Card>
-                )}
+
+                  {/* Profitability leaderboard removed from Advanced Insights per new layout */}
+                </section>
               </>
             )}
 
@@ -1973,7 +2022,7 @@ export default function ManagerDashboard() {
                         <p className="text-sm text-muted-foreground">Variability</p>
                         <h3 className="text-lg font-semibold">Prep Time Distribution</h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     {prepDurationsMinutes.length ? (
                       <div className="h-72">
@@ -1988,7 +2037,9 @@ export default function ManagerDashboard() {
                         </ResponsiveContainer>
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">{t('manager.no_data_yet', { defaultValue: 'No data yet.' })}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {t('manager.no_data_yet', { defaultValue: 'No data yet.' })}
+                      </p>
                     )}
                   </Card>
 
@@ -1998,23 +2049,32 @@ export default function ManagerDashboard() {
                         <p className="text-sm text-muted-foreground">Reliability</p>
                         <h3 className="text-lg font-semibold">SLA Breaches</h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-2xl font-semibold">{slaBreaches.length}</div>
-                      <div className="text-xs text-muted-foreground">Target: {SLA_TARGET_MINUTES} min</div>
+                      <div className="text-xs text-muted-foreground">
+                        Target: {SLA_TARGET_MINUTES} min
+                      </div>
                     </div>
                     {slaBreaches.length ? (
                       <div className="space-y-2">
                         {slaBreaches.map((b) => (
-                          <div key={b.order.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+                          <div
+                            key={b.order.id}
+                            className="flex items-center justify-between border rounded-md px-3 py-2"
+                          >
                             <div className="text-sm">{orderLabel(b.order)}</div>
-                            <Badge variant="destructive">{Math.round(b.minutes ?? 0)}m</Badge>
+                            <Badge variant="destructive">
+                              {Math.round(b.minutes ?? 0)}m
+                            </Badge>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">{t('manager.no_breaches', { defaultValue: 'No breaches in history.' })}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {t('manager.no_breaches', { defaultValue: 'No breaches in history.' })}
+                      </p>
                     )}
                   </Card>
                 </div>
@@ -2025,7 +2085,7 @@ export default function ManagerDashboard() {
                       <p className="text-sm text-muted-foreground">Queue Pressure</p>
                       <h3 className="text-lg font-semibold">Bottleneck Heatmap</h3>
                     </div>
-                    <Badge variant="secondary">⭐ Pro</Badge>
+                    <ProBadge />
                   </div>
                   <div className="overflow-x-auto">
                     <div className="text-xs text-muted-foreground mb-2">Counts by hour of placement and current status</div>
@@ -2057,7 +2117,7 @@ export default function ManagerDashboard() {
                       <p className="text-sm text-muted-foreground">Engagement</p>
                       <h3 className="text-lg font-semibold">Reorder Rate (≤45m)</h3>
                     </div>
-                    <Badge variant="secondary">⭐ Pro</Badge>
+                    <ProBadge />
                   </div>
                   <div className="flex items-baseline gap-3">
                     <div className="text-3xl font-semibold">{reorderRate.percent}%</div>
@@ -2308,10 +2368,16 @@ export default function ManagerDashboard() {
                   <Card className="p-4 sm:p-6">
                     <div className="flex items-center justify-between mb-2">
                       <div>
-                        <p className="text-sm text-muted-foreground">{t('manager.highlights', { defaultValue: 'Highlights' })}</p>
-                        <h3 className="text-lg font-semibold">{t('manager.top_needs_attention', { defaultValue: 'Top / Needs Attention' })}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {t('manager.highlights', { defaultValue: 'Highlights' })}
+                        </p>
+                        <h3 className="text-lg font-semibold">
+                          {t('manager.top_needs_attention', {
+                            defaultValue: 'Top / Needs Attention',
+                          })}
+                        </h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     {topAndAttentionWaiters ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2334,10 +2400,16 @@ export default function ManagerDashboard() {
                   <Card className="p-4 sm:p-6">
                     <div className="flex items-center justify-between mb-2">
                       <div>
-                        <p className="text-sm text-muted-foreground">{t('manager.coverage', { defaultValue: 'Coverage' })}</p>
-                        <h3 className="text-lg font-semibold">{t('manager.coverage_gaps', { defaultValue: 'Coverage Gaps (last 7d)' })}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {t('manager.coverage', { defaultValue: 'Coverage' })}
+                        </p>
+                        <h3 className="text-lg font-semibold">
+                          {t('manager.coverage_gaps', {
+                            defaultValue: 'Coverage Gaps (last 7d)',
+                          })}
+                        </h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     {coverageGaps.length ? (
                       <div className="flex flex-wrap gap-2">
@@ -2354,10 +2426,16 @@ export default function ManagerDashboard() {
                 <Card className="p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-sm text-muted-foreground">{t('manager.responsiveness', { defaultValue: 'Responsiveness' })}</p>
-                      <h3 className="text-lg font-semibold">{t('manager.first_response_call_waiter', { defaultValue: 'First-Response to Call-Waiter' })}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {t('manager.responsiveness', { defaultValue: 'Responsiveness' })}
+                      </p>
+                      <h3 className="text-lg font-semibold">
+                        {t('manager.first_response_call_waiter', {
+                          defaultValue: 'First-Response to Call-Waiter',
+                        })}
+                      </h3>
                     </div>
-                    <Badge variant="secondary">⭐ Pro</Badge>
+                    <ProBadge />
                   </div>
                   {callResponseDurations.length ? (
                     <div className="flex flex-wrap items-end gap-6">
@@ -2478,7 +2556,7 @@ export default function ManagerDashboard() {
                           </button>
                         ))}
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                   </div>
                   {categoryUnits.some((entry) => entry.units > 0) ? (
@@ -2524,7 +2602,7 @@ export default function ManagerDashboard() {
                       <p className="text-sm text-muted-foreground">{t('manager.service_rhythm', { defaultValue: 'Service rhythm' })}</p>
                       <h3 className="text-lg font-semibold">{t('manager.daypart_mix', { defaultValue: 'Daypart mix' })}</h3>
                     </div>
-                    <Badge variant="secondary">⭐ Pro</Badge>
+                    <ProBadge />
                   </div>
                   {daypartMix.some((entry) => entry.count > 0) ? (
                     <div className="h-72">
@@ -2714,7 +2792,7 @@ export default function ManagerDashboard() {
                       <p className="text-sm text-muted-foreground">{t('manager.interactions', { defaultValue: 'Interactions' })}</p>
                       <h3 className="text-lg font-semibold">{t('manager.cannibalization_watch', { defaultValue: 'Cannibalization Watch' })}</h3>
                     </div>
-                    <Badge variant="secondary">⭐ Pro</Badge>
+                    <ProBadge />
                   </div>
                   {cannibalizationPairs.length ? (
                     <div className="overflow-x-auto">
@@ -2749,7 +2827,7 @@ export default function ManagerDashboard() {
                         <p className="text-sm text-muted-foreground">{t('manager.fit', { defaultValue: 'Fit' })}</p>
                         <h3 className="text-lg font-semibold">{t('manager.daypart_fit', { defaultValue: 'Daypart Fit Score' })}</h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     {daypartFitRows.length ? (
                       <div className="overflow-x-auto">
@@ -2783,7 +2861,7 @@ export default function ManagerDashboard() {
                         <p className="text-sm text-muted-foreground">{t('manager.mix', { defaultValue: 'Mix' })}</p>
                         <h3 className="text-lg font-semibold">{t('manager.new_vs_regular', { defaultValue: 'New vs Regular' })}</h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     <div className="flex items-baseline gap-4">
                       <div className="text-3xl font-semibold">{newVsRegularMix.newPct}%</div>
@@ -2800,7 +2878,7 @@ export default function ManagerDashboard() {
                         <p className="text-sm text-muted-foreground">{t('manager.profitability', { defaultValue: 'Profitability' })}</p>
                         <h3 className="text-lg font-semibold">{t('manager.profitability_hint', { defaultValue: 'Profitability Hint' })}</h3>
                       </div>
-                      <Badge variant="secondary">⭐ Pro</Badge>
+                      <ProBadge />
                     </div>
                     <p className="mt-3 text-sm">
                       {t('manager.promote_item_hint', { defaultValue: 'Promote {{item}} — high margin and rising units (+{{pct}}%).', item: profitHint.item, pct: profitHint.deltaPct.toFixed(0) })}
@@ -2812,6 +2890,7 @@ export default function ManagerDashboard() {
 
             <ManagerMenuPanel />
           </TabsContent>
+          </div>
         </Tabs>
       </div>
 

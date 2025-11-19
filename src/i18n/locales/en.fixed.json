@@ -169,7 +169,15 @@
     "nav":  {
                 "home":  "Home",
                 "demo":  "Demo",
-                "login":  "Login"
+                "login":  "Login",
+                "solutions": "Solutions",
+                "solutions_restaurants": "For Restaurants",
+                "solutions_cafes": "For Cafes",
+                "solutions_bars": "For Bars",
+                "resources": "Resources",
+                "resources_docs": "Documentation",
+                "resources_api": "API Reference",
+                "resources_support": "Support"
             },
     "actions":  {
                     "logout":  "Logout",
@@ -214,9 +222,10 @@
                    "status_changed":  "Status changed to {{status}}"
                },
     "app":  {
-                "quick_actions":  "Quick Actions",
-                "navigation":  "Navigation",
-                "preferences":  "Preferences"
+    "quick_actions":  "Quick Actions",
+    "navigation":  "Navigation",
+    "preferences":  "Preferences",
+    "profile": "Profile"
             },
     "cart":  {
                  "swipe_hint":  "Swipe left on items to Edit or Delete"
