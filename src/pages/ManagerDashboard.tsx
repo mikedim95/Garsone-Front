@@ -32,6 +32,10 @@ import {
   ListChecks,
   Users,
   UtensilsCrossed,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ManagerMenuPanel } from './manager/ManagerMenuPanel';
@@ -252,6 +256,16 @@ export default function ManagerDashboard() {
     return 'basic';
   });
   const [activeTab, setActiveTab] = useState<ManagerTab>('economics');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('MANAGER_NAV_COLLAPSED') === '1';
+      } catch {
+        // ignore
+      }
+    }
+    return false;
+  });
   const [econRange, setEconRange] = useState<EconRange>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -263,6 +277,7 @@ export default function ManagerDashboard() {
     }
     return 'week';
   });
+  const [tablesCollapsed, setTablesCollapsed] = useState(false);
   const [menuCategoryMode, setMenuCategoryMode] = useState<MenuCategoryMode>('units');
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(new Map());
 
@@ -1529,6 +1544,15 @@ export default function ManagerDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('MANAGER_NAV_COLLAPSED', sidebarCollapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [sidebarCollapsed]);
+
   return (
     <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
@@ -1551,64 +1575,111 @@ export default function ManagerDashboard() {
         icon="📊"
         tone="accent"
         burgerActions={
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-muted-foreground">
-              {t('manager.mode_title', { defaultValue: 'MODE' })}:{' '}
-              <span className="font-semibold text-foreground">
-                {managerMode === 'pro'
-                  ? t('manager.pro', { defaultValue: 'Pro' })
-                  : t('manager.basic', { defaultValue: 'Basic' })}
+          <div className="flex flex-wrap items-center justify-end gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground">
+                {t('manager.mode_title', { defaultValue: 'MODE' })}:{' '}
+                <span className="font-semibold text-foreground">
+                  {managerMode === 'pro'
+                    ? t('manager.pro', { defaultValue: 'Pro' })
+                    : t('manager.basic', { defaultValue: 'Basic' })}
+                </span>
               </span>
-            </span>
-            <Switch
-              checked={managerMode === 'pro'}
-              onCheckedChange={(checked) => setManagerMode(checked ? 'pro' : 'basic')}
-              aria-label="Toggle manager mode"
-            />
+              <Switch
+                checked={managerMode === 'pro'}
+                onCheckedChange={(checked) => setManagerMode(checked ? 'pro' : 'basic')}
+                aria-label="Toggle manager mode"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSidebarCollapsed((prev) => !prev)}
+              className="inline-flex items-center gap-2"
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {sidebarCollapsed
+                  ? t('manager.show_navigation', { defaultValue: 'Show menu' })
+                  : t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
+              </span>
+              <span className="sm:hidden">{sidebarCollapsed ? 'Show' : 'Hide'}</span>
+            </Button>
           </div>
         }
       />
 
-      <div className="flex-1 flex">
+      <div className="flex-1 flex min-h-0 relative">
+        {sidebarCollapsed && (
+          <div className="absolute inset-x-4 top-4 z-20 flex justify-center sm:justify-start pointer-events-none">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              className="pointer-events-auto flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start rounded-full border border-border/70 bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              {t('manager.show_navigation', { defaultValue: 'Show menu' })}
+            </button>
+          </div>
+        )}
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex flex-1"
+          className="flex flex-1 min-h-0"
         >
-          <aside className="hidden sm:flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-60 flex-col bg-card/80 border-r border-border/60">
-            <div className="px-4 py-5 border-b border-border/60">
-              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                {t('manager.nav_title', { defaultValue: 'Dashboard' })}
-              </p>
-              <p className="text-sm font-medium text-foreground">
-                {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
-              </p>
+          <aside
+            className={clsx(
+              'hidden sm:flex flex-col bg-card/80 border-r border-border/60 transition-[width,opacity,transform] duration-200 ease-in-out',
+              sidebarCollapsed ? 'w-0 opacity-0 -translate-x-4 pointer-events-none' : 'w-64'
+            )}
+          >
+            <div className="px-4 py-5 border-b border-border/60 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  {t('manager.nav_title', { defaultValue: 'Dashboard' })}
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarCollapsed((prev) => !prev)}
+                aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </Button>
             </div>
-            <div className="flex-1 overflow-y-auto px-3 py-4">
+            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
               <TabsList className="flex flex-col w-full text-xs sm:text-sm gap-2">
                 <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
                   value="economics"
                 >
                   <BarChart2 className="h-4 w-4" />
                   <span>{t('manager.economics', { defaultValue: 'Economics' })}</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
                   value="orders"
                 >
                   <ListChecks className="h-4 w-4" />
                   <span>{t('waiter.orders', { defaultValue: 'Orders' })}</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
                   value="personnel"
                 >
                   <Users className="h-4 w-4" />
                   <span>{t('manager.personnel', { defaultValue: 'Personnel' })}</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
                   value="menu"
                 >
                   <UtensilsCrossed className="h-4 w-4" />
@@ -1619,38 +1690,40 @@ export default function ManagerDashboard() {
           </aside>
 
           {/* Mobile tabs fallback */}
-          <div className="sm:hidden w-full border-b border-border/60 bg-card/80">
-            <div className="max-w-6xl mx-auto px-3 py-2">
-              <TabsList className="flex w-full text-xs gap-2 overflow-x-auto">
-                <TabsTrigger
-                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
-                  value="economics"
-                >
-                  {t('manager.economics', { defaultValue: 'Economics' })}
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
-                  value="orders"
-                >
-                  {t('waiter.orders', { defaultValue: 'Orders' })}
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
-                  value="personnel"
-                >
-                  {t('manager.personnel', { defaultValue: 'Personnel' })}
-                </TabsTrigger>
-                <TabsTrigger
-                  className="flex-1 justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors"
-                  value="menu"
-                >
-                  {t('menu.title')}
-                </TabsTrigger>
-              </TabsList>
+          {!sidebarCollapsed && (
+            <div className="w-full border-b border-border/60 bg-card/80 sm:hidden">
+              <div className="w-full max-w-7xl mx-auto px-3 py-2">
+                <TabsList className="flex flex-col w-full text-xs gap-2">
+                  <TabsTrigger
+                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
+                    value="economics"
+                  >
+                    {t('manager.economics', { defaultValue: 'Economics' })}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
+                    value="orders"
+                  >
+                    {t('waiter.orders', { defaultValue: 'Orders' })}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
+                    value="personnel"
+                  >
+                    {t('manager.personnel', { defaultValue: 'Personnel' })}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
+                    value="menu"
+                  >
+                    {t('menu.title')}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="flex-1 max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-6 sm:space-y-8">
+          <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-8 space-y-6 sm:space-y-8">
 
           <TabsContent value="economics" className="space-y-6">
             <Card className="p-4 sm:p-6">
@@ -1679,7 +1752,7 @@ export default function ManagerDashboard() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
                   <p className="text-xs text-muted-foreground">{t('manager.total_revenue', { defaultValue: 'Total Revenue' })}</p>
                   <p className="text-2xl font-semibold">{formatCurrency(totalRevenueInRange)}</p>
@@ -1702,30 +1775,44 @@ export default function ManagerDashboard() {
             </Card>
 
             <Card className="p-4 sm:p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{t('manager.timeline', { defaultValue: 'Timeline' })}</p>
-                      <h3 className="text-lg font-semibold">
-                        {econRange === 'today'
-                          ? t('manager.revenue_by_hour', { defaultValue: 'Revenue by hour' })
-                          : econRange === 'week'
-                          ? t('manager.revenue_by_daypart', { defaultValue: 'Revenue by daypart' })
-                          : t('manager.revenue_by_day', { defaultValue: 'Revenue by day' })}
-                      </h3>
-                    </div>
-                  </div>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={revenueTimeline}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2} name={t('manager.revenue_eur', { defaultValue: 'Revenue (€)' })} />
-                    <Line type="monotone" dataKey="prevRevenue" stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" name={t('manager.prior_period_eur', { defaultValue: 'Prior period (€)' })} />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">{t('manager.timeline', { defaultValue: 'Timeline' })}</p>
+                  <h3 className="text-lg font-semibold">
+                    {econRange === 'today'
+                      ? t('manager.revenue_by_hour', { defaultValue: 'Revenue by hour' })
+                      : econRange === 'week'
+                      ? t('manager.revenue_by_daypart', { defaultValue: 'Revenue by daypart' })
+                      : t('manager.revenue_by_day', { defaultValue: 'Revenue by day' })}
+                  </h3>
+                </div>
+              </div>
+              <div className="h-72 flex items-center justify-center">
+                <div className="h-full w-full max-w-4xl px-4 mx-auto">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={revenueTimeline} margin={{ top: 16, right: 24, bottom: 8, left: 24 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        name={t('manager.revenue_eur', { defaultValue: 'Revenue (€)' })}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="prevRevenue"
+                        stroke="hsl(var(--muted-foreground))"
+                        strokeDasharray="4 4"
+                        name={t('manager.prior_period_eur', { defaultValue: 'Prior period (€)' })}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </Card>
 
@@ -1903,7 +1990,7 @@ export default function ManagerDashboard() {
           <TabsContent value="orders" className="space-y-6">
             <Card className="p-4 sm:p-6">
               <p className="text-sm text-muted-foreground mb-4">Operations KPIs</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
                   <p className="text-xs text-muted-foreground">Total Orders</p>
                   <p className="text-2xl font-semibold">{totalOrders}</p>
@@ -2466,6 +2553,14 @@ export default function ManagerDashboard() {
                   <Button onClick={openCreateTable} className="inline-flex items-center gap-2">
                     <Plus className="h-4 w-4" /> {t('actions.add_table')}
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTablesCollapsed((prev) => !prev)}
+                    aria-label={tablesCollapsed ? 'Expand tables' : 'Collapse tables'}
+                  >
+                    {tablesCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </Button>
                 </div>
               </div>
               {loadingTables ? (
@@ -2474,6 +2569,10 @@ export default function ManagerDashboard() {
                     <Skeleton key={idx} className="h-20 w-full rounded-xl" />
                   ))}
                 </div>
+              ) : tablesCollapsed ? (
+                <p className="text-sm text-muted-foreground">
+                  {t('manager.tables_collapsed_hint', { defaultValue: 'Tables hidden. Expand to manage assignments.' })}
+                </p>
               ) : tablesOverview.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {t('manager.no_tables', { defaultValue: 'No tables yet. Add your first table to get started.' })}
@@ -2502,13 +2601,19 @@ export default function ManagerDashboard() {
                             : t('manager.inactive', { defaultValue: 'Inactive' })}
                         </Badge>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openEditTable(table)}>
+                      <div className="flex flex-col sm:flex-row gap-2 w-full">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full sm:w-auto"
+                          onClick={() => openEditTable(table)}
+                        >
                           <Pencil className="h-4 w-4 mr-2" /> {t('actions.edit')}
                         </Button>
                         <Button
                           variant="destructive"
                           size="sm"
+                          className="w-full sm:w-auto"
                           onClick={() => handleDeleteTable(table.id)}
                           disabled={tableDeletingId === table.id}
                         >
