@@ -7,9 +7,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useTheme } from "@/components/theme-provider-context";
-import { dashboardThemeClassNames, useDashboardTheme } from "@/hooks/useDashboardDark";
+import {
+  dashboardThemeClassNames,
+  useDashboardTheme,
+} from "@/hooks/useDashboardDark";
 
-import './i18n/config';
+import "./i18n/config";
 
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -84,7 +87,7 @@ const AppShell = () => {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
-    if (typeof document === 'undefined') return;
+    if (typeof document === "undefined") return;
     const { classList } = document.body;
     dashboardThemeClassNames.forEach((cls) => classList.remove(cls));
     if (themeClass) {
@@ -96,22 +99,23 @@ const AppShell = () => {
   }, [themeClass]);
 
   return (
-    <div className={clsx(themeClass, { dark: dashboardDark || isDarkFromTheme })}>
+    <div
+      className={clsx(themeClass, { dark: dashboardDark || isDarkFromTheme })}
+    >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Suspense
-              fallback={
-                <BrandedLoadingScreen />
-              }
-            >
+            <Suspense fallback={<BrandedLoadingScreen />}>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/table/:tableId" element={<TableMenu />} />
-                <Route path="/order/:orderId/thanks" element={<OrderThanks />} />
+                <Route
+                  path="/order/:orderId/thanks"
+                  element={<OrderThanks />}
+                />
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/cook" element={<CookDashboard />} />

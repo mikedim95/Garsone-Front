@@ -4,9 +4,28 @@ import { QrCode, LogIn, Play, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { HERO_IMAGE } from '@/lib/mockData';
 
-export const Hero = () => {
+type HeroProps = {
+  onScanQr?: () => void;
+  onOpenLive?: () => void;
+  onDemo?: () => void;
+  liveReady?: boolean;
+};
+
+export const Hero = ({ onScanQr, onDemo, onOpenLive, liveReady }: HeroProps) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+
+  const handleScrollToDemo = () => {
+    if (onDemo) {
+      onDemo();
+      return;
+    }
+    if (onScanQr) {
+      onScanQr();
+      return;
+    }
+    document.getElementById('demo-qr')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-card">
@@ -34,10 +53,9 @@ export const Hero = () => {
         <div className="flex flex-wrap gap-4 justify-center mb-24">
           <Button 
             size="lg" 
-            onClick={() => {
-              document.getElementById('demo-qr')?.scrollIntoView({ behavior: 'smooth' });
-            }} 
-            className="gap-2 text-base px-10 py-7 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300"
+            onClick={onOpenLive}
+            disabled={!liveReady}
+            className="gap-2 text-base px-10 py-7 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 disabled:opacity-70 disabled:hover:scale-100"
           >
             <Play className="h-5 w-5" />
             {t('hero.cta_demo')}
@@ -45,9 +63,7 @@ export const Hero = () => {
           <Button 
             size="lg" 
             variant="outline" 
-            onClick={() => {
-              document.getElementById('demo-qr')?.scrollIntoView({ behavior: 'smooth' });
-            }} 
+            onClick={onScanQr ?? handleScrollToDemo} 
             className="gap-2 text-base px-10 py-7 rounded-2xl border-2 border-border hover:border-primary hover:bg-accent/30 transition-all duration-300 hover:scale-105 text-foreground"
           >
             <QrCode className="h-5 w-5" />

@@ -1,0 +1,245 @@
+import type { MenuItem, MenuCategory } from '@/types';
+import { Button } from '../ui/button';
+import { Plus, ShoppingBag, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useCartStore } from '@/store/cartStore';
+import { Card } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { ScrollArea } from '../ui/scroll-area';
+import { Separator } from '../ui/separator';
+
+interface Props {
+  categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
+  items: MenuItem[];
+  selectedCategory: string;
+  onAddItem: (item: MenuItem) => void;
+  onCheckout: (note?: string) => void;
+}
+
+export const ElegantMenuView = ({
+  categories,
+  items,
+  selectedCategory,
+  onAddItem,
+  onCheckout,
+}: Props) => {
+  const { t } = useTranslation();
+  const cartItems = useCartStore((state) => state.items);
+  const removeItem = useCartStore((state) => state.removeItem);
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const currency =
+    typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
+
+  const formatPrice = (price: number) => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+    } catch {
+      return `€${price.toFixed(2)}`;
+    }
+  };
+
+  const getPrice = (item: MenuItem) => {
+    return typeof item.price === 'number'
+      ? item.price
+      : typeof item.priceCents === 'number'
+      ? item.priceCents / 100
+      : 0;
+  };
+
+  const cartTotal = cartItems.reduce((sum, item) => {
+    const price = getPrice(item.item);
+    return sum + price * item.quantity;
+  }, 0);
+
+  const filteredItems =
+    selectedCategory === 'all'
+      ? items
+      : items.filter((item) => {
+          if (item.categoryId === selectedCategory) return true;
+          const category = categories.find((cat) => cat.id === selectedCategory);
+          return category && item.category === category.title;
+        });
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+      {/* Menu Section */}
+      <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredItems.map((item) => {
+            const price = getPrice(item);
+            const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+            const description = item.description ?? '';
+
+            return (
+              <Card
+                key={item.id}
+                className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
+              >
+                <div className="relative aspect-[16/10] overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/30 to-transparent z-10" />
+                  <img
+                    src={item.image}
+                    alt={displayName}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  <div className="absolute bottom-4 left-4 z-20">
+                    <h3 className="font-semibold text-xl text-foreground mb-1 drop-shadow-lg">
+                      {displayName}
+                    </h3>
+                    <Badge
+                      variant="secondary"
+                      className="bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-base px-3 py-1"
+                    >
+                      {formatPrice(price)}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="p-5">
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-4 line-clamp-2 min-h-[2.5rem]">
+                    {description}
+                  </p>
+                  <Button
+                    onClick={() => onAddItem(item)}
+                    disabled={item.available === false}
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-11 font-medium transition-all duration-300 hover:shadow-lg"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {t('menu.add_to_cart', { defaultValue: 'Add to Cart' })}
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Elegant Cart Sidebar */}
+      <div className="lg:col-span-1">
+        <Card className="sticky top-24 border-border/40 bg-card/80 backdrop-blur-xl shadow-2xl overflow-hidden">
+          <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-6 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-full bg-primary/20">
+                <ShoppingBag className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-foreground">
+                  {t('menu.your_order', { defaultValue: 'Your Order' })}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <ScrollArea className="h-[calc(100vh-28rem)]">
+            {cartItems.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
+                  <ShoppingBag className="h-10 w-10 text-muted-foreground/50" />
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  {t('menu.cart_empty', { defaultValue: 'Your cart is empty' })}
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 space-y-4">
+                {cartItems.map((cartItem, idx) => {
+                  const price = getPrice(cartItem.item);
+                  const itemTotal = price * cartItem.quantity;
+                  const displayName =
+                    cartItem.item.name ??
+                    cartItem.item.title ??
+                    t('menu.item', { defaultValue: 'Item' });
+
+                  return (
+                    <div
+                      key={`${cartItem.item.id}-${idx}`}
+                      className="relative group bg-muted/20 rounded-xl p-4 border border-border/30 hover:border-primary/30 transition-all duration-300"
+                    >
+                      <button
+                        onClick={() => removeItem(cartItem.item.id)}
+                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+
+                      <div className="flex gap-3">
+                        <img
+                          src={cartItem.item.image}
+                          alt={displayName}
+                          className="w-16 h-16 rounded-lg object-cover"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm text-foreground mb-1 truncate">
+                            {displayName}
+                          </h4>
+                          <p className="text-xs text-primary font-bold mb-2">
+                            {formatPrice(price)}
+                          </p>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 bg-background/50 rounded-full px-2 py-1">
+                              <button
+                                onClick={() =>
+                                  updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))
+                                }
+                                className="text-muted-foreground hover:text-foreground transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-muted"
+                              >
+                                −
+                              </button>
+                              <span className="text-sm font-medium w-6 text-center">
+                                {cartItem.quantity}
+                              </span>
+                              <button
+                                onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
+                                className="text-muted-foreground hover:text-foreground transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-muted"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <span className="text-sm font-bold text-foreground">
+                              {formatPrice(itemTotal)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+
+          {cartItems.length > 0 && (
+            <div className="p-6 border-t border-border/40 bg-gradient-to-br from-background to-muted/20">
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {t('menu.subtotal', { defaultValue: 'Subtotal' })}
+                  </span>
+                  <span className="font-medium">{formatPrice(cartTotal)}</span>
+                </div>
+                <Separator className="bg-border/50" />
+                <div className="flex items-center justify-between">
+                  <span className="text-lg font-bold text-foreground">
+                    {t('menu.total', { defaultValue: 'Total' })}
+                  </span>
+                  <span className="text-2xl font-bold text-primary">
+                    {formatPrice(cartTotal)}
+                  </span>
+                </div>
+              </div>
+              <Button
+                onClick={() => onCheckout()}
+                className="w-full h-12 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-base shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
+              >
+                {t('menu.checkout', { defaultValue: 'Place Order' })}
+              </Button>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+};

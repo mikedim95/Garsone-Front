@@ -5,7 +5,11 @@ import { ExternalLink, Smartphone } from 'lucide-react';
 import { Button } from '../ui/button';
 import { api } from '@/lib/api';
 
-export const DemoQRGrid = () => {
+type DemoQRGridProps = {
+  liveUrl?: string | null;
+};
+
+export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
   const getBaseOrigin = () => {
     const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN;
     if (envOrigin && envOrigin.trim().length > 0) {
@@ -20,10 +24,19 @@ export const DemoQRGrid = () => {
   };
 
   const BASE_ORIGIN = getBaseOrigin();
-  const [liveUrl, setLiveUrl] = useState<string | null>(null);
+  const [liveUrl, setLiveUrl] = useState<string | null>(providedLiveUrl ?? null);
+
+  useEffect(() => {
+    setLiveUrl(providedLiveUrl ?? null);
+  }, [providedLiveUrl]);
 
   useEffect(() => {
     let mounted = true;
+    if (providedLiveUrl) {
+      return () => {
+        mounted = false;
+      };
+    }
     (async () => {
       try {
         const data = await api.getTables();
@@ -37,10 +50,10 @@ export const DemoQRGrid = () => {
       }
     })();
     return () => { mounted = false; };
-  }, [BASE_ORIGIN]);
+  }, [BASE_ORIGIN, providedLiveUrl]);
 
   return (
-    <div id="demo-qr" className="py-32 bg-gradient-card">
+    <div className="py-32 bg-gradient-card" data-section="demo-qr">
       <div className="max-w-7xl mx-auto px-4">
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 glass px-5 py-2.5 rounded-full mb-8 shadow-lg">
