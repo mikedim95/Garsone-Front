@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
-import { DashboardThemeToggle } from "@/components/DashboardThemeToggle";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -131,6 +130,13 @@ export default function CookDashboard() {
     const init = async () => {
       try {
         const store = await api.getStore();
+        if (store?.store?.name) {
+          try {
+            localStorage.setItem('STORE_NAME', store.store.name);
+          } catch (error) {
+            console.warn('Failed to persist STORE_NAME', error);
+          }
+        }
         if (store?.store?.slug) {
           setStoreSlug(store.store.slug);
           try {
@@ -307,24 +313,8 @@ export default function CookDashboard() {
         ) : undefined}
         icon="👨‍🍳"
         tone="primary"
-        burgerActions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
-            className="w-full shadow-sm hover:shadow-md transition-shadow"
-          >
-            {t('actions.logout')}
-          </Button>
-        }
+        burgerActions={null}
       />
-
-      <div className="max-w-6xl mx-auto px-4 pt-4">
-        <DashboardThemeToggle />
-      </div>
 
       <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1 w-full">
         <div className="flex items-center gap-2 sm:gap-3">

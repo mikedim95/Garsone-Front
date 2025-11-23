@@ -25,6 +25,13 @@ export const DashboardHeader = ({
       accent: 'bg-gradient-accent',
     }[tone] || 'bg-gradient-primary';
 
+  const titleColorClass =
+    tone === 'secondary'
+      ? 'text-secondary-foreground'
+      : tone === 'accent'
+        ? 'text-accent-foreground'
+        : 'text-primary';
+
   return (
     <header className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-40 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 py-3 sm:py-5 flex items-center justify-between gap-3 sm:gap-4">
@@ -33,7 +40,7 @@ export const DashboardHeader = ({
             <span className="text-xl sm:text-2xl md:text-3xl">{icon}</span>
           </div>
           <div className="min-w-0">
-            <h1 className={`text-lg sm:text-xl md:text-2xl font-bold ${gradientClass} bg-clip-text text-transparent truncate`}>
+            <h1 className={`text-lg sm:text-xl md:text-2xl font-bold ${titleColorClass} truncate`}>
               {title}
             </h1>
             {subtitle && (

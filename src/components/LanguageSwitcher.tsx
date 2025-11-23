@@ -1,14 +1,15 @@
 ﻿import { useTranslation } from 'react-i18next';
-import { Button, type ButtonProps } from './ui/button';
-import { Globe } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 
 type Props = {
   className?: string;
-  variant?: ButtonProps['variant'];
-  size?: ButtonProps['size'];
+  // kept for backwards-compat, but no longer used for styling
+  variant?: string;
+  size?: string;
 };
 
-export const LanguageSwitcher = ({ className = '', variant = 'outline', size = 'sm' }: Props) => {
+export const LanguageSwitcher = ({ className = '' }: Props) => {
   const { i18n } = useTranslation();
 
   const toggleLanguage = () => {
@@ -21,15 +22,21 @@ export const LanguageSwitcher = ({ className = '', variant = 'outline', size = '
     }
   };
 
+  const isEnglish = (i18n.language || 'en').startsWith('en');
+
   return (
-    <Button
-      variant={variant}
-      size={size}
-      onClick={toggleLanguage}
-      className={"gap-2 " + className}
-    >
-      <Globe className="h-4 w-4" />
-      {i18n.language.toUpperCase()}
-    </Button>
+    <div className={cn('flex items-center justify-between gap-3 text-xs', className)}>
+      <span className="text-muted-foreground">
+        Language:{' '}
+        <span className="font-semibold text-foreground">
+          {isEnglish ? 'EN' : 'EL'}
+        </span>
+      </span>
+      <Switch
+        checked={!isEnglish}
+        onCheckedChange={toggleLanguage}
+        aria-label="Toggle language"
+      />
+    </div>
   );
 };

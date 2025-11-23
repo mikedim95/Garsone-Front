@@ -1,11 +1,56 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { Hero } from './landing/Hero';
-import { Features } from './landing/Features';
-import { AnimatedMockup } from './landing/AnimatedMockup';
-import { DemoQRGrid } from './landing/DemoQRGrid';
 import { Navigation } from './landing/Navigation';
-import { Testimonials } from './landing/Testimonials';
 import { realtimeService } from '@/lib/realtime';
+
+const AnimatedMockupLazy = lazy(() =>
+  import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
+);
+const FeaturesLazy = lazy(() =>
+  import('./landing/Features').then((mod) => ({ default: mod.Features }))
+);
+const TestimonialsLazy = lazy(() =>
+  import('./landing/Testimonials').then((mod) => ({ default: mod.Testimonials }))
+);
+const DemoQRGridLazy = lazy(() =>
+  import('./landing/DemoQRGrid').then((mod) => ({ default: mod.DemoQRGrid }))
+);
+
+const DeferredSection: React.FC<{
+  children: React.ReactNode;
+  rootMargin?: string;
+}> = ({ children, rootMargin = '200px' }) => {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (visible) return;
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+      setVisible(true);
+      return;
+    }
+
+    const node = ref.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setVisible(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visible, rootMargin]);
+
+  return <div ref={ref}>{visible ? children : null}</div>;
+};
 
 declare global {
   interface Window {
@@ -46,10 +91,26 @@ const AppLayout: React.FC = () => {
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
       <Hero />
-      <AnimatedMockup />
-      <Features />
-      <Testimonials />
-      <DemoQRGrid />
+      <DeferredSection>
+        <Suspense fallback={<div className="py-16" />}>
+          <AnimatedMockupLazy />
+        </Suspense>
+      </DeferredSection>
+      <DeferredSection>
+        <Suspense fallback={<div className="py-24" />}>
+          <FeaturesLazy />
+        </Suspense>
+      </DeferredSection>
+      <DeferredSection>
+        <Suspense fallback={<div className="py-20" />}>
+          <TestimonialsLazy />
+        </Suspense>
+      </DeferredSection>
+      <DeferredSection>
+        <Suspense fallback={<div className="py-24" />}>
+          <DemoQRGridLazy />
+        </Suspense>
+      </DeferredSection>
       <footer className="relative bg-foreground text-background py-20 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-accent opacity-20" />
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full mix-blend-overlay filter blur-3xl" />

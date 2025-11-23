@@ -95,7 +95,8 @@ export const DemoQRGrid = () => {
           <div className="absolute -inset-8 bg-gradient-primary rounded-[2.5rem] blur-3xl opacity-30 animate-glow" />
           <img 
             src={QR_MOCKUP} 
-            alt="QR in cafe" 
+            alt="QR in cafe"
+            loading="lazy"
             className="relative rounded-3xl shadow-2xl ring-1 ring-gray-200 hover:scale-[1.02] transition-transform duration-500" 
           />
         </div>

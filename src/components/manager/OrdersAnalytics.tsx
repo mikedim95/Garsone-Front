@@ -185,12 +185,20 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
 
       {panelOpen && (
         <Tabs defaultValue="list" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="list">Orders List</TabsTrigger>
-          <TabsTrigger value="status">By Status</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="revenue">Revenue</TabsTrigger>
-        </TabsList>
+          <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-2 justify-items-center">
+            <TabsTrigger className="w-full text-xs sm:text-sm" value="list">
+              Orders List
+            </TabsTrigger>
+            <TabsTrigger className="w-full text-xs sm:text-sm" value="status">
+              By Status
+            </TabsTrigger>
+            <TabsTrigger className="w-full text-xs sm:text-sm" value="timeline">
+              Timeline
+            </TabsTrigger>
+            <TabsTrigger className="w-full text-xs sm:text-sm" value="revenue">
+              Revenue
+            </TabsTrigger>
+          </TabsList>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 my-4 p-4 bg-muted/50 rounded-lg">

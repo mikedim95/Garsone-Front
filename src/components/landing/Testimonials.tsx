@@ -39,6 +39,7 @@ export const Testimonials = () => {
               <img
                 src={logo}
                 alt={`Restaurant ${index + 1}`}
+                loading="lazy"
                 className="max-w-full max-h-full object-contain opacity-70 hover:opacity-100 transition-opacity"
               />
             </div>
@@ -52,6 +53,7 @@ export const Testimonials = () => {
               <img
                 src={logo}
                 alt={`Restaurant ${index + 1}`}
+                loading="lazy"
                 className="max-w-full max-h-full object-contain opacity-70 hover:opacity-100 transition-opacity"
               />
             </div>

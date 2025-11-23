@@ -56,6 +56,10 @@ export interface Order {
   createdAt: string;
   updatedAt?: string;
   servedAt?: string | null;
+  preparingAt?: string | null;
+  readyAt?: string | null;
+  paidAt?: string | null;
+  cancelledAt?: string | null;
   cancelReason?: string | null;
   ticketNumber?: number;
   note?: string;

@@ -1,26 +1,87 @@
-import { useEffect } from "react";
+import { useEffect, Suspense, lazy } from "react";
 import clsx from "clsx";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
+import { useTheme } from "@/components/theme-provider-context";
 import { dashboardThemeClassNames, useDashboardTheme } from "@/hooks/useDashboardDark";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import Login from "./pages/Login";
-import TableMenu from "./pages/TableMenu";
-import WaiterDashboard from "./pages/WaiterDashboard";
-import ManagerDashboard from "./pages/ManagerDashboard";
-import OrderThanks from "./pages/OrderThanks";
-import CookDashboard from "./pages/CookDashboard";
+
 import './i18n/config';
+
+const Index = lazy(() => import("./pages/Index"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Login = lazy(() => import("./pages/Login"));
+const TableMenu = lazy(() => import("./pages/TableMenu"));
+const WaiterDashboard = lazy(() => import("./pages/WaiterDashboard"));
+const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
+const OrderThanks = lazy(() => import("./pages/OrderThanks"));
+const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 
 const queryClient = new QueryClient();
 
+const BrandedLoadingScreen = () => {
+  const location = useLocation();
+  const isLanding = location.pathname === "/";
+
+  let label = isLanding ? "Garsone" : "Garsone";
+  let roleLabel: string | null = null;
+  if (!isLanding && typeof window !== "undefined") {
+    try {
+      const storedName = window.localStorage.getItem("STORE_NAME");
+      const storedSlug = window.localStorage.getItem("STORE_SLUG");
+      const storedRole = window.localStorage.getItem("ROLE");
+      label = storedName || storedSlug || "Garsone";
+      if (storedRole && storedRole !== "guest") {
+        if (storedRole === "waiter") roleLabel = "Waiter";
+        else if (storedRole === "cook") roleLabel = "Cook";
+        else if (storedRole === "manager") roleLabel = "Manager";
+        else roleLabel = storedRole;
+      }
+    } catch {
+      label = "Garsone";
+    }
+  }
+
+  const subtitle = isLanding ? "Loading experience" : "Loading store";
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+      <div className="relative flex flex-col items-center gap-4">
+        <div
+          className="pointer-events-none absolute -inset-10 rounded-full bg-gradient-primary opacity-30 blur-3xl animate-pulse"
+          aria-hidden="true"
+        />
+        <div className="relative px-10 py-5 rounded-3xl bg-card/90 border border-border shadow-xl flex flex-col items-center gap-2">
+          <span className="text-[10px] tracking-[0.35em] uppercase text-muted-foreground">
+            {subtitle}
+          </span>
+          <span className="text-3xl sm:text-4xl font-black bg-gradient-primary bg-clip-text text-transparent animate-gradient">
+            {label}
+          </span>
+          {roleLabel && (
+            <span className="text-xs font-medium text-muted-foreground/80 tracking-wide">
+              {roleLabel}
+            </span>
+          )}
+        </div>
+        <div className="h-0.5 w-24 rounded-full bg-gradient-primary animate-slide-in" />
+      </div>
+    </div>
+  );
+};
+
 const AppShell = () => {
   const { themeClass, dashboardDark } = useDashboardTheme();
+  const { theme } = useTheme();
+
+  const isDarkFromTheme =
+    theme === "dark" ||
+    (theme === "system" &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -35,22 +96,28 @@ const AppShell = () => {
   }, [themeClass]);
 
   return (
-    <div className={clsx(themeClass, { dark: dashboardDark })}>
+    <div className={clsx(themeClass, { dark: dashboardDark || isDarkFromTheme })}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/table/:tableId" element={<TableMenu />} />
-              <Route path="/order/:orderId/thanks" element={<OrderThanks />} />
-              <Route path="/waiter" element={<WaiterDashboard />} />
-              <Route path="/manager" element={<ManagerDashboard />} />
-              <Route path="/cook" element={<CookDashboard />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Suspense
+              fallback={
+                <BrandedLoadingScreen />
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/table/:tableId" element={<TableMenu />} />
+                <Route path="/order/:orderId/thanks" element={<OrderThanks />} />
+                <Route path="/waiter" element={<WaiterDashboard />} />
+                <Route path="/manager" element={<ManagerDashboard />} />
+                <Route path="/cook" element={<CookDashboard />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </BrowserRouter>
         </TooltipProvider>
       </QueryClientProvider>

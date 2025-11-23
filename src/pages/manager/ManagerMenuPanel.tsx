@@ -90,6 +90,13 @@ export const ManagerMenuPanel = () => {
     (async () => {
       try {
         const store = await api.getStore();
+        if (store?.store?.name) {
+          try {
+            localStorage.setItem('STORE_NAME', store.store.name);
+          } catch (error) {
+            console.warn('Failed to persist STORE_NAME', error);
+          }
+        }
         if (store?.store?.slug) setStoreSlug(store.store.slug);
       } catch (error) {
         console.error('Failed to load store info', error);
