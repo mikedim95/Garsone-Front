@@ -1,6 +1,6 @@
 {
-  "name": "OrderFlow - Restaurant Ordering",
-  "short_name": "OrderFlow",
+  "name": "Garsone Online Demo",
+  "short_name": "Garsone Online Demo",
   "description": "Modern restaurant ordering system with real-time alerts",
   "start_url": "/",
   "display": "standalone",

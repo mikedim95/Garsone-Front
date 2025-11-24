@@ -195,8 +195,8 @@ function load(): Db {
         : [];
       const store =
         parsed.store && isRecord(parsed.store)
-          ? { id: storeId, name: (parsed.store as any).name || 'Demo Cafe', slug: (parsed.store as any).slug || 'demo-cafe' }
-          : { id: storeId, name: 'Demo Cafe', slug: 'demo-cafe' };
+        ? { id: storeId, name: (parsed.store as any).name || 'Garsone Offline Demo', slug: (parsed.store as any).slug || 'demo-cafe' }
+        : { id: storeId, name: 'Garsone Offline Demo', slug: 'demo-cafe' };
       const db: Db = {
         store,
         categories: parsed.categories ?? [],
@@ -232,7 +232,7 @@ function load(): Db {
   const itemCap: Item = { id: uid('item'), title: 'Cappuccino', description: 'Classic foam', priceCents: 350, categoryId: catCoffee.id, isAvailable: true };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
-    store: { id: 'store_1', name: 'Demo Cafe', slug: 'demo-cafe' },
+    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'demo-cafe' },
     categories: [catCoffee, catPastry],
     items: [itemEsp, itemCap, itemCro],
     modifiers: [modMilk, modSugar],
