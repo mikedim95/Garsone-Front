@@ -7,7 +7,7 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
-import { Dialog, DialogContent } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { ModifierDialog } from './ModifierDialog';
 import { useState } from 'react';
@@ -213,6 +213,12 @@ export const ElegantMenuView = ({
       {/* Cart Modal */}
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0">
+          <DialogTitle className="sr-only">
+            {t('menu.your_order', { defaultValue: 'Your Order' })}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
+          </DialogDescription>
           <Card className="border-0 shadow-none">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-6 border-b border-border/40">
               <div className="flex items-center gap-3">

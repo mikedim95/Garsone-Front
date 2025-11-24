@@ -89,7 +89,7 @@ import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 type ManagerMode = 'basic' | 'pro';
 type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
-type EconRange = 'today' | 'week' | 'month';
+type EconRange = 'today' | 'week' | 'month' | 'custom';
 type MenuCategoryMode = 'units' | 'share';
 type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
 type TableSummary = { id: string; label: string; active: boolean; isActive: boolean; waiterCount: number; orderCount: number; openOrders: number };
@@ -224,13 +224,31 @@ const daypartOf = (date: Date) => {
   return 'Late';
 };
 
-const unitPrice = (line?: CartItem | { item?: Partial<MenuItem> }) => {
+const unitPrice = (
+  line?: CartItem | { item?: Partial<MenuItem>; price?: number; priceCents?: number }
+) => {
+  if (!line) return 0;
+  if (typeof (line as { unitPrice?: number }).unitPrice === 'number') {
+    return (line as { unitPrice: number }).unitPrice;
+  }
+  if (typeof (line as { unitPriceCents?: number }).unitPriceCents === 'number') {
+    return ((line as { unitPriceCents: number }).unitPriceCents || 0) / 100;
+  }
+  if (typeof (line as { price?: number }).price === 'number') {
+    return (line as { price: number }).price;
+  }
+  if (typeof (line as { priceCents?: number }).priceCents === 'number') {
+    return ((line as { priceCents: number }).priceCents || 0) / 100;
+  }
   const item = extractMenuItem(line);
   if (!item) return 0;
   if (typeof item.price === 'number') return item.price;
   if (typeof item.priceCents === 'number') return item.priceCents / 100;
   return 0;
 };
+
+const LS_ORDERS_KEY = 'MANAGER_ORDERS_CACHE';
+const LS_ORDERS_TS_KEY = 'MANAGER_ORDERS_CACHE_TS';
 export default function ManagerDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -271,6 +289,7 @@ export default function ManagerDashboard() {
   const [savingTable, setSavingTable] = useState(false);
   const [tableDeletingId, setTableDeletingId] = useState<string | null>(null);
   const [menuCategoryLookup, setMenuCategoryLookup] = useState<Map<string, string>>(new Map());
+  const [menuMetaReady, setMenuMetaReady] = useState(false);
   const [managerMode, setManagerMode] = useState<ManagerMode>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -297,12 +316,18 @@ export default function ManagerDashboard() {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('MANAGER_ECON_RANGE');
-        if (saved === 'today' || saved === 'week' || saved === 'month') return saved;
+        if (saved === 'today' || saved === 'week' || saved === 'month' || saved === 'custom') return saved;
       } catch {
         // ignore
       }
     }
     return 'week';
+  });
+  const [customRange, setCustomRange] = useState<{ start: string; end: string }>(() => {
+    const end = new Date();
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+    const toInput = (d: Date) => d.toISOString().slice(0, 10);
+    return { start: toInput(start), end: toInput(end) };
   });
   const [tablesCollapsed, setTablesCollapsed] = useState(false);
   const [menuCategoryMode, setMenuCategoryMode] = useState<MenuCategoryMode>('units');
@@ -345,16 +370,57 @@ export default function ManagerDashboard() {
   useEffect(() => {
     const initOrders = async () => {
       try {
-        if (ordersAll.length === 0) {
-          const ordersRes = await api.getOrders();
-          setOrdersLocal(ordersRes.orders ?? []);
+        // Hydrate from local cache first (if available)
+        try {
+          const cached = localStorage.getItem(LS_ORDERS_KEY);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            const orders = Array.isArray(parsed) ? parsed : parsed?.orders;
+            if (Array.isArray(orders) && orders.length) {
+              setOrdersLocal(orders);
+            }
+          }
+        } catch (err) {
+          console.warn('[Orders cache] failed to read cache', err);
+        }
+
+        const take = 5000;
+        const ordersRes = await api.getOrders({ take });
+        const fetched = ordersRes.orders ?? [];
+        setOrdersLocal(fetched);
+        try {
+          const placed = fetched
+            .map((o) => getPlacedDate(o))
+            .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
+            .map((d) => d.getTime())
+            .sort((a, b) => a - b);
+          const byStatus = fetched.reduce<Record<string, number>>((acc, o) => {
+            const key = o.status || 'UNKNOWN';
+            acc[key] = (acc[key] ?? 0) + 1;
+            return acc;
+          }, {});
+          console.log('[Orders fetch] fetched orders', {
+            requested: take,
+            count: fetched.length,
+            byStatus,
+            earliestPlaced: placed.length ? new Date(placed[0]).toISOString() : null,
+            latestPlaced: placed.length ? new Date(placed[placed.length - 1]).toISOString() : null,
+          });
+          try {
+            localStorage.setItem(LS_ORDERS_KEY, JSON.stringify(fetched));
+            localStorage.setItem(LS_ORDERS_TS_KEY, new Date().toISOString());
+          } catch (err) {
+            console.warn('[Orders cache] failed to persist cache', err);
+          }
+        } catch (err) {
+          console.warn('[Orders fetch] failed to summarise orders', err);
         }
       } catch (error) {
         console.error('Failed to load orders', error);
       }
     };
     if (isAuthenticated() && isManagerRole) initOrders();
-  }, [isAuthenticated, isManagerRole, ordersAll.length, setOrdersLocal]);
+  }, [isAuthenticated, isManagerRole, setOrdersLocal]);
 
   const loadWaiterData = async () => {
     setLoadingWaiters(true);
@@ -461,10 +527,14 @@ export default function ManagerDashboard() {
   useEffect(() => {
     try {
       localStorage.setItem('MANAGER_ECON_RANGE', econRange);
+      if (econRange === 'custom') {
+        localStorage.setItem('MANAGER_ECON_CUSTOM_START', customRange.start);
+        localStorage.setItem('MANAGER_ECON_CUSTOM_END', customRange.end);
+      }
     } catch {
       // ignore
     }
-  }, [econRange]);
+  }, [econRange, customRange]);
 
   useEffect(() => {
     const loadMenuMetadata = async () => {
@@ -502,8 +572,10 @@ export default function ManagerDashboard() {
           }
         });
         setModifierLookup(modLookup);
+        setMenuMetaReady(true);
       } catch (error) {
         console.error('Failed to load menu metadata', error);
+        setMenuMetaReady(true);
       }
     };
     if (isAuthenticated() && isManagerRole) {
@@ -600,6 +672,16 @@ export default function ManagerDashboard() {
   // Economics date-range helpers and derived ranges
   const rangeInfo = useMemo(() => {
     const now = new Date();
+    if (econRange === 'custom') {
+      const parsedStart = new Date(`${customRange.start}T00:00:00`);
+      const parsedEnd = new Date(`${customRange.end}T00:00:00`);
+      const validStart = Number.isNaN(parsedStart.getTime()) ? startOfDay(now) : parsedStart;
+      const validEnd = Number.isNaN(parsedEnd.getTime()) ? startOfDay(now) : parsedEnd;
+      const days = Math.max(1, Math.round((validEnd.getTime() - validStart.getTime()) / 86400000) + 1);
+      const prevEnd = addDays(validStart, -1);
+      const prevStart = addDays(prevEnd, -(days - 1));
+      return { start: validStart, end: validEnd, prevStart, prevEnd, days };
+    }
     const end = startOfDay(now);
     let days = 7;
     if (econRange === 'today') days = 1;
@@ -608,7 +690,7 @@ export default function ManagerDashboard() {
     const prevEnd = addDays(start, -1);
     const prevStart = addDays(prevEnd, -(days - 1));
     return { start, end, prevStart, prevEnd, days };
-  }, [econRange]);
+  }, [econRange, customRange]);
 
   const totalRevenue = useMemo(
     () => servedOrders.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
@@ -656,6 +738,61 @@ export default function ManagerDashboard() {
     () => cancelledInRange.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
     [cancelledInRange]
   );
+
+  useEffect(() => {
+    const placedDates = servedOrders
+      .map((order) => getPlacedDate(order))
+      .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()));
+    const noPlacedDate = servedOrders.length - placedDates.length;
+    const minPlaced = placedDates.length
+      ? new Date(Math.min(...placedDates.map((d) => d.getTime()))).toISOString()
+      : null;
+    const maxPlaced = placedDates.length
+      ? new Date(Math.max(...placedDates.map((d) => d.getTime()))).toISOString()
+      : null;
+
+    const placedInRange = servedInRange
+      .map((order) => getPlacedDate(order))
+      .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
+      .map((d) => d.toISOString());
+    const placedPrevRange = servedPrevRange
+      .map((order) => getPlacedDate(order))
+      .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
+      .map((d) => d.toISOString());
+
+    console.log('[Analytics] Order timeline summary', {
+      econRange,
+      ordersAll: ordersAll.length,
+      servedOrders: servedOrders.length,
+      cancelledOrders: cancelledOrders.length,
+      missingPlacedDate: noPlacedDate,
+      earliestPlaced: minPlaced,
+      latestPlaced: maxPlaced,
+      currentRange: {
+        start: rangeInfo.start.toISOString(),
+        end: rangeInfo.end.toISOString(),
+        servedInRange: servedInRange.length,
+        samplePlaced: placedInRange.slice(0, 3),
+      },
+      previousRange: {
+        start: rangeInfo.prevStart.toISOString(),
+        end: rangeInfo.prevEnd.toISOString(),
+        servedInPrevRange: servedPrevRange.length,
+        samplePlaced: placedPrevRange.slice(0, 3),
+      },
+    });
+  }, [
+    econRange,
+    ordersAll.length,
+    servedOrders,
+    cancelledOrders,
+    rangeInfo.start,
+    rangeInfo.end,
+    rangeInfo.prevStart,
+    rangeInfo.prevEnd,
+    servedInRange,
+    servedPrevRange,
+  ]);
 
   const revenueTimeline = useMemo(() => {
     // When viewing Today use hourly buckets, otherwise use daypart segments for the selected range
@@ -738,6 +875,18 @@ export default function ManagerDashboard() {
 
   const resolveCategoryLabel = useCallback(
     (source?: unknown) => {
+      // Prefer category from known itemId lookup (manager metadata)
+      const itemIdFromSource =
+        (typeof source === 'object' && source && 'itemId' in source
+          ? (source as { itemId?: string }).itemId
+          : undefined) ??
+        (typeof source === 'object' && source && 'item' in source
+          ? ((source as { item?: { id?: string } }).item?.id ?? undefined)
+          : undefined);
+      if (itemIdFromSource && menuCategoryLookup.has(itemIdFromSource)) {
+        return menuCategoryLookup.get(itemIdFromSource)!;
+      }
+
       if (typeof source === 'string' && pickLabel(source)) {
         return source.trim();
       }
@@ -767,14 +916,57 @@ export default function ManagerDashboard() {
     },
     [menuCategoryLookup]
   );
-  const categoryRevenue = useMemo(() => {
-    const buckets = new Map<string, number>();
+
+  useEffect(() => {
+    // Debug category revenue mapping (only after metadata ready)
+    if (!menuMetaReady) return;
+    const buckets = new Map<string, { revenue: number; lines: number }>();
     servedInRange.forEach((order) => {
       (order.items ?? []).forEach((item) => {
         const category = resolveCategoryLabel(item.item ?? item);
+        const price = unitPrice(item);
+        const qty = getLineQuantity(item);
+        const revenue = price * qty;
+        const entry = buckets.get(category) ?? { revenue: 0, lines: 0 };
+        entry.revenue += revenue;
+        entry.lines += 1;
+        buckets.set(category, entry);
+      });
+    });
+    const summary = Array.from(buckets.entries())
+      .map(([category, v]) => ({ category, revenue: Number(v.revenue.toFixed(2)), lines: v.lines }))
+      .sort((a, b) => b.revenue - a.revenue);
+    console.log('[Category revenue debug]', {
+      econRange,
+      servedInRange: servedInRange.length,
+      categories: summary,
+      sampleItem: servedInRange[0]?.items?.[0],
+    });
+  }, [econRange, servedInRange, resolveCategoryLabel, menuMetaReady]);
+  const categoryRevenue = useMemo(() => {
+    if (!menuMetaReady) return [] as Array<{ category: string; revenue: number; share: number }>;
+    const buckets = new Map<string, number>();
+    servedInRange.forEach((order) => {
+      let orderLineRevenue = 0;
+      const lines = order.items ?? [];
+      lines.forEach((item) => {
+        const category = resolveCategoryLabel(item.item ?? item);
         const revenue = unitPrice(item) * getLineQuantity(item);
+        orderLineRevenue += revenue;
         buckets.set(category, (buckets.get(category) ?? 0) + revenue);
       });
+      // Fallback: if line items had no price, use order total as uncategorized
+      if (orderLineRevenue === 0) {
+        const fallbackTotal =
+          typeof order.totalCents === 'number'
+            ? order.totalCents / 100
+            : typeof order.total === 'number'
+            ? order.total
+            : 0;
+        if (fallbackTotal > 0) {
+          buckets.set('Uncategorized', (buckets.get('Uncategorized') ?? 0) + fallbackTotal);
+        }
+      }
     });
     const total = Array.from(buckets.values()).reduce((a, b) => a + b, 0) || 1;
     return Array.from(buckets.entries()).map(([category, revenue]) => ({
@@ -1849,6 +2041,7 @@ export default function ManagerDashboard() {
                     { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
                     { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
                     { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
+                    { key: 'custom', label: t('date_range.custom', { defaultValue: 'Custom' }) },
                   ] as const).map((opt) => (
                     <button
                       key={opt.key}
@@ -1864,6 +2057,32 @@ export default function ManagerDashboard() {
                     </button>
                   ))}
                 </div>
+                {econRange === 'custom' && (
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{t('date_range.start', { defaultValue: 'Start' })}</span>
+                      <input
+                        type="date"
+                        value={customRange.start}
+                        onChange={(e) =>
+                          setCustomRange((prev) => ({ ...prev, start: e.target.value || prev.start }))
+                        }
+                        className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{t('date_range.end', { defaultValue: 'End' })}</span>
+                      <input
+                        type="date"
+                        value={customRange.end}
+                        onChange={(e) =>
+                          setCustomRange((prev) => ({ ...prev, end: e.target.value || prev.end }))
+                        }
+                        className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
