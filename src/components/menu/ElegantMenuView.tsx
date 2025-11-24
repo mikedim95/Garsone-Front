@@ -216,7 +216,7 @@ export const ElegantMenuView = ({
           <Card className="border-0 shadow-none">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-6 border-b border-border/40">
               <div className="flex items-center gap-3">
-                <div className="p-3 rounded-full bg-primary/20">
+              <div className="p-3 rounded-full bg-primary/20">
                   <ShoppingCart className="h-6 w-6 text-primary" />
                 </div>
                 <div>
@@ -234,7 +234,7 @@ export const ElegantMenuView = ({
             {cartItems.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
-                  <ShoppingBag className="h-10 w-10 text-muted-foreground/50" />
+                  <ShoppingCart className="h-10 w-10 text-muted-foreground/50" />
                 </div>
                 <p className="text-muted-foreground text-sm">
                   {t('menu.cart_empty', { defaultValue: 'Your cart is empty' })}

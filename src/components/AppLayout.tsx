@@ -139,24 +139,21 @@ const AppLayout: React.FC = () => {
   const scrollToDemoQr = () => {
     setForceDemoVisible(true);
 
-    const performScroll = () => {
-      if (typeof window === 'undefined') return true;
+    const navOffset = 140; // keep heading below navbar and push QR up
+    const performScroll = (attempt = 0) => {
+      if (typeof window === 'undefined') return;
       const node = demoRef.current;
-      if (!node) return false;
+      if (!node) return;
       const rect = node.getBoundingClientRect();
-      const navOffset = 120; // keep heading tucked just below navbar
       const target = Math.max(0, rect.top + window.scrollY - navOffset);
       window.scrollTo({ top: target, behavior: 'smooth' });
-      return true;
+      // retry once content has expanded (lazy-loaded)
+      if (attempt < 3 && rect.height < 480) {
+        setTimeout(() => performScroll(attempt + 1), 140);
+      }
     };
 
-    // Allow layout to update after making the section visible
-    requestAnimationFrame(() => {
-      const done = performScroll();
-      if (!done) {
-        setTimeout(performScroll, 140);
-      }
-    });
+    requestAnimationFrame(() => performScroll(0));
   };
 
   const openLiveStore = async () => {
