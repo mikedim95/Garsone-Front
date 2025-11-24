@@ -145,6 +145,7 @@ export interface ManagerTableSummary {
   isActive: boolean;
   waiterCount: number;
   orderCount: number;
+  openOrders?: number;
 }
 
 export interface WaiterSummary {

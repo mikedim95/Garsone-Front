@@ -347,7 +347,7 @@ export const api = {
         }),
   updateModifier: (id: string, data: ModifierUpdatePayload): Promise<{ modifier?: Modifier }> =>
     isOffline()
-      ? devMocks.updateModifier(id, data)
+      ? devMocks.updateModifier(id, data as any)
       : fetchApi<{ modifier?: Modifier }>(`/manager/modifiers/${id}`, {
           method: "PATCH",
           body: JSON.stringify(data),

@@ -7,14 +7,14 @@ type Id = string;
 
 type Category = { id: Id; title: string; sortOrder: number };
 type Item = { id: Id; title: string; description?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
-type ModifierOption = { id: Id; title: string; priceDeltaCents: number; sortOrder: number };
-type Modifier = { id: Id; title: string; minSelect: number; maxSelect: number | null; options: ModifierOption[] };
+type ModifierOption = { id: Id; title: string; label: string; priceDeltaCents: number; sortOrder: number };
+type Modifier = { id: Id; title: string; name: string; minSelect: number; maxSelect: number | null; options: ModifierOption[] };
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
 type Table = { id: Id; label: string; isActive: boolean };
 type Waiter = { id: Id; email: string; displayName: string; password?: string };
 type WaiterAssignment = { waiterId: Id; tableId: Id };
 type OrderItem = { itemId: Id; qty: number; modifiers?: Array<{ modifierId: Id; optionIds: Id[] }> };
-type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'READY'|'SERVED'|'CANCELLED'; createdAt: number; items: OrderItem[]; note?: string };
+type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'READY'|'SERVED'|'PAID'|'CANCELLED'; createdAt: number; items: OrderItem[]; note?: string };
 
 type QRTileRecord = {
   id: Id;
@@ -218,15 +218,15 @@ function load(): Db {
   // Seed with demo data
   const catCoffee: Category = { id: uid('cat'), title: 'Coffee', sortOrder: 0 };
   const catPastry: Category = { id: uid('cat'), title: 'Pastries', sortOrder: 1 };
-  const modMilk: Modifier = { id: uid('mod'), title: 'Milk', minSelect: 0, maxSelect: 1, options: [
-    { id: uid('opt'), title: 'Whole', priceDeltaCents: 0, sortOrder: 0 },
-    { id: uid('opt'), title: 'Oat', priceDeltaCents: 50, sortOrder: 1 },
-    { id: uid('opt'), title: 'Almond', priceDeltaCents: 70, sortOrder: 2 },
+  const modMilk: Modifier = { id: uid('mod'), title: 'Milk', name: 'Milk', minSelect: 0, maxSelect: 1, options: [
+    { id: uid('opt'), title: 'Whole', label: 'Whole', priceDeltaCents: 0, sortOrder: 0 },
+    { id: uid('opt'), title: 'Oat', label: 'Oat', priceDeltaCents: 50, sortOrder: 1 },
+    { id: uid('opt'), title: 'Almond', label: 'Almond', priceDeltaCents: 70, sortOrder: 2 },
   ]};
-  const modSugar: Modifier = { id: uid('mod'), title: 'Sugar', minSelect: 0, maxSelect: 1, options: [
-    { id: uid('opt'), title: 'No sugar', priceDeltaCents: 0, sortOrder: 0 },
-    { id: uid('opt'), title: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
-    { id: uid('opt'), title: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
+  const modSugar: Modifier = { id: uid('mod'), title: 'Sugar', name: 'Sugar', minSelect: 0, maxSelect: 1, options: [
+    { id: uid('opt'), title: 'No sugar', label: 'No sugar', priceDeltaCents: 0, sortOrder: 0 },
+    { id: uid('opt'), title: '1 tsp', label: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
+    { id: uid('opt'), title: '2 tsp', label: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
   ]};
   const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true };
   const itemCap: Item = { id: uid('item'), title: 'Cappuccino', description: 'Classic foam', priceCents: 350, categoryId: catCoffee.id, isAvailable: true };
@@ -263,8 +263,33 @@ function summarizeTable(db: Db, table: Table) {
     id: table.id,
     label: table.label,
     isActive: table.isActive,
+    active: table.isActive,
     waiterCount: db.waiterAssignments.filter((a) => a.tableId === table.id).length,
     orderCount: db.orders.filter((o) => o.tableId === table.id).length,
+    openOrders: db.orders.filter((o) => o.tableId === table.id && o.status !== 'SERVED' && o.status !== 'CANCELLED').length,
+  };
+}
+
+// Enrich order with required fields
+function enrichOrder(db: Db, order: Order): any {
+  const table = db.tables.find(t => t.id === order.tableId);
+  const items = db.items;
+  let totalCents = 0;
+  
+  // Calculate total from items
+  order.items.forEach((orderItem: any) => {
+    const item = items.find(i => i.id === orderItem.itemId);
+    if (item) {
+      totalCents += (item.priceCents || 0) * (orderItem.qty || 1);
+    }
+  });
+  
+  return {
+    ...order,
+    tableLabel: table?.label || 'Unknown Table',
+    total: totalCents / 100,
+    totalCents,
+    createdAt: new Date(order.createdAt).toISOString(),
   };
 }
 
@@ -277,7 +302,7 @@ function composeMenu() {
       .filter(im => im.itemId === it.id)
       .map(im => {
         const m = db.modifiers.find(mm => mm.id === im.modifierId)!;
-        return { id: m.id, title: m.title, minSelect: m.minSelect, maxSelect: m.maxSelect, required: im.isRequired, options: m.options };
+        return { id: m.id, name: m.title, title: m.title, minSelect: m.minSelect, maxSelect: m.maxSelect, required: im.isRequired, options: m.options.map(opt => ({ ...opt, label: opt.title })) };
       })
   }));
   return { categories: db.categories, items };
@@ -463,7 +488,7 @@ export const devMocks = {
   // Auth (offline)
   signIn(email: string, _password: string) {
     const e = email.toLowerCase();
-    const role = e.startsWith('manager')
+    const role: 'waiter' | 'manager' | 'cook' | 'architect' = e.startsWith('manager')
       ? 'manager'
       : e.startsWith('cook')
         ? 'cook'
@@ -481,12 +506,12 @@ export const devMocks = {
     let orders = [...db.orders].sort((a,b)=> b.createdAt - a.createdAt);
     if (params?.status) orders = orders.filter(o => o.status === params.status);
     if (params?.take) orders = orders.slice(0, params.take);
-    return Promise.resolve({ orders });
+    return Promise.resolve({ orders: orders.map(o => enrichOrder(db, o)) });
   },
   getOrder(orderId: Id) {
     const db = snapshot();
     const order = db.orders.find(o=>o.id===orderId);
-    return Promise.resolve({ order });
+    return Promise.resolve({ order: order ? enrichOrder(db, order) : order });
   },
   getOrderQueueSummary() {
     const db = snapshot();
@@ -508,13 +533,13 @@ export const devMocks = {
     };
     db.orders.unshift(order);
     save(db);
-    return Promise.resolve({ order });
+    return Promise.resolve({ order: enrichOrder(db, order) });
   },
   updateOrderStatus(orderId: Id, status: Order['status']) {
     const db = snapshot();
     const o = db.orders.find(x=>x.id===orderId); if (o) o.status = status;
     save(db);
-    return Promise.resolve({ order: o });
+    return Promise.resolve({ order: o ? enrichOrder(db, o) : o });
   },
   managerDeleteOrder(orderId: Id) {
     const db = snapshot();
@@ -526,7 +551,7 @@ export const devMocks = {
     const db = snapshot();
     const o = db.orders.find(x=>x.id===orderId); if (o) o.status = 'CANCELLED';
     save(db);
-    return Promise.resolve({ order: o });
+    return Promise.resolve({ order: o ? enrichOrder(db, o) : o });
   },
 
   callWaiter(_tableId: Id) { return Promise.resolve({ ok: true }); },
@@ -714,14 +739,30 @@ export const devMocks = {
   deleteItem(id: Id) { const db = snapshot(); db.items = db.items.filter(i=>i.id!==id); save(db); return Promise.resolve({ ok: true }); },
 
   // Manager: modifiers per item
-  listModifiers() { const db = snapshot(); return Promise.resolve({ modifiers: db.modifiers }); },
-  createModifier(data: { title: string; minSelect: number; maxSelect: number|null }) {
-    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.title, minSelect: data.minSelect, maxSelect: data.maxSelect, options: [] };
-    db.modifiers.push(m); save(db); return Promise.resolve({ modifier: m });
+  listModifiers() { 
+    const db = snapshot(); 
+    return Promise.resolve({ 
+      modifiers: db.modifiers.map(m => ({ 
+        ...m, 
+        name: m.title,
+        options: m.options.map(opt => ({ ...opt, label: opt.title }))
+      })) 
+    }); 
   },
-  updateModifier(id: Id, data: Partial<Modifier>) { const db = snapshot(); const m = db.modifiers.find(x=>x.id===id); if (m) Object.assign(m, data); save(db); return Promise.resolve({ modifier: m }); },
+  createModifier(data: { title: string; minSelect: number; maxSelect: number|null }) {
+    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.title, name: data.title, minSelect: data.minSelect, maxSelect: data.maxSelect, options: [] };
+    db.modifiers.push(m); save(db); 
+    return Promise.resolve({ modifier: { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } });
+  },
+  updateModifier(id: Id, data: Partial<Modifier>) { 
+    const db = snapshot(); const m = db.modifiers.find(x=>x.id===id); if (m) Object.assign(m, data); save(db); 
+    return Promise.resolve({ modifier: m ? { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } : m }); 
+  },
   deleteModifier(id: Id) { const db = snapshot(); db.modifiers = db.modifiers.filter(m=>m.id!==id); db.itemModifiers = db.itemModifiers.filter(im=>im.modifierId!==id); save(db); return Promise.resolve({ ok: true }); },
-  createModifierOption(data: { modifierId: Id; title: string; priceDeltaCents: number; sortOrder: number }) { const db = snapshot(); const m = db.modifiers.find(x=>x.id===data.modifierId); const opt: ModifierOption = { id: uid('opt'), title: data.title, priceDeltaCents: data.priceDeltaCents, sortOrder: data.sortOrder }; if (m) m.options.push(opt); save(db); return Promise.resolve({ option: opt }); },
+  createModifierOption(data: { modifierId: Id; title: string; priceDeltaCents: number; sortOrder: number }) { 
+    const db = snapshot(); const m = db.modifiers.find(x=>x.id===data.modifierId); const opt: ModifierOption = { id: uid('opt'), title: data.title, label: data.title, priceDeltaCents: data.priceDeltaCents, sortOrder: data.sortOrder }; if (m) m.options.push(opt); save(db); 
+    return Promise.resolve({ option: { ...opt, label: opt.title } }); 
+  },
   updateModifierOption(id: Id, data: Partial<ModifierOption>) { const db = snapshot(); for (const m of db.modifiers) { const o = m.options.find(x=>x.id===id); if (o) { Object.assign(o, data); break; } } save(db); return Promise.resolve({ ok: true }); },
   deleteModifierOption(id: Id) { const db = snapshot(); for (const m of db.modifiers) { m.options = m.options.filter(o=>o.id!==id); } save(db); return Promise.resolve({ ok: true }); },
   linkItemModifier(itemId: Id, modifierId: Id, isRequired: boolean) { const db = snapshot(); db.itemModifiers.push({ itemId, modifierId, isRequired }); save(db); return Promise.resolve({ ok: true }); },

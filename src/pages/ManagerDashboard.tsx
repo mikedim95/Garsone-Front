@@ -58,7 +58,17 @@ import {
   PieChart,
   Pie,
 } from 'recharts';
-import type { NameType, TooltipPayload, TooltipProps, ValueType } from 'recharts';
+import type { TooltipProps } from 'recharts';
+
+// Type aliases for recharts types that are not exported
+type ValueType = string | number | Array<string | number>;
+type NameType = string | number;
+interface TooltipPayload<TValue, TName> {
+  payload?: Record<string, any>;
+  name?: TName;
+  value?: TValue;
+}
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -82,7 +92,7 @@ type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
 type EconRange = 'today' | 'week' | 'month';
 type MenuCategoryMode = 'units' | 'share';
 type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
-type TableSummary = { id: string; label: string; active: boolean };
+type TableSummary = { id: string; label: string; active: boolean; isActive: boolean; waiterCount: number; orderCount: number; openOrders: number };
 interface WaiterForm {
   email: string;
   displayName: string;
@@ -99,12 +109,19 @@ const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 const pickLabel = (value?: unknown) => (isNonEmptyString(value) ? value.trim() : null);
 
 const normalizeTableSummary = (table: Partial<Table> & { id?: string; label?: string }): TableSummary => ({
   id: table.id ?? '',
   label: table.label ?? '',
   active: table.isActive ?? table.active ?? true,
+  isActive: table.isActive ?? table.active ?? true,
+  waiterCount: 0,
+  orderCount: 0,
+  openOrders: 0,
 });
 
 const extractMenuItem = (source?: unknown): Partial<MenuItem> | null => {
@@ -369,6 +386,10 @@ export default function ManagerDashboard() {
           id: table.id,
           label: table.label,
           active: table.isActive,
+          isActive: table.isActive,
+          waiterCount: table.waiterCount || 0,
+          orderCount: table.orderCount || 0,
+          openOrders: table.openOrders || 0,
         }))
       );
     } catch (error) {
@@ -454,9 +475,9 @@ export default function ManagerDashboard() {
           api.listModifiers?.() ?? Promise.resolve({ modifiers: [] }),
         ]);
         const categoriesMap = new Map<string, string>();
-        (categoriesRes?.categories ?? []).forEach((category: MenuCategory) => {
-          if (!category?.id) return;
-          const label = pickLabel(category.title);
+        (categoriesRes?.categories ?? []).forEach((category) => {
+          if (!category?.id || typeof category !== 'object') return;
+          const label = pickLabel((category as MenuCategory).title);
           if (label) {
             categoriesMap.set(category.id, label);
           }
@@ -465,12 +486,10 @@ export default function ManagerDashboard() {
         (itemsRes?.items ?? []).forEach((item: ManagerItemSummary) => {
           if (!item?.id) return;
           const label =
-            pickLabel(item.category?.title) ??
-            pickLabel(item.category?.name) ??
+            pickLabel(item.category) ??
             (item.categoryId ? categoriesMap.get(item.categoryId) ?? null : null) ??
             pickLabel((item as { categoryTitle?: string }).categoryTitle) ??
-            pickLabel((item as { categoryName?: string }).categoryName) ??
-            pickLabel(item.category);
+            pickLabel((item as { categoryName?: string }).categoryName);
           if (label) {
             lookup.set(item.id, label);
           }
@@ -1514,8 +1533,9 @@ export default function ManagerDashboard() {
     setTableModalOpen(true);
   };
 
-  const openEditTable = (table: TableSummary) => {
-    setTableForm({ id: table.id, label: table.label, isActive: table.active });
+  const openEditTable = (table: TableSummary | (ManagerTableSummary & { openOrders: number })) => {
+    const isActive = 'active' in table ? table.active : table.isActive;
+    setTableForm({ id: table.id, label: table.label, isActive });
     setTableModalOpen(true);
   };
 
@@ -1721,7 +1741,7 @@ export default function ManagerDashboard() {
         )}
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={(value) => setActiveTab(value as ManagerTab)}
           className="flex flex-1 min-h-0"
         >
           <aside

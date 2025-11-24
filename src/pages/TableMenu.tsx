@@ -4,7 +4,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { MenuItemCard } from "@/components/menu/MenuItemCard";
 import { ModifierDialog } from "@/components/menu/ModifierDialog";
-import { Cart } from "@/components/menu/Cart";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,7 +25,7 @@ import type {
   SubmittedOrderItem,
   SubmittedOrderSummary,
 } from "@/types";
-import { Bell, Pencil, LayoutGrid, LayoutList } from "lucide-react";
+import { Bell, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
@@ -127,7 +126,6 @@ export default function TableMenu() {
     "idle"
   );
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"classic" | "elegant">("classic");
   const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(
     () => {
       if (typeof window === "undefined") return null;
@@ -779,24 +777,6 @@ export default function TableMenu() {
               )}
             </div>
             <div className="flex gap-2 items-center">
-              <div className="flex gap-1 bg-muted/50 rounded-full p-1">
-                <Button
-                  variant={viewMode === "classic" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("classic")}
-                  className="rounded-full h-8 px-3"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "elegant" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("elegant")}
-                  className="rounded-full h-8 px-3"
-                >
-                  <LayoutList className="h-4 w-4" />
-                </Button>
-              </div>
               <AppBurger title={storeName}>
                 {lastOrder ? (
                   <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">
@@ -986,76 +966,16 @@ export default function TableMenu() {
               </Button>
             </div>
           ) : (
-            <>
-              {viewMode === "elegant" ? (
-                <ElegantMenuView
-                  categories={categories}
-                  items={menuData?.items ?? []}
-                  selectedCategory={selectedCategory}
-                  onAddItem={handleAddItem}
-                  onCheckout={handleCheckout}
-                />
-              ) : (
-                <>
-                  {selectedCategory === "all" ? (
-                    <div className="space-y-8">
-                      {categories.map((cat) => {
-                        const catItems = (menuData?.items ?? []).filter((item) =>
-                          matchesCategory(item, cat.id, categories)
-                        );
-                        if (catItems.length === 0) return null;
-                        return (
-                          <section key={cat.id}>
-                            <div className="flex items-center gap-3 mb-3">
-                              <h3 className="text-lg font-semibold text-foreground">
-                                {cat.title}
-                              </h3>
-                              <div className="h-px bg-border flex-1" />
-                            </div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                              {catItems.map((item, idx) => (
-                                <div
-                                  key={item.id}
-                                  className="animate-slide-in"
-                                  style={{ animationDelay: `${idx * 80}ms` }}
-                                >
-                                  <MenuItemCard item={item} onAdd={handleAddItem} />
-                                </div>
-                              ))}
-                            </div>
-                          </section>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {filteredItems.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className="animate-slide-in"
-                          style={{ animationDelay: `${idx * 80}ms` }}
-                        >
-                          <MenuItemCard item={item} onAdd={handleAddItem} />
-                        </div>
-                      ))}
-                      {filteredItems.length === 0 && (
-                        <div className="col-span-full text-center text-muted-foreground py-10">
-                          {t("menu.no_items", {
-                            defaultValue: "No menu items available yet.",
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </>
+            <ElegantMenuView
+              categories={categories}
+              items={menuData?.items ?? []}
+              selectedCategory={selectedCategory}
+              onAddItem={handleAddItem}
+              onCheckout={handleCheckout}
+            />
           )}
         </div>
 
-        {viewMode === "classic" && (
-          <Cart onCheckout={handleCheckout} editing={Boolean(editingOrderId)} />
-        )}
         <ModifierDialog
           open={customizeOpen}
           item={customizeItem}

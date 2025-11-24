@@ -131,10 +131,10 @@ export const ManagerMenuPanel = () => {
       title: item.title ?? item.name ?? '',
       description: item.description ?? '',
       imageUrl: item.image ?? item.imageUrl ?? '',
-      price: typeof item.priceCents === 'number' ? (item.priceCents / 100).toFixed(2) : (item.price ?? 0).toFixed(2),
+      price: typeof item.priceCents === 'number' ? (item.priceCents / 100).toFixed(2) : '0.00',
       categoryId: item.categoryId ?? '',
       newCategoryTitle: '',
-      isAvailable: item.isAvailable ?? item.available ?? true,
+      isAvailable: item.isAvailable ?? true,
     });
     try {
       const menu: MenuData = await api.getMenu();
@@ -233,7 +233,7 @@ export const ManagerMenuPanel = () => {
                     <div className="font-medium">
                       {item.title ?? item.name}
                       <span className="text-xs text-muted-foreground">
-                        €{((item.priceCents ?? Math.round((item.price ?? 0) * 100)) / 100).toFixed(2)}
+                        €{((item.priceCents ?? 0) / 100).toFixed(2)}
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">{item.description || '—'}</div>
