@@ -138,13 +138,25 @@ const AppLayout: React.FC = () => {
 
   const scrollToDemoQr = () => {
     setForceDemoVisible(true);
-    requestAnimationFrame(() => {
-      demoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  };
 
-  const handleDemoVisible = () => {
-    demoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const performScroll = () => {
+      if (typeof window === 'undefined') return true;
+      const node = demoRef.current;
+      if (!node) return false;
+      const rect = node.getBoundingClientRect();
+      const navOffset = 120; // keep heading tucked just below navbar
+      const target = Math.max(0, rect.top + window.scrollY - navOffset);
+      window.scrollTo({ top: target, behavior: 'smooth' });
+      return true;
+    };
+
+    // Allow layout to update after making the section visible
+    requestAnimationFrame(() => {
+      const done = performScroll();
+      if (!done) {
+        setTimeout(performScroll, 140);
+      }
+    });
   };
 
   const openLiveStore = async () => {
@@ -223,7 +235,7 @@ const AppLayout: React.FC = () => {
         </Suspense>
       </DeferredSection>
       <div id="demo-qr" ref={demoRef} className="scroll-mt-24">
-        <DeferredSection forceVisible={forceDemoVisible} onVisible={handleDemoVisible}>
+        <DeferredSection forceVisible={forceDemoVisible}>
           <Suspense fallback={<div className="py-24" />}>
             <DemoQRGridLazy liveUrl={liveUrl ?? undefined} />
           </Suspense>

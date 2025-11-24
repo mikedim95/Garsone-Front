@@ -7,8 +7,6 @@ import { ModifierDialog } from "@/components/menu/ModifierDialog";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { HomeLink } from "@/components/HomeLink";
 import { AppBurger } from "./AppBurger";
 import { useCartStore } from "@/store/cartStore";
 import { api, ApiError, visitTokenStore } from "@/lib/api";
@@ -25,7 +23,7 @@ import type {
   SubmittedOrderItem,
   SubmittedOrderSummary,
 } from "@/types";
-import { Bell, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
@@ -125,6 +123,7 @@ export default function TableMenu() {
   const [calling, setCalling] = useState<"idle" | "pending" | "accepted">(
     "idle"
   );
+  const [callPrompted, setCallPrompted] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(
     () => {
@@ -703,6 +702,19 @@ export default function TableMenu() {
     };
   }, [storeSlug, tableId]);
 
+  useEffect(() => {
+    // Collapse the call CTA while a call is in-flight/accepted
+    if (calling !== "idle") {
+      setCallPrompted(false);
+    }
+  }, [calling]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !callPrompted) return;
+    const timer = window.setTimeout(() => setCallPrompted(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [callPrompted]);
+
   const handleCallWaiter = async () => {
     if (!tableId) return;
     try {
@@ -747,12 +759,31 @@ export default function TableMenu() {
               })
             : msg ||
               t("menu.call_waiter_generic_error", {
-                defaultValue: "Unable to call waiter.",
-              }),
+            defaultValue: "Unable to call waiter.",
+          }),
       });
       setCalling("idle");
     }
   };
+
+  const handleFloatingCallClick = () => {
+    if (calling === "pending") return;
+    if (!callPrompted) {
+      setCallPrompted(true);
+      return;
+    }
+    setCallPrompted(false);
+    handleCallWaiter();
+  };
+
+  const callButtonLabel =
+    calling === "pending"
+      ? t("menu.call_status_pending", { defaultValue: "Calling…" })
+      : calling === "accepted"
+      ? t("menu.call_status_accepted", { defaultValue: "Coming…" })
+      : callPrompted
+      ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
+      : null;
 
   return (
     <div className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-hidden")}>
@@ -834,45 +865,22 @@ export default function TableMenu() {
                       <span>{t("menu.total")}</span>
                       <span>€{computeOrderTotal(lastOrder).toFixed(2)}</span>
                     </div>
-                    {canEditLastOrder && (
-                      <div className="pt-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-center"
-                          onClick={handleEditLastOrder}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          {t("actions.edit", { defaultValue: "Edit order" })}
-                        </Button>
-                      </div>
-                    )}
+                {canEditLastOrder && (
+                  <div className="pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-center"
+                      onClick={handleEditLastOrder}
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      {t("actions.edit", { defaultValue: "Edit order" })}
+                    </Button>
                   </div>
-                ) : null}
-                <button
-                  disabled={calling !== "idle"}
-                  onClick={handleCallWaiter}
-                  className={`w-full justify-center relative inline-flex items-center gap-2 rounded-full border px-4 py-3 text-sm transition ${
-                    calling === "idle"
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90 border-transparent"
-                      : "bg-muted text-muted-foreground border-border"
-                  } ${
-                    calling !== "idle" ? "opacity-80 cursor-not-allowed" : ""
-                  }`}
-                >
-                  <span className="relative inline-flex">
-                    {calling !== "idle" && (
-                      <span className="absolute inline-flex h-full w-full rounded-full animate-ping bg-primary/40 opacity-60" />
-                    )}
-                    <Bell className="h-4 w-4 relative" />
-                  </span>
-                  {calling === "idle" && t("menu.call_waiter")}
-                  {calling === "pending" &&
-                    t("menu.call_status_pending", { defaultValue: "Calling…" })}
-                  {calling === "accepted" &&
-                    t("menu.call_status_accepted", { defaultValue: "Coming…" })}
-                </button>
+                )}
+              </div>
+            ) : null}
               </AppBurger>
             </div>
           </div>
@@ -972,6 +980,10 @@ export default function TableMenu() {
               selectedCategory={selectedCategory}
               onAddItem={handleAddItem}
               onCheckout={handleCheckout}
+              callButtonLabel={callButtonLabel}
+              callStatus={calling}
+              callPrompted={callPrompted}
+              onCallClick={handleFloatingCallClick}
             />
           )}
         </div>

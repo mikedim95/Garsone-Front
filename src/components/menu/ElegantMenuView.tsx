@@ -1,6 +1,6 @@
 import type { MenuItem, MenuCategory } from '@/types';
 import { Button } from '../ui/button';
-import { Plus, ShoppingBag, X, Pencil } from 'lucide-react';
+import { Plus, ShoppingCart, X, Pencil, Bell } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCartStore } from '@/store/cartStore';
 import { Card } from '../ui/card';
@@ -18,6 +18,10 @@ interface Props {
   selectedCategory: string;
   onAddItem: (item: MenuItem) => void;
   onCheckout: (note?: string) => void;
+  callButtonLabel?: string | null;
+  callStatus?: 'idle' | 'pending' | 'accepted';
+  callPrompted?: boolean;
+  onCallClick?: () => void;
 }
 
 export const ElegantMenuView = ({
@@ -26,6 +30,10 @@ export const ElegantMenuView = ({
   selectedCategory,
   onAddItem,
   onCheckout,
+  callButtonLabel,
+  callStatus = 'idle',
+  callPrompted = false,
+  onCallClick,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -172,10 +180,32 @@ export const ElegantMenuView = ({
         onClick={() => setCartOpen(true)}
         className="fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95"
       >
-        <ShoppingBag className="h-6 w-6" />
+        <ShoppingCart className="h-6 w-6" />
         {cartItems.length > 0 && (
           <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center animate-scale-in">
             {cartItems.length}
+          </span>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onCallClick}
+        disabled={callStatus === 'pending'}
+        className={[
+          'fixed bottom-6 left-6 z-50 flex items-center rounded-full h-16 shadow-2xl overflow-hidden border border-border/60 bg-primary text-primary-foreground transition-all duration-300 ease-out',
+          callButtonLabel ? 'w-48 pl-5 pr-6 justify-start hover:scale-105' : 'w-16 justify-center hover:scale-110',
+          callStatus === 'pending' ? 'opacity-80 cursor-wait' : 'active:scale-95',
+        ].join(' ')}
+      >
+        <span className="relative flex items-center justify-center">
+          {(callStatus === 'pending' || callStatus === 'accepted') && (
+            <span className="absolute inline-flex h-10 w-10 rounded-full bg-primary-foreground/20 animate-ping" />
+          )}
+          <Bell className="h-6 w-6 relative" />
+        </span>
+        {callButtonLabel && (
+          <span className="ml-3 text-sm font-semibold whitespace-nowrap">
+            {callButtonLabel}
           </span>
         )}
       </button>
@@ -187,7 +217,7 @@ export const ElegantMenuView = ({
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-6 border-b border-border/40">
               <div className="flex items-center gap-3">
                 <div className="p-3 rounded-full bg-primary/20">
-                  <ShoppingBag className="h-6 w-6 text-primary" />
+                  <ShoppingCart className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-foreground">

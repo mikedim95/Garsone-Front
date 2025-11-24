@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { QR_MOCKUP } from '@/lib/mockData';
-import { ExternalLink, Smartphone } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
 import { api } from '@/lib/api';
 
@@ -56,10 +56,6 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
     <div className="py-32 bg-gradient-card" data-section="demo-qr">
       <div className="max-w-7xl mx-auto px-4">
         <div className="text-center mb-20">
-          <div className="inline-flex items-center gap-2 glass px-5 py-2.5 rounded-full mb-8 shadow-lg">
-            <Smartphone className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-muted-foreground">Scan with your phone camera</span>
-          </div>
           <h2 className="text-6xl md:text-7xl font-black mb-6 text-foreground tracking-tight">
             Experience It Live
           </h2>
