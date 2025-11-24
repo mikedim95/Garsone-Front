@@ -1,5 +1,5 @@
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
-export type UserRole = 'waiter' | 'manager' | 'cook';
+export type UserRole = 'waiter' | 'manager' | 'cook' | 'architect';
 
 export interface MenuItem {
   id: string;
@@ -79,6 +79,19 @@ export interface Table {
   label: string;
   active?: boolean;
   isActive?: boolean;
+}
+
+export interface QRTile {
+  id: string;
+  storeId: string;
+  storeSlug?: string;
+  publicCode: string;
+  label?: string | null;
+  isActive: boolean;
+  tableId?: string | null;
+  tableLabel?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface OrderQueueSummary {
@@ -219,6 +232,7 @@ export interface CreateOrderPayload {
   tableId: string;
   items: CreateOrderPayloadItem[];
   note?: string;
+  visit?: string;
 }
 
 export interface OrderResponse {

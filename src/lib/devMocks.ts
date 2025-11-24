@@ -16,8 +16,19 @@ type WaiterAssignment = { waiterId: Id; tableId: Id };
 type OrderItem = { itemId: Id; qty: number; modifiers?: Array<{ modifierId: Id; optionIds: Id[] }> };
 type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'READY'|'SERVED'|'CANCELLED'; createdAt: number; items: OrderItem[]; note?: string };
 
+type QRTileRecord = {
+  id: Id;
+  storeId: Id;
+  publicCode: string;
+  label?: string | null;
+  tableId?: Id | null;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
 type Db = {
-  store: { id: string; name: string };
+  store: { id: string; name: string; slug?: string };
   categories: Category[];
   items: Item[];
   modifiers: Modifier[];
@@ -26,6 +37,7 @@ type Db = {
   orders: Order[];
   waiters: Waiter[];
   waiterAssignments: WaiterAssignment[];
+  qrTiles: QRTileRecord[];
 };
 
 const LS_KEY = 'devMocks';
@@ -114,6 +126,44 @@ const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
     };
   });
 
+const normalizeQrTileRecord = (tile: unknown, storeId: string): QRTileRecord => {
+  if (!isRecord(tile)) {
+    const now = Date.now();
+    return {
+      id: uid('qr'),
+      storeId,
+      publicCode: uid('qr').replace(/[^a-zA-Z0-9]/g, '').slice(-10).toUpperCase(),
+      label: null,
+      tableId: null,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  const id = typeof tile.id === 'string' ? tile.id : uid('qr');
+  const publicCode =
+    typeof (tile as any).publicCode === 'string' && (tile as any).publicCode.trim().length > 0
+      ? (tile as any).publicCode
+      : id.slice(-8).toUpperCase();
+  const label = typeof (tile as any).label === 'string' ? (tile as any).label : null;
+  const tableId = typeof (tile as any).tableId === 'string' ? (tile as any).tableId : null;
+  const isActive = typeof (tile as any).isActive === 'boolean' ? (tile as any).isActive : true;
+  const createdAt =
+    typeof (tile as any).createdAt === 'number' ? (tile as any).createdAt : Date.now();
+  const updatedAt =
+    typeof (tile as any).updatedAt === 'number' ? (tile as any).updatedAt : createdAt;
+  return {
+    id,
+    storeId: typeof (tile as any).storeId === 'string' ? (tile as any).storeId : storeId,
+    publicCode,
+    label,
+    tableId,
+    isActive,
+    createdAt,
+    updatedAt,
+  };
+};
+
 function uid(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -126,6 +176,7 @@ type StoredDb = Partial<Db> & {
   tables?: unknown;
   waiters?: unknown;
   waiterAssignments?: unknown;
+  qrTiles?: unknown;
 };
 
 function load(): Db {
@@ -138,8 +189,16 @@ function load(): Db {
       const assignments = Array.isArray(parsed.waiterAssignments)
         ? parsed.waiterAssignments.filter(isWaiterAssignment)
         : [];
-      return {
-        store: parsed.store ?? { id: 'store_1', name: 'Demo Cafe' },
+      const storeId = (parsed.store as any)?.id || 'store_1';
+      const qrTiles = Array.isArray(parsed.qrTiles)
+        ? parsed.qrTiles.map((tile) => normalizeQrTileRecord(tile, storeId))
+        : [];
+      const store =
+        parsed.store && isRecord(parsed.store)
+          ? { id: storeId, name: (parsed.store as any).name || 'Demo Cafe', slug: (parsed.store as any).slug || 'demo-cafe' }
+          : { id: storeId, name: 'Demo Cafe', slug: 'demo-cafe' };
+      const db: Db = {
+        store,
         categories: parsed.categories ?? [],
         items: parsed.items ?? [],
         modifiers: parsed.modifiers ?? [],
@@ -148,7 +207,10 @@ function load(): Db {
         orders: parsed.orders ?? [],
         waiters,
         waiterAssignments: assignments,
+        qrTiles,
       };
+      seedQrTilesIfEmpty(db);
+      return db;
     } catch (error) {
       console.warn('Failed to parse devMocks snapshot', error);
     }
@@ -170,7 +232,7 @@ function load(): Db {
   const itemCap: Item = { id: uid('item'), title: 'Cappuccino', description: 'Classic foam', priceCents: 350, categoryId: catCoffee.id, isAvailable: true };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
-    store: { id: 'store_1', name: 'Demo Cafe' },
+    store: { id: 'store_1', name: 'Demo Cafe', slug: 'demo-cafe' },
     categories: [catCoffee, catPastry],
     items: [itemEsp, itemCap, itemCro],
     modifiers: [modMilk, modSugar],
@@ -187,7 +249,9 @@ function load(): Db {
     orders: [],
     waiters: [ { id: 'w1', email: 'waiter1@demo.local', displayName: 'Waiter 1', password: 'password' } ],
     waiterAssignments: [{ waiterId: 'w1', tableId: 'T1' }],
+    qrTiles: [],
   };
+  seedQrTilesIfEmpty(db);
   save(db);
   return db;
 }
@@ -251,6 +315,42 @@ function seedOrdersIfEmpty(db: Db) {
   save(db);
 }
 
+function seedQrTilesIfEmpty(db: Db) {
+  if (db.qrTiles.length > 0) return;
+  const now = Date.now();
+  const tables = db.tables.length ? db.tables : [{ id: 'T1', label: 'Table 1', isActive: true }];
+  for (let i = 0; i < 6; i += 1) {
+    const table = tables[i % tables.length];
+    db.qrTiles.push({
+      id: uid('qr'),
+      storeId: db.store.id,
+      publicCode: `QR${String(i + 1).padStart(2, '0')}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      label: `Tile ${String(i + 1).padStart(2, '0')}`,
+      tableId: table?.id ?? null,
+      isActive: true,
+      createdAt: now - i * 120_000,
+      updatedAt: now - i * 120_000,
+    });
+  }
+  save(db);
+}
+
+function serializeQrTile(db: Db, tile: QRTileRecord) {
+  const table = tile.tableId ? db.tables.find((t) => t.id === tile.tableId) : null;
+  return {
+    id: tile.id,
+    storeId: tile.storeId,
+    storeSlug: db.store.slug || undefined,
+    publicCode: tile.publicCode,
+    label: tile.label ?? null,
+    isActive: tile.isActive,
+    tableId: tile.tableId ?? null,
+    tableLabel: table?.label ?? null,
+    createdAt: new Date(tile.createdAt).toISOString(),
+    updatedAt: new Date(tile.updatedAt).toISOString(),
+  };
+}
+
 export const devMocks = {
   // Store & tables & menu
   getStore() { const db = snapshot(); return Promise.resolve({ store: db.store }); },
@@ -262,11 +362,114 @@ export const devMocks = {
     return Promise.resolve({ tables });
   },
   getMenu() { return Promise.resolve(composeMenu()); },
+  adminListStores() {
+    const db = snapshot();
+    return Promise.resolve({
+      stores: [
+        {
+          id: db.store.id,
+          name: db.store.name,
+          slug: db.store.slug || 'demo-cafe',
+        },
+      ],
+    });
+  },
+  adminListStoreTables(_storeId: string) {
+    const db = snapshot();
+    return Promise.resolve({
+      tables: db.tables.map((t) => ({
+        id: t.id,
+        label: t.label,
+        isActive: t.isActive,
+        waiterCount: db.waiterAssignments.filter((a) => a.tableId === t.id).length,
+        orderCount: db.orders.filter((o) => o.tableId === t.id).length,
+      })),
+    });
+  },
+  adminListQrTiles(storeId: string) {
+    const db = snapshot();
+    seedQrTilesIfEmpty(db);
+    const tiles = db.qrTiles
+      .filter((tile) => tile.storeId === storeId || tile.storeId === db.store.id)
+      .map((tile) => serializeQrTile(db, tile));
+    return Promise.resolve({
+      store: { id: db.store.id, name: db.store.name, slug: db.store.slug },
+      tiles,
+    });
+  },
+  adminBulkCreateQrTiles(storeId: string, data: { count: number; labelPrefix?: string }) {
+    const db = snapshot();
+    const count = Math.max(1, Math.min(500, Number(data.count) || 0));
+    const prefix = (data.labelPrefix || '').trim();
+    const pad = Math.max(String(count).length, 2);
+    const created: QRTileRecord[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const publicCode = `QR${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+      const label = prefix ? `${prefix}${String(i + 1).padStart(pad, '0')}` : null;
+      const tile: QRTileRecord = {
+        id: uid('qr'),
+        storeId: storeId || db.store.id,
+        publicCode,
+        label,
+        tableId: null,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      db.qrTiles.unshift(tile);
+      created.push(tile);
+    }
+    save(db);
+    return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
+  },
+  adminUpdateQrTile(id: string, data: { tableId?: string | null; isActive?: boolean; label?: string }) {
+    const db = snapshot();
+    const tile = db.qrTiles.find((t) => t.id === id);
+    if (!tile) return Promise.reject(new Error('QR tile not found'));
+    if (typeof data.isActive === 'boolean') tile.isActive = data.isActive;
+    if (typeof data.label !== 'undefined') tile.label = null;
+    if (typeof data.tableId !== 'undefined') tile.tableId = data.tableId || null;
+    tile.updatedAt = Date.now();
+    save(db);
+    return Promise.resolve({ tile: serializeQrTile(db, tile) });
+  },
+  adminDeleteQrTile(id: Id) {
+    const db = snapshot();
+    db.qrTiles = db.qrTiles.filter((t) => t.id !== id);
+    save(db);
+    return Promise.resolve({ ok: true });
+  },
+  resolveQrTile(publicCode: string) {
+    const db = snapshot();
+    const tile = db.qrTiles.find((t) => t.publicCode === publicCode && t.isActive);
+    if (!tile) return Promise.reject(new Error('QR_TILE_NOT_FOUND_OR_INACTIVE'));
+    const table = tile.tableId ? db.tables.find((t) => t.id === tile.tableId) : null;
+    if (!tile.tableId || !table) {
+      return Promise.resolve({
+        status: 'UNASSIGNED_TILE',
+        storeSlug: db.store.slug || 'demo-cafe',
+        publicCode,
+      });
+    }
+    return Promise.resolve({
+      status: 'OK',
+      storeSlug: db.store.slug || 'demo-cafe',
+      tableId: tile.tableId,
+      tableLabel: table?.label ?? '',
+      publicCode,
+    });
+  },
   
   // Auth (offline)
   signIn(email: string, _password: string) {
     const e = email.toLowerCase();
-    const role = e.startsWith('manager') ? 'manager' : e.startsWith('cook') ? 'cook' : 'waiter';
+    const role = e.startsWith('manager')
+      ? 'manager'
+      : e.startsWith('cook')
+        ? 'cook'
+        : e.startsWith('architect')
+          ? 'architect'
+          : 'waiter';
     const user = { id: uid('user'), email, role, displayName: role.charAt(0).toUpperCase() + role.slice(1) };
     return Promise.resolve({ accessToken: 'offline-token', user });
   },

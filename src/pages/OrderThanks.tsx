@@ -5,7 +5,7 @@ import { HomeLink } from '@/components/HomeLink';
 import { AppBurger } from './AppBurger';
 import { CheckCircle } from 'lucide-react';
 import { realtimeService } from '@/lib/realtime';
-import { api } from '@/lib/api';
+import { api, visitTokenStore } from '@/lib/api';
 
 type OrderReadyPayload = {
   orderId?: string;
@@ -27,7 +27,15 @@ export default function OrderThanks() {
     const qs = new URLSearchParams(location.search);
     return qs.get('tableId') || undefined;
   }, [location.search]);
+  const visitToken = useMemo(() => {
+    const qs = new URLSearchParams(location.search);
+    return qs.get('visit') || undefined;
+  }, [location.search]);
   const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
+
+  useEffect(() => {
+    if (visitToken) visitTokenStore.set(visitToken);
+  }, [visitToken]);
 
   useEffect(() => {
     let mounted = true;

@@ -13,6 +13,7 @@ import type {
   Modifier,
   Order,
   OrderStatus,
+  QRTile,
   Table,
   WaiterSummary,
   WaiterTableAssignment,
@@ -36,6 +37,8 @@ import {
   PanelLeftOpen,
   ChevronDown,
   ChevronUp,
+  RefreshCcw,
+  Search,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ManagerMenuPanel } from './manager/ManagerMenuPanel';
@@ -70,6 +73,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { realtimeService } from '@/lib/realtime';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
@@ -215,6 +219,7 @@ export default function ManagerDashboard() {
   const navigate = useNavigate();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const isManagerRole = user?.role === 'manager' || user?.role === 'architect';
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -225,6 +230,11 @@ export default function ManagerDashboard() {
   const [loadingWaiters, setLoadingWaiters] = useState(true);
   const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
+  const [storeId, setStoreId] = useState<string | null>(null);
+  const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
+  const [loadingQrTiles, setLoadingQrTiles] = useState(false);
+  const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
+  const [qrTileSearch, setQrTileSearch] = useState('');
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
@@ -282,10 +292,33 @@ export default function ManagerDashboard() {
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    if (!isAuthenticated() || user?.role !== 'manager') {
+    if (!isAuthenticated() || !isManagerRole) {
       navigate('/login');
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, isManagerRole, navigate]);
+
+  // Load store info to know storeId for QR tile binding and cache slug/name for other screens
+  useEffect(() => {
+    if (!isAuthenticated() || !isManagerRole) return;
+    (async () => {
+      try {
+        const res = await api.getStore();
+        if (res?.store?.id) setStoreId(res.store.id);
+        if (res?.store?.slug) {
+          try {
+            localStorage.setItem('STORE_SLUG', res.store.slug);
+          } catch {}
+        }
+        if (res?.store?.name) {
+          try {
+            localStorage.setItem('STORE_NAME', res.store.name);
+          } catch {}
+        }
+      } catch (error) {
+        console.error('Failed to load store info', error);
+      }
+    })();
+  }, [isAuthenticated, isManagerRole]);
 
   const handleLogout = () => {
     logout();
@@ -303,8 +336,8 @@ export default function ManagerDashboard() {
         console.error('Failed to load orders', error);
       }
     };
-    if (isAuthenticated() && user?.role === 'manager') initOrders();
-  }, [isAuthenticated, user, ordersAll.length, setOrdersLocal]);
+    if (isAuthenticated() && isManagerRole) initOrders();
+  }, [isAuthenticated, isManagerRole, ordersAll.length, setOrdersLocal]);
 
   const loadWaiterData = async () => {
     setLoadingWaiters(true);
@@ -345,12 +378,56 @@ export default function ManagerDashboard() {
     }
   };
 
+  const loadQrTiles = useCallback(
+    async (sid: string) => {
+      setLoadingQrTiles(true);
+      try {
+        const data = await api.managerListQrTiles(sid);
+        setQrTiles(data.tiles ?? []);
+      } catch (error) {
+        console.error('Failed to load QR tiles', error);
+      } finally {
+        setLoadingQrTiles(false);
+      }
+    },
+    []
+  );
+
+  const handleUpdateQrTile = useCallback(
+    async (tileId: string, data: { tableId?: string | null; isActive?: boolean }) => {
+      if (!storeId) return;
+      setUpdatingTileId(tileId);
+      try {
+        const res = await api.managerUpdateQrTile(tileId, data);
+        const updated = res.tile;
+        setQrTiles((prev) => {
+          const idx = prev.findIndex((t) => t.id === updated.id);
+          if (idx === -1) return [updated, ...prev];
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...updated };
+          return next;
+        });
+      } catch (error) {
+        console.error('Failed to update QR tile', error);
+      } finally {
+        setUpdatingTileId(null);
+      }
+    },
+    [storeId]
+  );
+
   useEffect(() => {
-    if (isAuthenticated() && user?.role === 'manager') {
+    if (isAuthenticated() && isManagerRole) {
       loadWaiterData();
       loadManagerTables();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, isManagerRole]);
+
+  useEffect(() => {
+    if (isAuthenticated() && isManagerRole && storeId) {
+      loadQrTiles(storeId);
+    }
+  }, [isAuthenticated, isManagerRole, storeId, loadQrTiles]);
 
   useEffect(() => {
     try {
@@ -410,10 +487,10 @@ export default function ManagerDashboard() {
         console.error('Failed to load menu metadata', error);
       }
     };
-    if (isAuthenticated() && user?.role === 'manager') {
+    if (isAuthenticated() && isManagerRole) {
       loadMenuMetadata();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, isManagerRole]);
 
   const waiterAssignmentsMap = useMemo(() => {
     const map = new Map<string, Table[]>();
@@ -463,6 +540,22 @@ export default function ManagerDashboard() {
       (a.label || '').toLowerCase().localeCompare((b.label || '').toLowerCase())
     );
   }, [managerTables]);
+
+  const filteredQrTiles = useMemo(() => {
+    const term = qrTileSearch.trim().toLowerCase();
+    if (!term) return qrTiles;
+    return qrTiles.filter((tile) => {
+      const assignedLabel =
+        tile.tableId && tablesById.get(tile.tableId)?.label
+          ? tablesById.get(tile.tableId)?.label
+          : tile.tableLabel ?? '';
+      return (
+        tile.publicCode.toLowerCase().includes(term) ||
+        (tile.label ?? '').toLowerCase().includes(term) ||
+        (assignedLabel ?? '').toLowerCase().includes(term)
+      );
+    });
+  }, [qrTiles, qrTileSearch, tablesById]);
 
   const currencyCode =
     typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
@@ -2627,6 +2720,105 @@ export default function ManagerDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4 sm:p-6 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">QR tiles</p>
+                  <h3 className="text-lg font-semibold">Bind QR public codes to tables</h3>
+                  <p className="text-sm text-muted-foreground">Assign printed QR tiles to tables so scans map to the right venue spots.</p>
+                </div>
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  <div className="relative">
+                    <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Input
+                      value={qrTileSearch}
+                      onChange={(e) => setQrTileSearch(e.target.value)}
+                      placeholder="Search code, label, or table"
+                      className="pl-9 w-full md:w-64"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => storeId && loadQrTiles(storeId)}
+                    disabled={loadingQrTiles || !storeId}
+                    className="inline-flex items-center gap-2"
+                  >
+                    {loadingQrTiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+              {!storeId ? (
+                <p className="text-sm text-muted-foreground">Load store info first to manage QR tiles.</p>
+              ) : loadingQrTiles ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-24 w-full rounded-xl" />
+                  ))}
+                </div>
+              ) : qrTiles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No QR tiles found. Ask your architect to generate tiles, then bind them here.
+                </p>
+              ) : filteredQrTiles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tiles match this search.</p>
+              ) : (
+                <div className="space-y-3">
+                  {filteredQrTiles.map((tile) => {
+                    const assignedLabel =
+                      tile.tableId && tablesById.get(tile.tableId)?.label
+                        ? tablesById.get(tile.tableId)?.label
+                        : tile.tableLabel ?? null;
+                    return (
+                      <div
+                        key={tile.id}
+                        className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-sm text-foreground">{tile.publicCode}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {tile.label || 'Unlabeled'} · {assignedLabel || 'Unassigned'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Active</span>
+                            <Switch
+                              checked={tile.isActive}
+                              onCheckedChange={(checked) => handleUpdateQrTile(tile.id, { isActive: checked })}
+                              disabled={updatingTileId === tile.id}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <Label className="text-sm text-muted-foreground">Assigned table</Label>
+                          <Select
+                            value={tile.tableId ?? 'unassigned'}
+                            onValueChange={(value) =>
+                              handleUpdateQrTile(tile.id, { tableId: value === 'unassigned' ? null : value })
+                            }
+                          >
+                            <SelectTrigger className="w-full sm:w-64">
+                              <SelectValue placeholder="Pick table" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {sortedTables.map((table) => (
+                                <SelectItem key={table.id} value={table.id}>
+                                  {table.label} {table.isActive ? '' : '(inactive)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Card>

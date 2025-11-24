@@ -59,7 +59,8 @@ export default function Login() {
       setLoading(true);
       const { accessToken, user } = await api.signIn(email, password);
       login(user, accessToken);
-      if (user.role === "manager") navigate("/manager");
+      if (user.role === "architect") navigate("/GarsoneAdmin");
+      else if (user.role === "manager") navigate("/manager");
       else if (user.role === "cook") navigate("/cook");
       else navigate("/waiter");
     } catch (err) {
@@ -137,16 +138,19 @@ export default function Login() {
             {loading ? "Signing in…" : t("auth.sign_in")}
           </Button>
         </form>
-        <p className="mt-4 text-sm text-muted-foreground text-center">
-          Demo: waiter1@demo.local / manager@demo.local
-        </p>
+        <div className="mt-4 text-sm text-muted-foreground text-center space-y-1">
+          <p>Demo waiters: waiter1@demo.local / waiter2@demo.local</p>
+          <p>Manager dashboard: manager@demo.local (password: changeme)</p>
+          <p>GarsoneAdmin (architect): architect@demo.local (password: changeme)</p>
+          <p className="text-xs text-muted-foreground/80">If the architect user isn&apos;t seeded, use the Architect debug button below or create an architect profile on the backend.</p>
+        </div>
 
         {debugEnabled && (
           <div className="mt-6 pt-6 border-t border-border">
             <p className="text-xs text-muted-foreground mb-3 text-center">
               Debug login (no backend)
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -200,6 +204,24 @@ export default function Login() {
                 }}
               >
                 Manager
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  login(
+                    {
+                      id: "debug-architect",
+                      email: "architect@debug",
+                      role: "architect",
+                      displayName: "Debug Architect",
+                    },
+                    "debug-token"
+                  );
+                  navigate("/GarsoneAdmin");
+                }}
+              >
+                Architect
               </Button>
             </div>
             <p className="mt-2 text-[11px] text-center text-muted-foreground">

@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import clsx from "clsx";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { MenuItemCard } from "@/components/menu/MenuItemCard";
 import { ModifierDialog } from "@/components/menu/ModifierDialog";
@@ -12,7 +12,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { HomeLink } from "@/components/HomeLink";
 import { AppBurger } from "./AppBurger";
 import { useCartStore } from "@/store/cartStore";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, visitTokenStore } from "@/lib/api";
 import { useMenuStore } from "@/store/menuStore";
 import { realtimeService } from "@/lib/realtime";
 import type {
@@ -107,6 +107,7 @@ export default function TableMenu() {
   const { tableId } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
   const { addItem, clearCart } = useCartStore();
@@ -114,6 +115,10 @@ export default function TableMenu() {
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
   const [storeSlug, setStoreSlug] = useState<string>("demo-cafe");
+  const [visitToken, setVisitToken] = useState<string | null>(() => {
+    const stored = visitTokenStore.get();
+    return stored ?? null;
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -163,6 +168,20 @@ export default function TableMenu() {
   const menuCache = useMenuStore((s) => s.data);
   const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
+
+  useEffect(() => {
+    const qs = new URLSearchParams(location.search);
+    const fromQuery = qs.get("visit");
+    if (fromQuery) {
+      visitTokenStore.set(fromQuery);
+      setVisitToken(fromQuery);
+      return;
+    }
+    const stored = visitTokenStore.get();
+    if (stored && stored !== visitToken) {
+      setVisitToken(stored);
+    }
+  }, [location.search, visitToken]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -573,13 +592,23 @@ export default function TableMenu() {
       setEditingOrderId(null);
       // pass tableId so the thanks page can subscribe to the ready topic
       const params = new URLSearchParams({ tableId });
+      if (visitToken) params.set("visit", visitToken);
       if (orderId) {
         navigate(`/order/${orderId}/thanks?${params.toString()}`);
       }
       return orderFromResponse;
     } catch (error) {
       console.error("Failed to submit order:", error);
-      if (error instanceof ApiError && error.status === 409 && editingOrderId) {
+      if (error instanceof ApiError && error.status === 403) {
+        toast({
+          title: t("menu.toast_error_title", {
+            defaultValue: "Session expired",
+          }),
+          description: t("menu.toast_error_description", {
+            defaultValue: "Scan the table QR again to start a new order.",
+          }),
+        });
+      } else if (error instanceof ApiError && error.status === 409 && editingOrderId) {
         setEditingOrderId(null);
         toast({
           title: t("menu.toast_edit_unavailable_title", {
@@ -695,6 +724,18 @@ export default function TableMenu() {
         45000
       );
     } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        toast({
+          title: t("menu.call_waiter_error_title", {
+            defaultValue: "Call failed",
+          }),
+          description: t("menu.toast_error_description", {
+            defaultValue: "Scan the table QR again to refresh your session.",
+          }),
+        });
+        setCalling("idle");
+        return;
+      }
       const msg = error instanceof Error ? error.message : String(error ?? "");
       toast({
         title: t("menu.call_waiter_error_title", {

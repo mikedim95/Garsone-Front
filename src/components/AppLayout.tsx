@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useRef, lazy, Suspense, useCallback } from 'react';
 import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
 import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
 
 const AnimatedMockupLazy = lazy(() =>
   import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
@@ -76,6 +77,15 @@ const AppLayout: React.FC = () => {
   const [forceDemoVisible, setForceDemoVisible] = useState(false);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const setOfflineFlag = (enabled: boolean) => {
+    try {
+      localStorage.setItem('OFFLINE', enabled ? '1' : '0');
+    } catch (error) {
+      console.warn('Failed to toggle OFFLINE flag', error);
+    }
+  };
 
   const getBaseOrigin = () => {
     const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN;
@@ -90,29 +100,41 @@ const AppLayout: React.FC = () => {
     return 'http://localhost:8080';
   };
 
-  useEffect(() => {
-    let mounted = true;
-    const fetchLiveUrl = async () => {
+  const fetchLiveUrl = useCallback(
+    async (opts?: { forceOnline?: boolean }) => {
       setLiveLoading(true);
+      if (opts?.forceOnline) {
+        setOfflineFlag(false);
+      }
       try {
         const data = await api.getTables();
         const actives = (data?.tables || []).filter((t) => t.active);
         if (actives.length > 0) {
           const random = actives[Math.floor(Math.random() * actives.length)];
           const origin = getBaseOrigin();
-          if (mounted) setLiveUrl(`${origin}/table/${random.id}`);
+          const url = `${origin}/table/${random.id}`;
+          setLiveUrl(url);
+          return url;
         }
       } catch (error) {
         console.warn('Failed to fetch tables for landing live link', error);
       } finally {
-        if (mounted) setLiveLoading(false);
+        setLiveLoading(false);
       }
-    };
-    fetchLiveUrl();
+      return null;
+    },
+    []
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    fetchLiveUrl().finally(() => {
+      if (!mounted) return;
+    });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [fetchLiveUrl]);
 
   const scrollToDemoQr = () => {
     setForceDemoVisible(true);
@@ -125,10 +147,27 @@ const AppLayout: React.FC = () => {
     demoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const openLiveStore = () => {
-    if (liveUrl) {
-      window.open(liveUrl, '_blank', 'noopener');
+  const openLiveStore = async () => {
+    const url = await fetchLiveUrl({ forceOnline: true });
+    const target = url || liveUrl;
+    if (target) {
+      window.open(target, '_blank', 'noopener');
     }
+  };
+
+  const startOfflineDemo = async () => {
+    setOfflineFlag(true);
+    try {
+      const data = await api.getTables();
+      const first = data?.tables?.[0];
+      if (first?.id) {
+        navigate(`/table/${first.id}`);
+        return;
+      }
+    } catch (error) {
+      console.warn('Failed to get tables for offline demo', error);
+    }
+    navigate('/table/T1');
   };
 
   // Do not connect to realtime streams from landing; ensure any active connection is closed.
@@ -162,7 +201,12 @@ const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
-      <Hero onScanQr={scrollToDemoQr} onOpenLive={openLiveStore} liveReady={!!liveUrl && !liveLoading} />
+      <Hero
+        onScanQr={scrollToDemoQr}
+        onOpenLive={openLiveStore}
+        onOfflineDemo={startOfflineDemo}
+        liveReady={!!liveUrl && !liveLoading}
+      />
       <DeferredSection>
         <Suspense fallback={<div className="py-16" />}>
           <AnimatedMockupLazy />

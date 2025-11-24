@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Home, LogIn, LogOut } from 'lucide-react';
+import { Home, LogIn, LogOut, QrCode } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Link, useNavigate } from 'react-router-dom';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -34,7 +34,9 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
         ? t('waiter.dashboard', { defaultValue: 'Waiter' })
         : roleKey === 'cook'
           ? t('cook.dashboard', { defaultValue: 'Cook' })
-          : t('auth.guest', { defaultValue: 'Guest' });
+          : roleKey === 'architect'
+            ? 'Architect'
+            : t('auth.guest', { defaultValue: 'Guest' });
   const initials = (displayName || 'G')
     .split(' ')
     .filter(Boolean)
@@ -109,6 +111,9 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
             <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.navigation', { defaultValue: 'Navigation' })}</h3>
             <NavLink to="/" label={t('nav.home')} icon={<Home className="h-4 w-4" />} />
             <NavLink to="/login" label={t('nav.login')} icon={<LogIn className="h-4 w-4" />} />
+            {user?.role === 'architect' && (
+              <NavLink to="/GarsoneAdmin" label="Garsone Admin" icon={<QrCode className="h-4 w-4" />} />
+            )}
           </section>
 
           <section className="space-y-2">
