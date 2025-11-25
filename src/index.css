@@ -630,3 +630,12 @@
 .markdown-preview ol {
   @apply my-4 ml-6;
 }
+
+body {
+  overflow-y: auto;
+}
+
+/* Ensure dialogs don't cause layout shifts */
+[data-radix-scroll-area-viewport] {
+  scrollbar-gutter: stable;
+}

@@ -13,6 +13,7 @@ import type {
   Modifier,
   Order,
   OrderStatus,
+  QRTile,
   Table,
   WaiterSummary,
   WaiterTableAssignment,
@@ -36,6 +37,8 @@ import {
   PanelLeftOpen,
   ChevronDown,
   ChevronUp,
+  RefreshCcw,
+  Search,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ManagerMenuPanel } from './manager/ManagerMenuPanel';
@@ -55,7 +58,17 @@ import {
   PieChart,
   Pie,
 } from 'recharts';
-import type { NameType, TooltipPayload, TooltipProps, ValueType } from 'recharts';
+import type { TooltipProps } from 'recharts';
+
+// Type aliases for recharts types that are not exported
+type ValueType = string | number | Array<string | number>;
+type NameType = string | number;
+interface TooltipPayload<TValue, TName> {
+  payload?: Record<string, any>;
+  name?: TName;
+  value?: TValue;
+}
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -70,15 +83,16 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { realtimeService } from '@/lib/realtime';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 type ManagerMode = 'basic' | 'pro';
 type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
-type EconRange = 'today' | 'week' | 'month';
+type EconRange = 'today' | 'week' | 'month' | 'custom';
 type MenuCategoryMode = 'units' | 'share';
 type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
-type TableSummary = { id: string; label: string; active: boolean };
+type TableSummary = { id: string; label: string; active: boolean; isActive: boolean; waiterCount: number; orderCount: number; openOrders: number };
 interface WaiterForm {
   email: string;
   displayName: string;
@@ -95,12 +109,19 @@ const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 const pickLabel = (value?: unknown) => (isNonEmptyString(value) ? value.trim() : null);
 
 const normalizeTableSummary = (table: Partial<Table> & { id?: string; label?: string }): TableSummary => ({
   id: table.id ?? '',
   label: table.label ?? '',
   active: table.isActive ?? table.active ?? true,
+  isActive: table.isActive ?? table.active ?? true,
+  waiterCount: 0,
+  orderCount: 0,
+  openOrders: 0,
 });
 
 const extractMenuItem = (source?: unknown): Partial<MenuItem> | null => {
@@ -203,18 +224,37 @@ const daypartOf = (date: Date) => {
   return 'Late';
 };
 
-const unitPrice = (line?: CartItem | { item?: Partial<MenuItem> }) => {
+const unitPrice = (
+  line?: CartItem | { item?: Partial<MenuItem>; price?: number; priceCents?: number }
+) => {
+  if (!line) return 0;
+  if (typeof (line as { unitPrice?: number }).unitPrice === 'number') {
+    return (line as { unitPrice: number }).unitPrice;
+  }
+  if (typeof (line as { unitPriceCents?: number }).unitPriceCents === 'number') {
+    return ((line as { unitPriceCents: number }).unitPriceCents || 0) / 100;
+  }
+  if (typeof (line as { price?: number }).price === 'number') {
+    return (line as { price: number }).price;
+  }
+  if (typeof (line as { priceCents?: number }).priceCents === 'number') {
+    return ((line as { priceCents: number }).priceCents || 0) / 100;
+  }
   const item = extractMenuItem(line);
   if (!item) return 0;
   if (typeof item.price === 'number') return item.price;
   if (typeof item.priceCents === 'number') return item.priceCents / 100;
   return 0;
 };
+
+const LS_ORDERS_KEY = 'MANAGER_ORDERS_CACHE';
+const LS_ORDERS_TS_KEY = 'MANAGER_ORDERS_CACHE_TS';
 export default function ManagerDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const isManagerRole = user?.role === 'manager' || user?.role === 'architect';
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -225,6 +265,11 @@ export default function ManagerDashboard() {
   const [loadingWaiters, setLoadingWaiters] = useState(true);
   const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
+  const [storeId, setStoreId] = useState<string | null>(null);
+  const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
+  const [loadingQrTiles, setLoadingQrTiles] = useState(false);
+  const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
+  const [qrTileSearch, setQrTileSearch] = useState('');
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
@@ -244,6 +289,7 @@ export default function ManagerDashboard() {
   const [savingTable, setSavingTable] = useState(false);
   const [tableDeletingId, setTableDeletingId] = useState<string | null>(null);
   const [menuCategoryLookup, setMenuCategoryLookup] = useState<Map<string, string>>(new Map());
+  const [menuMetaReady, setMenuMetaReady] = useState(false);
   const [managerMode, setManagerMode] = useState<ManagerMode>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -270,22 +316,51 @@ export default function ManagerDashboard() {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('MANAGER_ECON_RANGE');
-        if (saved === 'today' || saved === 'week' || saved === 'month') return saved;
+        if (saved === 'today' || saved === 'week' || saved === 'month' || saved === 'custom') return saved;
       } catch {
         // ignore
       }
     }
     return 'week';
   });
+  const [customRange, setCustomRange] = useState<{ start: string; end: string }>(() => {
+    const end = new Date();
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+    const toInput = (d: Date) => d.toISOString().slice(0, 10);
+    return { start: toInput(start), end: toInput(end) };
+  });
   const [tablesCollapsed, setTablesCollapsed] = useState(false);
   const [menuCategoryMode, setMenuCategoryMode] = useState<MenuCategoryMode>('units');
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    if (!isAuthenticated() || user?.role !== 'manager') {
+    if (!isAuthenticated() || !isManagerRole) {
       navigate('/login');
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, isManagerRole, navigate]);
+
+  // Load store info to know storeId for QR tile binding and cache slug/name for other screens
+  useEffect(() => {
+    if (!isAuthenticated() || !isManagerRole) return;
+    (async () => {
+      try {
+        const res = await api.getStore();
+        if (res?.store?.id) setStoreId(res.store.id);
+        if (res?.store?.slug) {
+          try {
+            localStorage.setItem('STORE_SLUG', res.store.slug);
+          } catch {}
+        }
+        if (res?.store?.name) {
+          try {
+            localStorage.setItem('STORE_NAME', res.store.name);
+          } catch {}
+        }
+      } catch (error) {
+        console.error('Failed to load store info', error);
+      }
+    })();
+  }, [isAuthenticated, isManagerRole]);
 
   const handleLogout = () => {
     logout();
@@ -295,16 +370,57 @@ export default function ManagerDashboard() {
   useEffect(() => {
     const initOrders = async () => {
       try {
-        if (ordersAll.length === 0) {
-          const ordersRes = await api.getOrders();
-          setOrdersLocal(ordersRes.orders ?? []);
+        // Hydrate from local cache first (if available)
+        try {
+          const cached = localStorage.getItem(LS_ORDERS_KEY);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            const orders = Array.isArray(parsed) ? parsed : parsed?.orders;
+            if (Array.isArray(orders) && orders.length) {
+              setOrdersLocal(orders);
+            }
+          }
+        } catch (err) {
+          console.warn('[Orders cache] failed to read cache', err);
+        }
+
+        const take = 5000;
+        const ordersRes = await api.getOrders({ take });
+        const fetched = ordersRes.orders ?? [];
+        setOrdersLocal(fetched);
+        try {
+          const placed = fetched
+            .map((o) => getPlacedDate(o))
+            .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
+            .map((d) => d.getTime())
+            .sort((a, b) => a - b);
+          const byStatus = fetched.reduce<Record<string, number>>((acc, o) => {
+            const key = o.status || 'UNKNOWN';
+            acc[key] = (acc[key] ?? 0) + 1;
+            return acc;
+          }, {});
+          console.log('[Orders fetch] fetched orders', {
+            requested: take,
+            count: fetched.length,
+            byStatus,
+            earliestPlaced: placed.length ? new Date(placed[0]).toISOString() : null,
+            latestPlaced: placed.length ? new Date(placed[placed.length - 1]).toISOString() : null,
+          });
+          try {
+            localStorage.setItem(LS_ORDERS_KEY, JSON.stringify(fetched));
+            localStorage.setItem(LS_ORDERS_TS_KEY, new Date().toISOString());
+          } catch (err) {
+            console.warn('[Orders cache] failed to persist cache', err);
+          }
+        } catch (err) {
+          console.warn('[Orders fetch] failed to summarise orders', err);
         }
       } catch (error) {
         console.error('Failed to load orders', error);
       }
     };
-    if (isAuthenticated() && user?.role === 'manager') initOrders();
-  }, [isAuthenticated, user, ordersAll.length, setOrdersLocal]);
+    if (isAuthenticated() && isManagerRole) initOrders();
+  }, [isAuthenticated, isManagerRole, setOrdersLocal]);
 
   const loadWaiterData = async () => {
     setLoadingWaiters(true);
@@ -336,6 +452,10 @@ export default function ManagerDashboard() {
           id: table.id,
           label: table.label,
           active: table.isActive,
+          isActive: table.isActive,
+          waiterCount: table.waiterCount || 0,
+          orderCount: table.orderCount || 0,
+          openOrders: table.openOrders || 0,
         }))
       );
     } catch (error) {
@@ -345,12 +465,56 @@ export default function ManagerDashboard() {
     }
   };
 
+  const loadQrTiles = useCallback(
+    async (sid: string) => {
+      setLoadingQrTiles(true);
+      try {
+        const data = await api.managerListQrTiles(sid);
+        setQrTiles(data.tiles ?? []);
+      } catch (error) {
+        console.error('Failed to load QR tiles', error);
+      } finally {
+        setLoadingQrTiles(false);
+      }
+    },
+    []
+  );
+
+  const handleUpdateQrTile = useCallback(
+    async (tileId: string, data: { tableId?: string | null; isActive?: boolean }) => {
+      if (!storeId) return;
+      setUpdatingTileId(tileId);
+      try {
+        const res = await api.managerUpdateQrTile(tileId, data);
+        const updated = res.tile;
+        setQrTiles((prev) => {
+          const idx = prev.findIndex((t) => t.id === updated.id);
+          if (idx === -1) return [updated, ...prev];
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...updated };
+          return next;
+        });
+      } catch (error) {
+        console.error('Failed to update QR tile', error);
+      } finally {
+        setUpdatingTileId(null);
+      }
+    },
+    [storeId]
+  );
+
   useEffect(() => {
-    if (isAuthenticated() && user?.role === 'manager') {
+    if (isAuthenticated() && isManagerRole) {
       loadWaiterData();
       loadManagerTables();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, isManagerRole]);
+
+  useEffect(() => {
+    if (isAuthenticated() && isManagerRole && storeId) {
+      loadQrTiles(storeId);
+    }
+  }, [isAuthenticated, isManagerRole, storeId, loadQrTiles]);
 
   useEffect(() => {
     try {
@@ -363,10 +527,14 @@ export default function ManagerDashboard() {
   useEffect(() => {
     try {
       localStorage.setItem('MANAGER_ECON_RANGE', econRange);
+      if (econRange === 'custom') {
+        localStorage.setItem('MANAGER_ECON_CUSTOM_START', customRange.start);
+        localStorage.setItem('MANAGER_ECON_CUSTOM_END', customRange.end);
+      }
     } catch {
       // ignore
     }
-  }, [econRange]);
+  }, [econRange, customRange]);
 
   useEffect(() => {
     const loadMenuMetadata = async () => {
@@ -377,9 +545,9 @@ export default function ManagerDashboard() {
           api.listModifiers?.() ?? Promise.resolve({ modifiers: [] }),
         ]);
         const categoriesMap = new Map<string, string>();
-        (categoriesRes?.categories ?? []).forEach((category: MenuCategory) => {
-          if (!category?.id) return;
-          const label = pickLabel(category.title);
+        (categoriesRes?.categories ?? []).forEach((category) => {
+          if (!category?.id || typeof category !== 'object') return;
+          const label = pickLabel((category as MenuCategory).title);
           if (label) {
             categoriesMap.set(category.id, label);
           }
@@ -388,12 +556,10 @@ export default function ManagerDashboard() {
         (itemsRes?.items ?? []).forEach((item: ManagerItemSummary) => {
           if (!item?.id) return;
           const label =
-            pickLabel(item.category?.title) ??
-            pickLabel(item.category?.name) ??
+            pickLabel(item.category) ??
             (item.categoryId ? categoriesMap.get(item.categoryId) ?? null : null) ??
             pickLabel((item as { categoryTitle?: string }).categoryTitle) ??
-            pickLabel((item as { categoryName?: string }).categoryName) ??
-            pickLabel(item.category);
+            pickLabel((item as { categoryName?: string }).categoryName);
           if (label) {
             lookup.set(item.id, label);
           }
@@ -406,14 +572,16 @@ export default function ManagerDashboard() {
           }
         });
         setModifierLookup(modLookup);
+        setMenuMetaReady(true);
       } catch (error) {
         console.error('Failed to load menu metadata', error);
+        setMenuMetaReady(true);
       }
     };
-    if (isAuthenticated() && user?.role === 'manager') {
+    if (isAuthenticated() && isManagerRole) {
       loadMenuMetadata();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, isManagerRole]);
 
   const waiterAssignmentsMap = useMemo(() => {
     const map = new Map<string, Table[]>();
@@ -464,6 +632,22 @@ export default function ManagerDashboard() {
     );
   }, [managerTables]);
 
+  const filteredQrTiles = useMemo(() => {
+    const term = qrTileSearch.trim().toLowerCase();
+    if (!term) return qrTiles;
+    return qrTiles.filter((tile) => {
+      const assignedLabel =
+        tile.tableId && tablesById.get(tile.tableId)?.label
+          ? tablesById.get(tile.tableId)?.label
+          : tile.tableLabel ?? '';
+      return (
+        tile.publicCode.toLowerCase().includes(term) ||
+        (tile.label ?? '').toLowerCase().includes(term) ||
+        (assignedLabel ?? '').toLowerCase().includes(term)
+      );
+    });
+  }, [qrTiles, qrTileSearch, tablesById]);
+
   const currencyCode =
     typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
   const currencyFormatter = useMemo(() => {
@@ -488,6 +672,16 @@ export default function ManagerDashboard() {
   // Economics date-range helpers and derived ranges
   const rangeInfo = useMemo(() => {
     const now = new Date();
+    if (econRange === 'custom') {
+      const parsedStart = new Date(`${customRange.start}T00:00:00`);
+      const parsedEnd = new Date(`${customRange.end}T00:00:00`);
+      const validStart = Number.isNaN(parsedStart.getTime()) ? startOfDay(now) : parsedStart;
+      const validEnd = Number.isNaN(parsedEnd.getTime()) ? startOfDay(now) : parsedEnd;
+      const days = Math.max(1, Math.round((validEnd.getTime() - validStart.getTime()) / 86400000) + 1);
+      const prevEnd = addDays(validStart, -1);
+      const prevStart = addDays(prevEnd, -(days - 1));
+      return { start: validStart, end: validEnd, prevStart, prevEnd, days };
+    }
     const end = startOfDay(now);
     let days = 7;
     if (econRange === 'today') days = 1;
@@ -496,7 +690,7 @@ export default function ManagerDashboard() {
     const prevEnd = addDays(start, -1);
     const prevStart = addDays(prevEnd, -(days - 1));
     return { start, end, prevStart, prevEnd, days };
-  }, [econRange]);
+  }, [econRange, customRange]);
 
   const totalRevenue = useMemo(
     () => servedOrders.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
@@ -544,6 +738,61 @@ export default function ManagerDashboard() {
     () => cancelledInRange.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
     [cancelledInRange]
   );
+
+  useEffect(() => {
+    const placedDates = servedOrders
+      .map((order) => getPlacedDate(order))
+      .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()));
+    const noPlacedDate = servedOrders.length - placedDates.length;
+    const minPlaced = placedDates.length
+      ? new Date(Math.min(...placedDates.map((d) => d.getTime()))).toISOString()
+      : null;
+    const maxPlaced = placedDates.length
+      ? new Date(Math.max(...placedDates.map((d) => d.getTime()))).toISOString()
+      : null;
+
+    const placedInRange = servedInRange
+      .map((order) => getPlacedDate(order))
+      .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
+      .map((d) => d.toISOString());
+    const placedPrevRange = servedPrevRange
+      .map((order) => getPlacedDate(order))
+      .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
+      .map((d) => d.toISOString());
+
+    console.log('[Analytics] Order timeline summary', {
+      econRange,
+      ordersAll: ordersAll.length,
+      servedOrders: servedOrders.length,
+      cancelledOrders: cancelledOrders.length,
+      missingPlacedDate: noPlacedDate,
+      earliestPlaced: minPlaced,
+      latestPlaced: maxPlaced,
+      currentRange: {
+        start: rangeInfo.start.toISOString(),
+        end: rangeInfo.end.toISOString(),
+        servedInRange: servedInRange.length,
+        samplePlaced: placedInRange.slice(0, 3),
+      },
+      previousRange: {
+        start: rangeInfo.prevStart.toISOString(),
+        end: rangeInfo.prevEnd.toISOString(),
+        servedInPrevRange: servedPrevRange.length,
+        samplePlaced: placedPrevRange.slice(0, 3),
+      },
+    });
+  }, [
+    econRange,
+    ordersAll.length,
+    servedOrders,
+    cancelledOrders,
+    rangeInfo.start,
+    rangeInfo.end,
+    rangeInfo.prevStart,
+    rangeInfo.prevEnd,
+    servedInRange,
+    servedPrevRange,
+  ]);
 
   const revenueTimeline = useMemo(() => {
     // When viewing Today use hourly buckets, otherwise use daypart segments for the selected range
@@ -626,6 +875,18 @@ export default function ManagerDashboard() {
 
   const resolveCategoryLabel = useCallback(
     (source?: unknown) => {
+      // Prefer category from known itemId lookup (manager metadata)
+      const itemIdFromSource =
+        (typeof source === 'object' && source && 'itemId' in source
+          ? (source as { itemId?: string }).itemId
+          : undefined) ??
+        (typeof source === 'object' && source && 'item' in source
+          ? ((source as { item?: { id?: string } }).item?.id ?? undefined)
+          : undefined);
+      if (itemIdFromSource && menuCategoryLookup.has(itemIdFromSource)) {
+        return menuCategoryLookup.get(itemIdFromSource)!;
+      }
+
       if (typeof source === 'string' && pickLabel(source)) {
         return source.trim();
       }
@@ -655,14 +916,57 @@ export default function ManagerDashboard() {
     },
     [menuCategoryLookup]
   );
-  const categoryRevenue = useMemo(() => {
-    const buckets = new Map<string, number>();
+
+  useEffect(() => {
+    // Debug category revenue mapping (only after metadata ready)
+    if (!menuMetaReady) return;
+    const buckets = new Map<string, { revenue: number; lines: number }>();
     servedInRange.forEach((order) => {
       (order.items ?? []).forEach((item) => {
         const category = resolveCategoryLabel(item.item ?? item);
+        const price = unitPrice(item);
+        const qty = getLineQuantity(item);
+        const revenue = price * qty;
+        const entry = buckets.get(category) ?? { revenue: 0, lines: 0 };
+        entry.revenue += revenue;
+        entry.lines += 1;
+        buckets.set(category, entry);
+      });
+    });
+    const summary = Array.from(buckets.entries())
+      .map(([category, v]) => ({ category, revenue: Number(v.revenue.toFixed(2)), lines: v.lines }))
+      .sort((a, b) => b.revenue - a.revenue);
+    console.log('[Category revenue debug]', {
+      econRange,
+      servedInRange: servedInRange.length,
+      categories: summary,
+      sampleItem: servedInRange[0]?.items?.[0],
+    });
+  }, [econRange, servedInRange, resolveCategoryLabel, menuMetaReady]);
+  const categoryRevenue = useMemo(() => {
+    if (!menuMetaReady) return [] as Array<{ category: string; revenue: number; share: number }>;
+    const buckets = new Map<string, number>();
+    servedInRange.forEach((order) => {
+      let orderLineRevenue = 0;
+      const lines = order.items ?? [];
+      lines.forEach((item) => {
+        const category = resolveCategoryLabel(item.item ?? item);
         const revenue = unitPrice(item) * getLineQuantity(item);
+        orderLineRevenue += revenue;
         buckets.set(category, (buckets.get(category) ?? 0) + revenue);
       });
+      // Fallback: if line items had no price, use order total as uncategorized
+      if (orderLineRevenue === 0) {
+        const fallbackTotal =
+          typeof order.totalCents === 'number'
+            ? order.totalCents / 100
+            : typeof order.total === 'number'
+            ? order.total
+            : 0;
+        if (fallbackTotal > 0) {
+          buckets.set('Uncategorized', (buckets.get('Uncategorized') ?? 0) + fallbackTotal);
+        }
+      }
     });
     const total = Array.from(buckets.values()).reduce((a, b) => a + b, 0) || 1;
     return Array.from(buckets.entries()).map(([category, revenue]) => ({
@@ -1421,8 +1725,9 @@ export default function ManagerDashboard() {
     setTableModalOpen(true);
   };
 
-  const openEditTable = (table: TableSummary) => {
-    setTableForm({ id: table.id, label: table.label, isActive: table.active });
+  const openEditTable = (table: TableSummary | (ManagerTableSummary & { openOrders: number })) => {
+    const isActive = 'active' in table ? table.active : table.isActive;
+    setTableForm({ id: table.id, label: table.label, isActive });
     setTableModalOpen(true);
   };
 
@@ -1628,7 +1933,7 @@ export default function ManagerDashboard() {
         )}
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={(value) => setActiveTab(value as ManagerTab)}
           className="flex flex-1 min-h-0"
         >
           <aside
@@ -1736,6 +2041,7 @@ export default function ManagerDashboard() {
                     { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
                     { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
                     { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
+                    { key: 'custom', label: t('date_range.custom', { defaultValue: 'Custom' }) },
                   ] as const).map((opt) => (
                     <button
                       key={opt.key}
@@ -1751,6 +2057,32 @@ export default function ManagerDashboard() {
                     </button>
                   ))}
                 </div>
+                {econRange === 'custom' && (
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{t('date_range.start', { defaultValue: 'Start' })}</span>
+                      <input
+                        type="date"
+                        value={customRange.start}
+                        onChange={(e) =>
+                          setCustomRange((prev) => ({ ...prev, start: e.target.value || prev.start }))
+                        }
+                        className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{t('date_range.end', { defaultValue: 'End' })}</span>
+                      <input
+                        type="date"
+                        value={customRange.end}
+                        onChange={(e) =>
+                          setCustomRange((prev) => ({ ...prev, end: e.target.value || prev.end }))
+                        }
+                        className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
@@ -2627,6 +2959,105 @@ export default function ManagerDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4 sm:p-6 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">QR tiles</p>
+                  <h3 className="text-lg font-semibold">Bind QR public codes to tables</h3>
+                  <p className="text-sm text-muted-foreground">Assign printed QR tiles to tables so scans map to the right venue spots.</p>
+                </div>
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  <div className="relative">
+                    <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Input
+                      value={qrTileSearch}
+                      onChange={(e) => setQrTileSearch(e.target.value)}
+                      placeholder="Search code, label, or table"
+                      className="pl-9 w-full md:w-64"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => storeId && loadQrTiles(storeId)}
+                    disabled={loadingQrTiles || !storeId}
+                    className="inline-flex items-center gap-2"
+                  >
+                    {loadingQrTiles ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+              {!storeId ? (
+                <p className="text-sm text-muted-foreground">Load store info first to manage QR tiles.</p>
+              ) : loadingQrTiles ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-24 w-full rounded-xl" />
+                  ))}
+                </div>
+              ) : qrTiles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No QR tiles found. Ask your architect to generate tiles, then bind them here.
+                </p>
+              ) : filteredQrTiles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tiles match this search.</p>
+              ) : (
+                <div className="space-y-3">
+                  {filteredQrTiles.map((tile) => {
+                    const assignedLabel =
+                      tile.tableId && tablesById.get(tile.tableId)?.label
+                        ? tablesById.get(tile.tableId)?.label
+                        : tile.tableLabel ?? null;
+                    return (
+                      <div
+                        key={tile.id}
+                        className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-sm text-foreground">{tile.publicCode}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {tile.label || 'Unlabeled'} · {assignedLabel || 'Unassigned'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Active</span>
+                            <Switch
+                              checked={tile.isActive}
+                              onCheckedChange={(checked) => handleUpdateQrTile(tile.id, { isActive: checked })}
+                              disabled={updatingTileId === tile.id}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <Label className="text-sm text-muted-foreground">Assigned table</Label>
+                          <Select
+                            value={tile.tableId ?? 'unassigned'}
+                            onValueChange={(value) =>
+                              handleUpdateQrTile(tile.id, { tableId: value === 'unassigned' ? null : value })
+                            }
+                          >
+                            <SelectTrigger className="w-full sm:w-64">
+                              <SelectValue placeholder="Pick table" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {sortedTables.map((table) => (
+                                <SelectItem key={table.id} value={table.id}>
+                                  {table.label} {table.isActive ? '' : '(inactive)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Card>

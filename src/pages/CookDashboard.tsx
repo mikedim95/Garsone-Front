@@ -96,7 +96,15 @@ const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
   };
 };
 
-const isOrderPlacedPayload = (payload: unknown): payload is { orderId?: string; tableId?: string } =>
+const isOrderPlacedPayload = (payload: unknown): payload is { 
+  orderId?: string; 
+  tableId?: string;
+  tableLabel?: string;
+  note?: string;
+  totalCents?: number;
+  createdAt?: string;
+  items?: any[];
+} =>
   isRecord(payload) && typeof payload.orderId === 'string';
 
 export default function CookDashboard() {

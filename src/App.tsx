@@ -4,12 +4,16 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useTheme } from "@/components/theme-provider-context";
-import { dashboardThemeClassNames, useDashboardTheme } from "@/hooks/useDashboardDark";
+import {
+  dashboardThemeClassNames,
+  useDashboardTheme,
+} from "@/hooks/useDashboardDark";
+import { API_BASE } from "@/lib/api";
 
-import './i18n/config';
+import "./i18n/config";
 
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -19,6 +23,44 @@ const WaiterDashboard = lazy(() => import("./pages/WaiterDashboard"));
 const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
 const OrderThanks = lazy(() => import("./pages/OrderThanks"));
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
+const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
+const PublicCodeRedirect = () => {
+  const location = useLocation();
+  const params = useParams<{ publicCode: string }>();
+  useEffect(() => {
+    let aborted = false;
+    const run = async () => {
+      const code = (params.publicCode || "").trim();
+      if (!code) {
+        window.location.replace("/");
+        return;
+      }
+      try {
+        const res = await fetch(
+          `${API_BASE.replace(/\/$/, "")}/q/${encodeURIComponent(code)}`,
+          { headers: { Accept: "application/json" } }
+        );
+        if (!res.ok) throw new Error("Failed to resolve");
+        const data = await res.json();
+        if (!aborted && data?.tableId) {
+          window.location.replace(`/table/${data.tableId}`);
+          return;
+        }
+      } catch {
+        // Fall back to server-side redirect (might include visit token)
+      }
+      if (!aborted) {
+        const dest = `${API_BASE.replace(/\/$/, "")}${location.pathname}${location.search}${location.hash}`;
+        window.location.replace(dest);
+      }
+    };
+    run();
+    return () => {
+      aborted = true;
+    };
+  }, [location, params.publicCode]);
+  return null;
+};
 
 const queryClient = new QueryClient();
 
@@ -32,14 +74,7 @@ const BrandedLoadingScreen = () => {
     try {
       const storedName = window.localStorage.getItem("STORE_NAME");
       const storedSlug = window.localStorage.getItem("STORE_SLUG");
-      const storedRole = window.localStorage.getItem("ROLE");
       label = storedName || storedSlug || "Garsone";
-      if (storedRole && storedRole !== "guest") {
-        if (storedRole === "waiter") roleLabel = "Waiter";
-        else if (storedRole === "cook") roleLabel = "Cook";
-        else if (storedRole === "manager") roleLabel = "Manager";
-        else roleLabel = storedRole;
-      }
     } catch {
       label = "Garsone";
     }
@@ -84,7 +119,7 @@ const AppShell = () => {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
-    if (typeof document === 'undefined') return;
+    if (typeof document === "undefined") return;
     const { classList } = document.body;
     dashboardThemeClassNames.forEach((cls) => classList.remove(cls));
     if (themeClass) {
@@ -96,25 +131,29 @@ const AppShell = () => {
   }, [themeClass]);
 
   return (
-    <div className={clsx(themeClass, { dark: dashboardDark || isDarkFromTheme })}>
+    <div
+      className={clsx(themeClass, { dark: dashboardDark || isDarkFromTheme })}
+    >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Suspense
-              fallback={
-                <BrandedLoadingScreen />
-              }
-            >
+            <Suspense fallback={<BrandedLoadingScreen />}>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/table/:tableId" element={<TableMenu />} />
-                <Route path="/order/:orderId/thanks" element={<OrderThanks />} />
+                <Route
+                  path="/order/:orderId/thanks"
+                  element={<OrderThanks />}
+                />
+                <Route path="/publiccode/:publicCode/*" element={<PublicCodeRedirect />} />
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/cook" element={<CookDashboard />} />
+                <Route path="/GarsoneAdmin" element={<ArchitectQrTiles />} />
+                <Route path="/architect" element={<Navigate to="/GarsoneAdmin" replace />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

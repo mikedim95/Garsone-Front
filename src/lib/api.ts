@@ -16,6 +16,7 @@ import type {
   ModifierInput,
   ModifierOptionPayload,
   ModifierOptionUpdatePayload,
+  QRTile,
   OkResponse,
   OrderQueueSummary,
   OrderResponse,
@@ -54,12 +55,50 @@ export function isOffline() {
   return String(v ?? '').toLowerCase() === '1' || String(v ?? '').toLowerCase() === 'true';
 }
 
+const VISIT_TOKEN_KEY = 'TABLE_VISIT_TOKEN';
+
+function getVisitToken() {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const token = window.localStorage?.getItem(VISIT_TOKEN_KEY);
+    return token?.trim() || undefined;
+  } catch (error) {
+    console.warn('Failed to read visit token', error);
+    return undefined;
+  }
+}
+
+function setVisitToken(token?: string | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token && token.trim().length > 0) {
+      window.localStorage?.setItem(VISIT_TOKEN_KEY, token.trim());
+    } else {
+      window.localStorage?.removeItem(VISIT_TOKEN_KEY);
+    }
+  } catch (error) {
+    console.warn('Failed to persist visit token', error);
+  }
+}
+
+export const visitTokenStore = {
+  get: getVisitToken,
+  set: (token?: string | null) => setVisitToken(token),
+  clear: () => setVisitToken(null),
+};
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = "ApiError";
   }
 }
+
+const withVisit = <T extends Record<string, any>>(payload: T): T & { visit?: string } => {
+  const visitToken = getVisitToken();
+  if (!visitToken) return payload;
+  return { ...payload, visit: visitToken };
+};
 
 type ManagerTableCreateInput = { label: string; isActive?: boolean };
 type ManagerTableUpdateInput = Partial<ManagerTableCreateInput>;
@@ -69,6 +108,8 @@ type UpdateWaiterPayload = Partial<CreateWaiterPayload>;
 type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
 type ModifierUpdatePayload = Partial<Modifier>;
 type EditOrderPayload = CreateOrderPayload;
+type QRTileUpdatePayload = { tableId?: string | null; isActive?: boolean; label?: string };
+type BulkTilePayload = { count: number; labelPrefix?: string };
 
 async function fetchApi<T>(
   endpoint: string,
@@ -76,11 +117,13 @@ async function fetchApi<T>(
 ): Promise<T> {
   try {
     const token = useAuthStore.getState().token;
+    const visitToken = getVisitToken();
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
         ...(options?.body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(visitToken ? { "X-Table-Visit": visitToken } : {}),
         ...options?.headers,
       },
     });
@@ -177,14 +220,14 @@ export const api = {
       ? devMocks.createOrder(data)
       : fetchApi<OrderResponse>("/orders", {
           method: "POST",
-          body: JSON.stringify(data),
+          body: JSON.stringify(withVisit(data)),
         }),
   editOrder: (orderId: string, data: EditOrderPayload): Promise<OrderResponse> =>
     isOffline()
       ? devMocks.createOrder(data)
       : fetchApi<OrderResponse>(`/orders/${orderId}`, {
           method: "PATCH",
-          body: JSON.stringify(data),
+          body: JSON.stringify(withVisit(data)),
         }),
   printOrder: (orderId: string) => fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
   callWaiter: (tableId: string): Promise<OkResponse> =>
@@ -192,7 +235,7 @@ export const api = {
       ? devMocks.callWaiter(tableId)
       : fetchApi<OkResponse>("/call-waiter", {
           method: "POST",
-          body: JSON.stringify({ tableId }),
+          body: JSON.stringify(withVisit({ tableId })),
         }),
   getOrderQueueSummary: (): Promise<OrderQueueSummary> =>
     isOffline()
@@ -304,7 +347,7 @@ export const api = {
         }),
   updateModifier: (id: string, data: ModifierUpdatePayload): Promise<{ modifier?: Modifier }> =>
     isOffline()
-      ? devMocks.updateModifier(id, data)
+      ? devMocks.updateModifier(id, data as any)
       : fetchApi<{ modifier?: Modifier }>(`/manager/modifiers/${id}`, {
           method: "PATCH",
           body: JSON.stringify(data),
@@ -379,4 +422,53 @@ export const api = {
     isOffline()
       ? devMocks.deleteCategory(id)
       : fetchApi<OkResponse>(`/manager/categories/${id}`, { method: 'DELETE' }),
+
+  // Architect / admin: QR tiles + stores
+  adminListStores: (): Promise<{ stores: StoreInfo[] }> =>
+    isOffline()
+      ? devMocks.adminListStores()
+      : fetchApi<{ stores: StoreInfo[] }>('/admin/stores'),
+  adminListStoreTables: (storeId: string): Promise<{ tables: ManagerTableSummary[] }> =>
+    isOffline()
+      ? devMocks.adminListStoreTables(storeId)
+      : fetchApi<{ tables: ManagerTableSummary[] }>(`/admin/stores/${storeId}/tables`),
+  adminListQrTiles: (storeId: string): Promise<{ store?: StoreInfo; tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminListQrTiles(storeId)
+      : fetchApi<{ store?: StoreInfo; tiles: QRTile[] }>(`/admin/stores/${storeId}/qr-tiles`),
+  adminBulkCreateQrTiles: (storeId: string, data: BulkTilePayload): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminBulkCreateQrTiles(storeId, data)
+      : fetchApi<{ tiles: QRTile[] }>(`/admin/stores/${storeId}/qr-tiles/bulk`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+  adminUpdateQrTile: (id: string, data: QRTileUpdatePayload): Promise<{ tile: QRTile }> =>
+    isOffline()
+      ? devMocks.adminUpdateQrTile(id, data)
+      : fetchApi<{ tile: QRTile }>(`/admin/qr-tiles/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+  adminDeleteQrTile: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.adminDeleteQrTile(id)
+      : fetchApi<OkResponse>(`/admin/qr-tiles/${id}`, { method: 'DELETE' }),
+  resolveQrTile: (publicCode: string): Promise<any> =>
+    isOffline()
+      ? devMocks.resolveQrTile(publicCode)
+      : fetchApi(`/q/${encodeURIComponent(publicCode)}`),
+
+  // Manager: QR tiles binding for own store (uses admin endpoints with storeId)
+  managerListQrTiles: (storeId: string): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminListQrTiles(storeId)
+      : fetchApi<{ tiles: QRTile[] }>(`/admin/stores/${storeId}/qr-tiles`),
+  managerUpdateQrTile: (id: string, data: QRTileUpdatePayload): Promise<{ tile: QRTile }> =>
+    isOffline()
+      ? devMocks.adminUpdateQrTile(id, data)
+      : fetchApi<{ tile: QRTile }>(`/admin/qr-tiles/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
 };
