@@ -36,6 +36,19 @@ interface TableWithWaiters extends Table {
 }
 const ORDER_STATUS_VALUES: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'SERVED', 'PAID', 'CANCELLED'];
 
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value === 'string' && value) return value;
+  if (typeof value === 'number') return String(value);
+  return null;
+};
+
+const normalizeTableId = (value: unknown): string | null => {
+  const direct = normalizeId(value);
+  if (direct) return direct;
+  if (isRecord(value)) return normalizeId(value.id);
+  return null;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
@@ -114,16 +127,19 @@ const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] =
 
 const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
   if (!isRecord(raw)) return null;
-  const id =
-    typeof raw.id === 'string' && raw.id
-      ? raw.id
-      : `order-${fallbackIndex}-${Date.now()}`;
+  const id = normalizeId(raw.id) ?? `order-${fallbackIndex}-${Date.now()}`;
   const tableId =
-    typeof raw.tableId === 'string' && raw.tableId
-      ? raw.tableId
-      : `table-${fallbackIndex}`;
+    normalizeTableId(raw.tableId) ??
+    normalizeTableId((raw as { table_id?: unknown }).table_id) ??
+    normalizeTableId((raw as { table?: unknown }).table) ??
+    `table-${fallbackIndex}`;
   const tableLabel =
     (typeof raw.tableLabel === 'string' && raw.tableLabel) ||
+    (typeof (raw as { table_label?: unknown }).table_label === 'string' &&
+      (raw as { table_label?: string }).table_label) ||
+    (isRecord((raw as { table?: unknown }).table) &&
+      typeof (raw as { table?: { label?: unknown } }).table?.label === 'string' &&
+      (raw as { table?: { label?: string } }).table?.label) ||
     (typeof raw.table === 'string' && raw.table) ||
     tableId;
   const rawStatus = typeof raw.status === 'string' ? raw.status.toUpperCase() : undefined;
@@ -157,10 +173,10 @@ const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
 };
 
 const isOrderEventPayload = (payload: unknown): payload is OrderEventPayload =>
-  isRecord(payload) && typeof payload.orderId === 'string';
+  isRecord(payload) && normalizeId(payload.orderId) !== null;
 
 const isWaiterCallPayload = (payload: unknown): payload is WaiterCallPayload =>
-  isRecord(payload) && typeof payload.tableId === 'string';
+  isRecord(payload) && normalizeId(payload.tableId) !== null;
 
 export default function WaiterDashboard() {
   const { t } = useTranslation();
@@ -217,14 +233,22 @@ export default function WaiterDashboard() {
           }
         }
         const tablesRes = await api.getTables();
-        const myId = user?.id;
         const tables = (tablesRes.tables ?? []) as TableWithWaiters[];
+        const myIdNormalized = normalizeId(user?.id);
         const next = new Set<string>();
         tables.forEach((table) => {
-          if (!table.id) return;
+          const tableId = normalizeTableId(table.id);
+          if (!tableId || !myIdNormalized) return;
           const waiters = Array.isArray(table.waiters) ? table.waiters : [];
-          if (waiters.some((waiter) => waiter?.id === myId)) {
-            next.add(table.id);
+          const primaryWaiterId =
+            normalizeId((table as { waiterId?: unknown }).waiterId) ??
+            normalizeId((table as { waiter_id?: unknown }).waiter_id) ??
+            normalizeTableId((table as { waiter?: unknown }).waiter);
+          const waiterIds = waiters
+            .map((waiter) => (isRecord(waiter) ? normalizeId(waiter?.id) : normalizeId(waiter)))
+            .filter(Boolean) as string[];
+          if ([primaryWaiterId, ...waiterIds].some((id) => id === myIdNormalized)) {
+            next.add(tableId);
           }
         });
         setAssignedTableIds(next);
@@ -271,10 +295,13 @@ export default function WaiterDashboard() {
     };
     const handlePlaced = (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
+      const orderId = normalizeId(payload.orderId);
+      const tableId = normalizeId(payload.tableId) ?? '';
+      if (!orderId) return;
       const normalized = normalizeOrder(
         {
-          id: payload.orderId,
-          tableId: payload.tableId,
+          id: orderId,
+          tableId,
           tableLabel: payload.tableLabel,
           note: payload.note,
           totalCents: payload.totalCents,
@@ -292,34 +319,46 @@ export default function WaiterDashboard() {
     };
     const handlePreparing = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      updateLocalStatus(payload.orderId!, 'PREPARING');
-      await hydrateOrder(payload.orderId!);
+      const orderId = normalizeId(payload.orderId);
+      if (!orderId) return;
+      updateLocalStatus(orderId, 'PREPARING');
+      await hydrateOrder(orderId);
     };
     const handleReady = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      updateLocalStatus(payload.orderId!, 'READY');
-      await hydrateOrder(payload.orderId!);
-      toast({ title: t('toasts.order_ready'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
+      const orderId = normalizeId(payload.orderId);
+      const tableId = normalizeId(payload.tableId) ?? '';
+      if (!orderId) return;
+      updateLocalStatus(orderId, 'READY');
+      await hydrateOrder(orderId);
+      toast({ title: t('toasts.order_ready'), description: t('toasts.table', { table: tableId }) });
     };
     const handleCancelled = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      updateLocalStatus(payload.orderId!, 'CANCELLED');
-      await hydrateOrder(payload.orderId!);
-      toast({ title: t('toasts.order_cancelled'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
+      const orderId = normalizeId(payload.orderId);
+      const tableId = normalizeId(payload.tableId) ?? '';
+      if (!orderId) return;
+      updateLocalStatus(orderId, 'CANCELLED');
+      await hydrateOrder(orderId);
+      toast({ title: t('toasts.order_cancelled'), description: t('toasts.table', { table: tableId }) });
     };
     const handlePaid = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      updateLocalStatus(payload.orderId!, 'PAID');
-      await hydrateOrder(payload.orderId!);
+      const orderId = normalizeId(payload.orderId);
+      if (!orderId) return;
+      updateLocalStatus(orderId, 'PAID');
+      await hydrateOrder(orderId);
     };
     const handleWaiterCall = (payload: unknown) => {
       if (!isWaiterCallPayload(payload)) return;
-      if (assignedTableIds.size > 0 && !assignedTableIds.has(payload.tableId)) return;
+      const tableId = normalizeId(payload.tableId);
+      if (!tableId) return;
+      if (assignedTableIds.size > 0 && !assignedTableIds.has(tableId)) return;
       if (payload.action === 'called') {
-        setLastCallTableId(payload.tableId);
-        toast({ title: t('toasts.waiter_called'), description: t('toasts.table', { table: payload.tableId }) });
+        setLastCallTableId(tableId);
+        toast({ title: t('toasts.waiter_called'), description: t('toasts.table', { table: tableId }) });
       } else if (payload.action === 'cleared') {
-        setLastCallTableId((current) => (current === payload.tableId ? null : current));
+        setLastCallTableId((current) => (current === tableId ? null : current));
       }
     };
     realtimeService
