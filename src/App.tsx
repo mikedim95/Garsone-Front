@@ -74,14 +74,7 @@ const BrandedLoadingScreen = () => {
     try {
       const storedName = window.localStorage.getItem("STORE_NAME");
       const storedSlug = window.localStorage.getItem("STORE_SLUG");
-      const storedRole = window.localStorage.getItem("ROLE");
       label = storedName || storedSlug || "Garsone";
-      if (storedRole && storedRole !== "guest") {
-        if (storedRole === "waiter") roleLabel = "Waiter";
-        else if (storedRole === "cook") roleLabel = "Cook";
-        else if (storedRole === "manager") roleLabel = "Manager";
-        else roleLabel = storedRole;
-      }
     } catch {
       label = "Garsone";
     }

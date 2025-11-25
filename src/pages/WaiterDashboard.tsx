@@ -219,6 +219,12 @@ export default function WaiterDashboard() {
         const tablesRes = await api.getTables();
         const myId = user?.id;
         const tables = (tablesRes.tables ?? []) as TableWithWaiters[];
+        const hasWaiterData = tables.some((table) => Array.isArray(table.waiters));
+        if (!hasWaiterData) {
+          // Avoid wiping assignments when waiter info is missing from payload
+          setAssignmentsLoaded(true);
+          return;
+        }
         const next = new Set<string>();
         tables.forEach((table) => {
           if (!table.id) return;
@@ -227,6 +233,7 @@ export default function WaiterDashboard() {
             next.add(table.id);
           }
         });
+        // Only overwrite if we actually received waiter data; otherwise keep previous assignments
         setAssignedTableIds(next);
       } catch (error) {
         console.error('Failed to load waiter assignments', error);
@@ -244,16 +251,20 @@ export default function WaiterDashboard() {
     if (!assignmentsLoaded || !user) return;
     (async () => {
       try {
-        const data = await api.getOrders({ take: ORDER_FETCH_LIMIT });
+        const data = await api.getOrders({
+          take: ORDER_FETCH_LIMIT,
+          tableIds: assignedTableIds.size > 0 ? Array.from(assignedTableIds) : undefined,
+        });
         const mapped = (data.orders ?? [])
           .map((order, index) => normalizeOrder(order, index))
-          .filter((order): order is Order => Boolean(order));
+          .filter((order): order is Order => Boolean(order))
+          .filter((order) => assignedTableIds.size === 0 || assignedTableIds.has(order.tableId));
         setOrdersLocal(mapped);
       } catch (error) {
         console.error('Initial orders load failed', error);
       }
     })();
-  }, [assignmentsLoaded, user, setOrdersLocal]);
+  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds]);
 
   // Realtime updates → mutate local cache
   useEffect(() => {
@@ -264,13 +275,16 @@ export default function WaiterDashboard() {
       try {
         const res = await api.getOrder(orderId);
         const normalized = normalizeOrder(res.order, Date.now());
-        if (normalized) upsertOrder(normalized);
+        if (normalized && (assignedTableIds.size === 0 || assignedTableIds.has(normalized.tableId))) {
+          upsertOrder(normalized);
+        }
       } catch (error) {
         console.error('Failed to hydrate order from realtime event', error);
       }
     };
     const handlePlaced = (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
+      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
       const normalized = normalizeOrder(
         {
           id: payload.orderId,
@@ -286,29 +300,31 @@ export default function WaiterDashboard() {
       );
       if (!normalized) return;
       upsertOrder(normalized);
-      if (assignedTableIds.size === 0 || assignedTableIds.has(normalized.tableId)) {
-        toast({ title: t('toasts.new_order'), description: t('toasts.table', { table: normalized.tableLabel }) });
-      }
+      toast({ title: t('toasts.new_order'), description: t('toasts.table', { table: normalized.tableLabel }) });
     };
     const handlePreparing = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
+      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
       updateLocalStatus(payload.orderId!, 'PREPARING');
       await hydrateOrder(payload.orderId!);
     };
     const handleReady = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
+      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
       updateLocalStatus(payload.orderId!, 'READY');
       await hydrateOrder(payload.orderId!);
       toast({ title: t('toasts.order_ready'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
     };
     const handleCancelled = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
+      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
       updateLocalStatus(payload.orderId!, 'CANCELLED');
       await hydrateOrder(payload.orderId!);
       toast({ title: t('toasts.order_cancelled'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
     };
     const handlePaid = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
+      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
       updateLocalStatus(payload.orderId!, 'PAID');
       await hydrateOrder(payload.orderId!);
     };
@@ -340,14 +356,14 @@ export default function WaiterDashboard() {
       });
     return () => {
       unsubscribed = true;
-      realtimeService.unsubscribe(`${storeSlug}/orders/placed`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/prepairing`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/preparing`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/ready`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/canceled`);
-      realtimeService.unsubscribe(`${storeSlug}/orders/paid`);
-      realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
+      realtimeService.unsubscribe(`${storeSlug}/orders/placed`, handlePlaced);
+      realtimeService.unsubscribe(`${storeSlug}/orders/prepairing`, handlePreparing);
+      realtimeService.unsubscribe(`${storeSlug}/orders/preparing`, handlePreparing);
+      realtimeService.unsubscribe(`${storeSlug}/orders/ready`, handleReady);
+      realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`, handleCancelled);
+      realtimeService.unsubscribe(`${storeSlug}/orders/canceled`, handleCancelled);
+      realtimeService.unsubscribe(`${storeSlug}/orders/paid`, handlePaid);
+      realtimeService.unsubscribe(`${storeSlug}/waiter/call`, handleWaiterCall);
     };
   }, [assignmentsLoaded, storeSlug, assignedTableIds, upsertOrder, updateLocalStatus, toast, t]);
 

@@ -64,7 +64,7 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
           </p>
         </div>
         
-        <div className="max-w-lg mx-auto mb-20">
+        <div className="max-w-lg mx-auto mb-20" data-live-qr-anchor>
           <div 
             className="group p-10 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
           >

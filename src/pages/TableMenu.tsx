@@ -64,7 +64,11 @@ const buildMenuState = (
   }
 ): MenuStateData => ({
   categories: mapCategories(payload?.categories),
-  items: payload?.items ?? [],
+  items: (payload?.items ?? []).map((item) => ({
+    ...item,
+    image: item.image ?? item.imageUrl ?? '',
+    imageUrl: item.imageUrl ?? item.image ?? '',
+  })),
   modifiers: payload?.modifiers ?? [],
   modifierOptions: payload?.modifierOptions ?? [],
   itemModifiers: payload?.itemModifiers ?? [],
@@ -787,7 +791,7 @@ export default function TableMenu() {
 
   return (
     <div className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-hidden")}>
-      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden overflow-y-auto text-foreground flex flex-col">
+      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <header className="bg-card/80 backdrop-blur border-b border-border sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -921,21 +925,22 @@ export default function TableMenu() {
               <div className="space-y-8">
                 {Array.from({ length: 3 }).map((_, sectionIdx) => (
                   <section key={sectionIdx}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <Skeleton className="h-5 w-32" />
-                      <div className="h-px bg-border flex-1" />
+                    <div className="flex items-center justify-center gap-4 my-8 max-w-3xl mx-auto w-full">
+                      <div className="flex-1 h-px bg-border" />
+                      <Skeleton className="h-6 w-40" />
+                      <div className="flex-1 h-px bg-border" />
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {Array.from({ length: 3 }).map((_, idx) => (
+                    <div className="grid grid-cols-1 gap-6 mb-8">
+                      {Array.from({ length: 4 }).map((_, idx) => (
                         <Card
                           key={`skeleton-${sectionIdx}-${idx}`}
                           className="p-0 rounded-2xl overflow-hidden"
                         >
-                          <Skeleton className="w-full aspect-square" />
-                          <div className="p-4 space-y-2">
+                          <Skeleton className="w-full aspect-[16/10]" />
+                          <div className="p-4 space-y-3">
                             <Skeleton className="h-4 w-3/4" />
                             <Skeleton className="h-3 w-1/2" />
-                            <div className="flex items-center justify-between pt-2">
+                            <div className="flex items-center justify-between pt-1">
                               <Skeleton className="h-6 w-16" />
                               <Skeleton className="h-9 w-24 rounded-full" />
                             </div>
@@ -947,7 +952,7 @@ export default function TableMenu() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-6 mb-8">
                 {Array.from({ length: 6 }).map((_, idx) => (
                   <Card
                     key={`skeleton-${idx}`}

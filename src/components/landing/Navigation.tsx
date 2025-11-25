@@ -27,14 +27,18 @@ export const Navigation = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center h-16 gap-3">
           {/* Logo */}
-          <div className="flex items-center gap-2 mr-4">
+          <a
+            href="/"
+            className="flex items-center gap-2 mr-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-xl transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            aria-label="Garsone home"
+          >
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-primary shadow-lg">
               <span className="text-primary-foreground font-black text-lg">G</span>
             </div>
             <span className="text-xl font-black bg-gradient-primary bg-clip-text text-transparent">
               Garsone
             </span>
-          </div>
+          </a>
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-4 sm:gap-6 flex-1">

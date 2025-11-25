@@ -229,7 +229,15 @@ function load(): Db {
     { id: uid('opt'), title: '2 tsp', label: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
   ]};
   const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true };
-  const itemCap: Item = { id: uid('item'), title: 'Cappuccino', description: 'Classic foam', priceCents: 350, categoryId: catCoffee.id, isAvailable: true };
+  const itemCap: Item = {
+    id: uid('item'),
+    title: 'Cappuccino',
+    description: 'Classic foam',
+    priceCents: 350,
+    categoryId: catCoffee.id,
+    isAvailable: true,
+    imageUrl: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/demo-cafe/Cup-Of-Creamy-Coffee.png',
+  };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
     store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'demo-cafe' },
@@ -500,11 +508,14 @@ export const devMocks = {
   },
 
   // Orders
-  getOrders(params?: { status?: string; take?: number }) {
+  getOrders(params?: { status?: string; take?: number; tableIds?: string[] }) {
     const db = snapshot();
     seedOrdersIfEmpty(db);
     let orders = [...db.orders].sort((a,b)=> b.createdAt - a.createdAt);
     if (params?.status) orders = orders.filter(o => o.status === params.status);
+    if (params?.tableIds && params.tableIds.length > 0) {
+      orders = orders.filter((o) => params.tableIds!.includes(o.tableId));
+    }
     if (params?.take) orders = orders.slice(0, params.take);
     return Promise.resolve({ orders: orders.map(o => enrichOrder(db, o)) });
   },

@@ -10,7 +10,7 @@ import { Separator } from '../ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { ModifierDialog } from './ModifierDialog';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Props {
   categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
@@ -41,6 +41,7 @@ export const ElegantMenuView = ({
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
   const [cartOpen, setCartOpen] = useState(false);
+  const [cartPeek, setCartPeek] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const currency =
@@ -109,6 +110,24 @@ export const ElegantMenuView = ({
     setEditingItemIndex(null);
   };
 
+  useEffect(() => {
+    if (cartOpen) setCartPeek(false);
+  }, [cartOpen]);
+
+  const handleCartButtonClick = () => {
+    if (!cartPeek) {
+      setCartPeek(true);
+      return;
+    }
+    setCartOpen(true);
+    setCartPeek(false);
+  };
+
+  const itemCountLabel =
+    cartItems.length === 1
+      ? t('menu.item', { defaultValue: '1 item' })
+      : t('menu.items', { defaultValue: `${cartItems.length} items` });
+
   return (
     <>
       {/* Menu Section */}
@@ -124,7 +143,7 @@ export const ElegantMenuView = ({
                 <Separator className="flex-1" />
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="grid grid-cols-1 gap-6 mb-8">
           {group.items.map((item) => {
             const price = getPrice(item);
             const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
@@ -175,16 +194,32 @@ export const ElegantMenuView = ({
         ))}
       </div>
 
-      {/* Simple Floating Cart Circle */}
+      {/* Floating Cart Button with Peek */}
       <button
-        onClick={() => setCartOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95"
+        onClick={handleCartButtonClick}
+        className={[
+          'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl overflow-hidden border border-border/60 bg-primary text-primary-foreground transition-all duration-300 ease-out',
+          cartPeek ? 'w-64 pr-5 pl-4 justify-start hover:scale-105' : 'w-16 justify-center hover:scale-110',
+          'active:scale-95',
+        ].join(' ')}
       >
         <ShoppingCart className="h-6 w-6" />
         {cartItems.length > 0 && (
           <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center animate-scale-in">
             {cartItems.length}
           </span>
+        )}
+        {cartPeek && (
+          <div className="flex flex-col leading-tight text-left min-w-[140px]">
+            <span className="text-sm font-semibold">
+              {cartItems.length > 0
+                ? t('menu.your_order', { defaultValue: 'Your order' })
+                : t('menu.cart_empty', { defaultValue: 'Your cart is empty' })}
+            </span>
+            <span className="text-xs text-primary-foreground/80">
+              {cartItems.length > 0 ? `${itemCountLabel} · ${formatPrice(cartTotal)}` : t('menu.add_to_cart', { defaultValue: 'Add items to begin' })}
+            </span>
+          </div>
         )}
       </button>
       <button
@@ -211,19 +246,25 @@ export const ElegantMenuView = ({
       </button>
 
       {/* Cart Modal */}
-      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0">
+      <Dialog
+        open={cartOpen}
+        onOpenChange={(open) => {
+          setCartOpen(open);
+          if (open) setCartPeek(false);
+        }}
+      >
+        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[90vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0">
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
-          <Card className="border-0 shadow-none">
-            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-6 border-b border-border/40">
+          <Card className="border-0 shadow-none h-full flex flex-col">
+            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-4 border-b border-border/40">
               <div className="flex items-center gap-3">
-              <div className="p-3 rounded-full bg-primary/20">
-                  <ShoppingCart className="h-6 w-6 text-primary" />
+              <div className="p-2 rounded-full bg-primary/20">
+                  <ShoppingCart className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-foreground">
@@ -236,7 +277,7 @@ export const ElegantMenuView = ({
               </div>
             </div>
 
-            <ScrollArea className="max-h-[40vh]">
+            <ScrollArea className="max-h-[35vh]">
             {cartItems.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
@@ -247,7 +288,7 @@ export const ElegantMenuView = ({
                 </p>
               </div>
             ) : (
-              <div className="p-4 space-y-4">
+              <div className="p-3 space-y-2">
                 {cartItems.map((cartItem, idx) => {
                   const price = getPrice(cartItem.item);
                   const itemTotal = price * cartItem.quantity;
@@ -261,7 +302,7 @@ export const ElegantMenuView = ({
                   return (
                     <div
                       key={`${cartItem.item.id}-${idx}`}
-                      className="relative group bg-muted/20 rounded-xl p-4 border border-border/30 hover:border-primary/30 transition-all duration-300"
+                      className="relative group bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/30 transition-all duration-300"
                     >
                       <button
                         onClick={() => removeItem(cartItem.item.id)}
@@ -270,40 +311,40 @@ export const ElegantMenuView = ({
                         <X className="h-3 w-3" />
                       </button>
 
-                      <div className="flex gap-3">
+                      <div className="flex gap-2">
                         <img
                           src={cartItem.item.image}
                           alt={displayName}
-                          className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                          className="w-12 h-12 rounded-md object-cover flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <h4 className="font-semibold text-sm text-foreground truncate">
+                          <div className="flex items-start justify-between gap-2 mb-0.5">
+                            <h4 className="font-semibold text-xs text-foreground truncate">
                               {displayName}
                             </h4>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleEditModifiers(idx)}
-                              className="h-6 w-6 p-0"
+                              className="h-5 w-5 p-0 flex-shrink-0"
                             >
-                              <Pencil className="h-3 w-3" />
+                              <Pencil className="h-2.5 w-2.5" />
                             </Button>
                           </div>
                           
-                          <p className="text-xs text-primary font-bold mb-2">
+                          <p className="text-xs text-primary font-bold mb-1">
                             {formatPrice(price)}
                           </p>
 
                           {hasModifiers && (
-                            <div className="mb-2 space-y-1">
+                            <div className="mb-1 space-y-0.5">
                               {cartItem.item.modifiers?.map((modifier) => {
                                 const selectedOptionId = cartItem.selectedModifiers[modifier.id];
                                 const selectedOption = modifier.options.find(opt => opt.id === selectedOptionId);
                                 if (!selectedOption) return null;
                                 
                                 return (
-                                  <div key={modifier.id} className="text-xs text-muted-foreground">
+                                  <div key={modifier.id} className="text-[10px] text-muted-foreground">
                                     <span className="font-medium">{modifier.name || modifier.title}:</span>{' '}
                                     <span>{selectedOption.label || selectedOption.title}</span>
                                     {selectedOption.priceDelta > 0 && (
@@ -318,26 +359,26 @@ export const ElegantMenuView = ({
                           )}
 
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 bg-background/50 rounded-full px-2 py-1">
+                            <div className="flex items-center gap-1.5 bg-background/50 rounded-full px-1.5 py-0.5">
                               <button
                                 onClick={() =>
                                   updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))
                                 }
-                                className="text-muted-foreground hover:text-foreground transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-muted"
+                                className="text-muted-foreground hover:text-foreground transition-colors w-5 h-5 flex items-center justify-center rounded-full hover:bg-muted text-sm"
                               >
                                 −
                               </button>
-                              <span className="text-sm font-medium w-6 text-center">
+                              <span className="text-xs font-medium w-5 text-center">
                                 {cartItem.quantity}
                               </span>
                               <button
                                 onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
-                                className="text-muted-foreground hover:text-foreground transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-muted"
+                                className="text-muted-foreground hover:text-foreground transition-colors w-5 h-5 flex items-center justify-center rounded-full hover:bg-muted text-sm"
                               >
                                 +
                               </button>
                             </div>
-                            <span className="text-sm font-bold text-foreground">
+                            <span className="text-xs font-bold text-foreground">
                               {formatPrice(itemTotal)}
                             </span>
                           </div>
@@ -351,40 +392,31 @@ export const ElegantMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="p-6 border-t border-border/40 space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {t('menu.subtotal', { defaultValue: 'Subtotal' })}
-                    </span>
-                    <span className="font-medium">{formatPrice(cartTotal)}</span>
-                  </div>
-                  <Separator className="bg-border/50" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-bold text-foreground">
-                      {t('menu.total', { defaultValue: 'Total' })}
-                    </span>
-                    <span className="text-2xl font-bold text-primary">
-                      {formatPrice(cartTotal)}
-                    </span>
-                  </div>
+              <div className="p-3 border-t border-border/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-bold text-foreground">
+                    {t('menu.total', { defaultValue: 'Total' })}
+                  </span>
+                  <span className="text-xl font-bold text-primary">
+                    {formatPrice(cartTotal)}
+                  </span>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">
                     {t('menu.order_note', { defaultValue: 'Add a note (optional)' })}
                   </label>
                   <Textarea
                     value={orderNote}
                     onChange={(e) => setOrderNote(e.target.value)}
                     placeholder={t('menu.order_note_placeholder', { defaultValue: 'Any special requests?' })}
-                    className="resize-none h-20"
+                    className="resize-none h-12 text-sm"
                   />
                 </div>
 
                 <Button
                   onClick={handleCheckout}
-                  className="w-full h-12 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-base shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
+                  className="w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
                 >
                   {t('menu.checkout', { defaultValue: 'Place Order' })}
                 </Button>

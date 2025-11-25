@@ -1,69 +1,22 @@
-import React, { useEffect, useState, useRef, lazy, Suspense, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
+import { AnimatedMockup } from './landing/AnimatedMockup';
+import { Features } from './landing/Features';
+import { Testimonials } from './landing/Testimonials';
+import { DemoQRGrid } from './landing/DemoQRGrid';
 import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
-
-const AnimatedMockupLazy = lazy(() =>
-  import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
-);
-const FeaturesLazy = lazy(() =>
-  import('./landing/Features').then((mod) => ({ default: mod.Features }))
-);
-const TestimonialsLazy = lazy(() =>
-  import('./landing/Testimonials').then((mod) => ({ default: mod.Testimonials }))
-);
-const DemoQRGridLazy = lazy(() =>
-  import('./landing/DemoQRGrid').then((mod) => ({ default: mod.DemoQRGrid }))
-);
 
 const DeferredSection: React.FC<{
   children: React.ReactNode;
   rootMargin?: string;
   forceVisible?: boolean;
   onVisible?: () => void;
-}> = ({ children, rootMargin = '200px', forceVisible = false, onVisible }) => {
-  const [visible, setVisible] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (forceVisible && !visible) {
-      setVisible(true);
-      return;
-    }
-    if (visible) return;
-    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
-      setVisible(true);
-      return;
-    }
-
-    const node = ref.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setVisible(true);
-            observer.disconnect();
-          }
-        });
-      },
-      { rootMargin }
-    );
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [visible, rootMargin, forceVisible]);
-
-  useEffect(() => {
-    if (visible && onVisible) {
-      onVisible();
-    }
-  }, [visible, onVisible]);
-
-  return <div ref={ref}>{visible ? children : null}</div>;
+  placeholderHeight?: number;
+}> = ({ children, placeholderHeight }) => {
+  return <div style={placeholderHeight ? { minHeight: placeholderHeight } : undefined}>{children}</div>;
 };
 
 declare global {
@@ -139,17 +92,32 @@ const AppLayout: React.FC = () => {
   const scrollToDemoQr = () => {
     setForceDemoVisible(true);
 
-    const navOffset = 140; // keep heading below navbar and push QR up
-    const performScroll = (attempt = 0) => {
+    const performScroll = (attempt = 0, lastRect?: { height: number; top: number }) => {
       if (typeof window === 'undefined') return;
-      const node = demoRef.current;
-      if (!node) return;
-      const rect = node.getBoundingClientRect();
-      const target = Math.max(0, rect.top + window.scrollY - navOffset);
+      const wrapper = demoRef.current;
+      if (!wrapper) return;
+
+      const targetNode = wrapper.querySelector('[data-section=\"demo-qr\"]') as HTMLElement | null;
+      const liveQrAnchor = wrapper.querySelector('[data-live-qr-anchor]') as HTMLElement | null;
+      const anchor =
+        (liveQrAnchor?.querySelector('svg') as HTMLElement | null) ||
+        liveQrAnchor ||
+        (targetNode?.querySelector('img') as HTMLElement | null) ||
+        (targetNode?.querySelector('svg') as HTMLElement | null) ||
+        targetNode ||
+        wrapper;
+
+      const rect = anchor.getBoundingClientRect();
+      const nav = document.querySelector('nav');
+      const navHeight = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 0;
+      const target = Math.max(0, rect.top + window.scrollY - navHeight - 24);
+
       window.scrollTo({ top: target, behavior: 'smooth' });
-      // retry once content has expanded (lazy-loaded)
-      if (attempt < 3 && rect.height < 480) {
-        setTimeout(() => performScroll(attempt + 1), 140);
+      // retry while layout is changing (lazy images loading)
+      const heightChanged = !lastRect || Math.abs(rect.height - lastRect.height) > 8;
+      const topChanged = !lastRect || Math.abs(rect.top - lastRect.top) > 8;
+      if (attempt < 8 && (heightChanged || topChanged)) {
+        setTimeout(() => performScroll(attempt + 1, { height: rect.height, top: rect.top }), 140);
       }
     };
 
@@ -216,26 +184,18 @@ const AppLayout: React.FC = () => {
         onOfflineDemo={startOfflineDemo}
         liveReady={!!liveUrl && !liveLoading}
       />
-      <DeferredSection>
-        <Suspense fallback={<div className="py-16" />}>
-          <AnimatedMockupLazy />
-        </Suspense>
+      <DeferredSection placeholderHeight={720}>
+        <AnimatedMockup />
       </DeferredSection>
-      <DeferredSection>
-        <Suspense fallback={<div className="py-24" />}>
-          <FeaturesLazy />
-        </Suspense>
+      <DeferredSection placeholderHeight={640}>
+        <Features />
       </DeferredSection>
-      <DeferredSection>
-        <Suspense fallback={<div className="py-20" />}>
-          <TestimonialsLazy />
-        </Suspense>
+      <DeferredSection placeholderHeight={600}>
+        <Testimonials />
       </DeferredSection>
       <div id="demo-qr" ref={demoRef} className="scroll-mt-24">
-        <DeferredSection forceVisible={forceDemoVisible}>
-          <Suspense fallback={<div className="py-24" />}>
-            <DemoQRGridLazy liveUrl={liveUrl ?? undefined} />
-          </Suspense>
+        <DeferredSection forceVisible={forceDemoVisible} placeholderHeight={1200}>
+          <DemoQRGrid liveUrl={liveUrl ?? undefined} />
         </DeferredSection>
       </div>
       <footer className="relative bg-foreground text-background py-20 overflow-hidden">
