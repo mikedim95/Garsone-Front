@@ -242,10 +242,14 @@ export const api = {
       ? devMocks.getOrderQueueSummary()
       : fetchApi<OrderQueueSummary>("/orders/queue"),
   // Authenticated orders API
-  getOrders: (params?: { status?: string; take?: number }): Promise<OrdersResponse> => {
+  getOrders: (params?: { status?: string; take?: number; tableIds?: string[] }): Promise<OrdersResponse> => {
     const q: string[] = [];
     if (params?.status) q.push(`status=${encodeURIComponent(params.status)}`);
     if (params?.take) q.push(`take=${params.take}`);
+    if (params?.tableIds?.length) {
+      const ids = params.tableIds.map((id) => encodeURIComponent(id)).join(',');
+      q.push(`tableIds=${ids}`);
+    }
     const query = q.length ? `?${q.join('&')}` : "";
     if (isOffline()) return devMocks.getOrders(params);
     return fetchApi<OrdersResponse>(`/orders${query}`);

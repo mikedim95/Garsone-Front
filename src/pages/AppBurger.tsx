@@ -23,7 +23,7 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
   const themedSheet = clsx(themeClass, { dark: dashboardDark });
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet modal={false} open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
           className={`relative inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-lg border border-border/60 bg-card/80 hover:bg-accent transition-colors duration-150 ${className}`}

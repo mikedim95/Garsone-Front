@@ -41,9 +41,10 @@ export const ElegantMenuView = ({
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
   const [cartOpen, setCartOpen] = useState(false);
-  const [cartPeek, setCartPeek] = useState(false);
+  const [expandedBubble, setExpandedBubble] = useState<'none' | 'cart' | 'call'>('none');
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [isRinging, setIsRinging] = useState(false);
   const currency =
     typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
@@ -110,17 +111,29 @@ export const ElegantMenuView = ({
     setEditingItemIndex(null);
   };
 
-  useEffect(() => {
-    if (cartOpen) setCartPeek(false);
-  }, [cartOpen]);
-
   const handleCartButtonClick = () => {
-    if (!cartPeek) {
-      setCartPeek(true);
-      return;
+    if (expandedBubble === 'cart') {
+      setCartOpen(true);
+      setExpandedBubble('none');
+    } else {
+      setExpandedBubble('cart');
     }
-    setCartOpen(true);
-    setCartPeek(false);
+  };
+
+  const handleCallButtonClick = () => {
+    if (expandedBubble === 'call') {
+      return; // Wait for user action
+    }
+    setExpandedBubble('call');
+  };
+
+  const handleInitiateCall = () => {
+    setIsRinging(true);
+    onCallClick?.();
+    setTimeout(() => {
+      setExpandedBubble('none');
+      setIsRinging(false);
+    }, 2000);
   };
 
   const itemCountLabel =
@@ -136,11 +149,11 @@ export const ElegantMenuView = ({
           <div key={group.category.id}>
             {selectedCategory === 'all' && (
               <div className="flex items-center gap-4 my-8">
-                <Separator className="flex-1" />
+                <Separator className="flex-1 h-[2px] bg-border" />
                 <h2 className="text-2xl font-bold text-foreground px-4">
                   {group.category.title}
                 </h2>
-                <Separator className="flex-1" />
+                <Separator className="flex-1 h-[2px] bg-border" />
               </div>
             )}
             <div className="grid grid-cols-1 gap-6 mb-8">
@@ -194,54 +207,92 @@ export const ElegantMenuView = ({
         ))}
       </div>
 
-      {/* Floating Cart Button with Peek */}
+      {/* Floating Cart Button */}
       <button
         onClick={handleCartButtonClick}
         className={[
-          'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl overflow-hidden border border-border/60 bg-primary text-primary-foreground transition-all duration-300 ease-out',
-          cartPeek ? 'w-64 pr-5 pl-4 justify-start hover:scale-105' : 'w-16 justify-center hover:scale-110',
-          'active:scale-95',
+          'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
+          expandedBubble === 'cart' ? 'w-80 pr-5 pl-4 justify-between' : 'w-16 justify-center hover:scale-110',
+          expandedBubble === 'none' && 'active:scale-95',
         ].join(' ')}
       >
-        <ShoppingCart className="h-6 w-6" />
-        {cartItems.length > 0 && (
-          <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center animate-scale-in">
+        <div className="flex items-center gap-3 min-w-0">
+          <ShoppingCart className={`h-6 w-6 flex-shrink-0 transition-transform duration-500 ${expandedBubble === 'cart' ? 'rotate-12' : ''}`} />
+          {expandedBubble === 'cart' && cartItems.length > 0 && (
+            <div className="flex flex-col leading-tight text-left min-w-0 animate-fade-in">
+              <span className="text-sm font-semibold truncate">
+                {itemCountLabel}
+              </span>
+              <span className="text-xs text-primary-foreground/80 truncate">
+                {formatPrice(cartTotal)}
+              </span>
+            </div>
+          )}
+          {expandedBubble === 'cart' && cartItems.length === 0 && (
+            <span className="text-sm font-medium animate-fade-in">
+              {t('menu.cart_empty', { defaultValue: 'Cart empty' })}
+            </span>
+          )}
+        </div>
+        {cartItems.length > 0 && expandedBubble !== 'cart' && (
+          <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center shadow-lg shadow-accent/50 ring-2 ring-background/70 animate-scale-in">
             {cartItems.length}
           </span>
         )}
-        {cartPeek && (
-          <div className="flex flex-col leading-tight text-left min-w-[140px]">
-            <span className="text-sm font-semibold">
-              {cartItems.length > 0
-                ? t('menu.your_order', { defaultValue: 'Your order' })
-                : t('menu.cart_empty', { defaultValue: 'Your cart is empty' })}
-            </span>
-            <span className="text-xs text-primary-foreground/80">
-              {cartItems.length > 0 ? `${itemCountLabel} · ${formatPrice(cartTotal)}` : t('menu.add_to_cart', { defaultValue: 'Add items to begin' })}
-            </span>
-          </div>
+        {expandedBubble === 'cart' && (
+          <span className="text-xs text-primary-foreground/60 whitespace-nowrap animate-fade-in">
+            {t('menu.tap_checkout', { defaultValue: 'Tap to checkout' })}
+          </span>
         )}
       </button>
+
+      {/* Floating Call Button */}
       <button
         type="button"
-        onClick={onCallClick}
+        onClick={handleCallButtonClick}
         disabled={callStatus === 'pending'}
         className={[
-          'fixed bottom-6 left-6 z-50 flex items-center rounded-full h-16 shadow-2xl overflow-hidden border border-border/60 bg-primary text-primary-foreground transition-all duration-300 ease-out',
-          callButtonLabel ? 'w-48 pl-5 pr-6 justify-start hover:scale-105' : 'w-16 justify-center hover:scale-110',
-          callStatus === 'pending' ? 'opacity-80 cursor-wait' : 'active:scale-95',
+          'fixed bottom-6 left-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out overflow-hidden',
+          expandedBubble === 'call' ? 'w-80 pl-4 pr-3 justify-between' : 'w-16 justify-center hover:scale-110',
+          callStatus === 'pending' ? 'opacity-80 cursor-wait' : expandedBubble === 'none' && 'active:scale-95',
         ].join(' ')}
       >
-        <span className="relative flex items-center justify-center">
-          {(callStatus === 'pending' || callStatus === 'accepted') && (
-            <span className="absolute inline-flex h-10 w-10 rounded-full bg-primary-foreground/20 animate-ping" />
-          )}
-          <Bell className="h-6 w-6 relative" />
-        </span>
-        {callButtonLabel && (
-          <span className="ml-3 text-sm font-semibold whitespace-nowrap">
-            {callButtonLabel}
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="relative flex items-center justify-center flex-shrink-0">
+            {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
+              <span className="absolute inline-flex h-10 w-10 rounded-full bg-primary-foreground/20 animate-ping" />
+            )}
+            <Bell className={`h-6 w-6 relative transition-transform duration-300 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
           </span>
+          {expandedBubble === 'call' && (
+            <span className="text-sm font-semibold whitespace-nowrap animate-fade-in">
+              {t('menu.call_waiter', { defaultValue: 'Call Waiter' })}
+            </span>
+          )}
+        </div>
+        {expandedBubble === 'call' && (
+          <div className="flex items-center gap-2 animate-fade-in">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedBubble('none');
+              }}
+              className="w-10 h-10 rounded-full bg-primary-foreground/20 hover:bg-primary-foreground/30 flex items-center justify-center transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleInitiateCall();
+              }}
+              className="w-10 h-10 rounded-full bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center transition-colors"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </button>
+          </div>
         )}
       </button>
 
@@ -250,7 +301,6 @@ export const ElegantMenuView = ({
         open={cartOpen}
         onOpenChange={(open) => {
           setCartOpen(open);
-          if (open) setCartPeek(false);
         }}
       >
         <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[90vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0">

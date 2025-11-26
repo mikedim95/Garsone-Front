@@ -544,6 +544,15 @@
     }
   }
 
+  @keyframes wiggle {
+    0%, 100% { 
+      transform: rotate(-15deg); 
+    }
+    50% { 
+      transform: rotate(15deg); 
+    }
+  }
+
   .glass {
     background: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(20px);

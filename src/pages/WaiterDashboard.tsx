@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,10 @@ import { LogOut, Check, X } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 const ORDER_FETCH_LIMIT = 50;
+const DEBUG_LOG = true;
+const dbg = (...args: any[]) => {
+  if (DEBUG_LOG) console.log("[WaiterDashboard]", ...args);
+};
 
 type StatusKey = 'ALL' | 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
 type OrderEventPayload = {
@@ -177,6 +181,10 @@ export default function WaiterDashboard() {
   const ordersRef = useRef<Order[]>(ordersAll);
 
   const [assignedTableIds, setAssignedTableIds] = useState<Set<string>>(new Set());
+  const [unassignedTableIds, setUnassignedTableIds] = useState<Set<string>>(new Set());
+  const tableLabelByIdRef = useRef<Map<string, string>>(new Map());
+  const [shiftWindow, setShiftWindow] = useState<{ start?: string; end?: string } | null>(null);
+  const [shiftLoaded, setShiftLoaded] = useState(false);
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
   const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
@@ -186,6 +194,31 @@ export default function WaiterDashboard() {
   useEffect(() => {
     ordersRef.current = ordersAll;
   }, [ordersAll]);
+
+  const shouldShowTable = useCallback(
+    (tableId?: string | null) => {
+      if (assignedTableIds.size === 0) return true;
+      if (!tableId) return unassignedTableIds.size > 0;
+      return assignedTableIds.has(tableId) || unassignedTableIds.has(tableId);
+    },
+    [assignedTableIds, unassignedTableIds]
+  );
+
+  const withinShift = useCallback(
+    (orderLike?: { createdAt?: string; placedAt?: string } | null) => {
+      if (!shiftWindow?.start) return true;
+      const start = new Date(shiftWindow.start).getTime();
+      const end = shiftWindow.end ? new Date(shiftWindow.end).getTime() : null;
+      const tsSource = orderLike?.createdAt || orderLike?.placedAt;
+      if (!tsSource) return true;
+      const ts = new Date(tsSource).getTime();
+      if (!Number.isFinite(ts)) return true;
+      if (ts < start) return false;
+      if (end && ts > end) return false;
+      return true;
+    },
+    [shiftWindow]
+  );
 
   useEffect(() => {
     if (!isAuthenticated() || user?.role !== 'waiter') {
@@ -219,6 +252,10 @@ export default function WaiterDashboard() {
         const tablesRes = await api.getTables();
         const myId = user?.id;
         const tables = (tablesRes.tables ?? []) as TableWithWaiters[];
+        tableLabelByIdRef.current = new Map();
+        tables.forEach((t) => {
+          if (t.id && t.label) tableLabelByIdRef.current.set(t.id, t.label);
+        });
         const hasWaiterData = tables.some((table) => Array.isArray(table.waiters));
         if (!hasWaiterData) {
           // Avoid wiping assignments when waiter info is missing from payload
@@ -226,15 +263,28 @@ export default function WaiterDashboard() {
           return;
         }
         const next = new Set<string>();
+        const unassigned = new Set<string>();
         tables.forEach((table) => {
           if (!table.id) return;
           const waiters = Array.isArray(table.waiters) ? table.waiters : [];
+          if (waiters.length === 0) {
+            unassigned.add(table.id);
+          }
           if (waiters.some((waiter) => waiter?.id === myId)) {
             next.add(table.id);
           }
         });
         // Only overwrite if we actually received waiter data; otherwise keep previous assignments
         setAssignedTableIds(next);
+        setUnassignedTableIds(unassigned);
+        dbg("assignments loaded", {
+          assignedCount: next.size,
+          unassignedCount: unassigned.size,
+          assigned: Array.from(next),
+          unassigned: Array.from(unassigned),
+          tableLabels: Array.from(next).map((id) => `${id}:${tableLabelByIdRef.current.get(id) ?? 'unknown'}`),
+          myId,
+        });
       } catch (error) {
         console.error('Failed to load waiter assignments', error);
       } finally {
@@ -253,30 +303,62 @@ export default function WaiterDashboard() {
       try {
         const data = await api.getOrders({
           take: ORDER_FETCH_LIMIT,
-          tableIds: assignedTableIds.size > 0 ? Array.from(assignedTableIds) : undefined,
+          tableIds:
+            assignedTableIds.size > 0
+              ? Array.from(new Set([...assignedTableIds, ...unassignedTableIds]))
+              : undefined,
         });
+        if (data.shift) {
+          setShiftWindow({
+            start: data.shift.start,
+            end: data.shift.end,
+          });
+          dbg("shift window", data.shift);
+        } else {
+          setShiftWindow(null);
+          dbg("shift window", "none");
+        }
         const mapped = (data.orders ?? [])
           .map((order, index) => normalizeOrder(order, index))
           .filter((order): order is Order => Boolean(order))
-          .filter((order) => assignedTableIds.size === 0 || assignedTableIds.has(order.tableId));
+          .filter((order) => shouldShowTable(order.tableId) && withinShift(order));
+        const tableStats = mapped.reduce<Record<string, number>>((acc, order) => {
+          const key = `${order.tableLabel || '??'} (${order.tableId})`;
+          acc[key] = (acc[key] ?? 0) + 1;
+          return acc;
+        }, {});
         setOrdersLocal(mapped);
+        dbg("initial orders", {
+          fetched: (data.orders ?? []).length,
+          mapped: mapped.length,
+          assignedCount: assignedTableIds.size,
+          unassignedCount: unassignedTableIds.size,
+          tableIdsParam:
+            assignedTableIds.size > 0
+              ? Array.from(new Set([...assignedTableIds, ...unassignedTableIds]))
+              : null,
+          tableStats,
+        });
       } catch (error) {
         console.error('Initial orders load failed', error);
+      } finally {
+        setShiftLoaded(true);
       }
     })();
-  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds]);
+  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds, unassignedTableIds, shouldShowTable, withinShift]);
 
   // Realtime updates → mutate local cache
   useEffect(() => {
-    if (!assignmentsLoaded) return;
+    if (!assignmentsLoaded || !shiftLoaded) return;
     let unsubscribed = false;
     const hydrateOrder = async (orderId: string) => {
       if (ordersRef.current.some((o) => o.id === orderId)) return;
       try {
         const res = await api.getOrder(orderId);
         const normalized = normalizeOrder(res.order, Date.now());
-        if (normalized && (assignedTableIds.size === 0 || assignedTableIds.has(normalized.tableId))) {
+        if (normalized && shouldShowTable(normalized.tableId) && withinShift(normalized)) {
           upsertOrder(normalized);
+          dbg("hydrated order", normalized.id, "table", normalized.tableId);
         }
       } catch (error) {
         console.error('Failed to hydrate order from realtime event', error);
@@ -284,7 +366,10 @@ export default function WaiterDashboard() {
     };
     const handlePlaced = (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
+      if (!shouldShowTable(payload.tableId) || !withinShift({ createdAt: payload.createdAt })) {
+        dbg("skip placed (not my table)", payload.orderId, payload.tableId);
+        return;
+      }
       const normalized = normalizeOrder(
         {
           id: payload.orderId,
@@ -298,45 +383,86 @@ export default function WaiterDashboard() {
         },
         Date.now()
       );
-      if (!normalized) return;
+      if (!normalized || !withinShift(normalized)) return;
       upsertOrder(normalized);
+      dbg("realtime placed", normalized.id, "table", normalized.tableId);
       toast({ title: t('toasts.new_order'), description: t('toasts.table', { table: normalized.tableLabel }) });
     };
     const handlePreparing = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
+      if (!shouldShowTable(payload.tableId)) {
+        dbg("skip preparing (not my table)", payload.orderId, payload.tableId);
+        return;
+      }
+      const existing = ordersRef.current.find((o) => o.id === payload.orderId);
+      if (existing && !withinShift(existing)) {
+        dbg("skip preparing (outside shift)", payload.orderId, payload.tableId);
+        return;
+      }
       updateLocalStatus(payload.orderId!, 'PREPARING');
       await hydrateOrder(payload.orderId!);
+      dbg("realtime preparing", payload.orderId, "table", payload.tableId);
     };
     const handleReady = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
+      if (!shouldShowTable(payload.tableId)) {
+        dbg("skip ready (not my table)", payload.orderId, payload.tableId);
+        return;
+      }
+      const existing = ordersRef.current.find((o) => o.id === payload.orderId);
+      if (existing && !withinShift(existing)) {
+        dbg("skip ready (outside shift)", payload.orderId, payload.tableId);
+        return;
+      }
       updateLocalStatus(payload.orderId!, 'READY');
       await hydrateOrder(payload.orderId!);
       toast({ title: t('toasts.order_ready'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
+      dbg("realtime ready", payload.orderId, "table", payload.tableId);
     };
     const handleCancelled = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
+      if (!shouldShowTable(payload.tableId)) {
+        dbg("skip cancelled (not my table)", payload.orderId, payload.tableId);
+        return;
+      }
+      const existing = ordersRef.current.find((o) => o.id === payload.orderId);
+      if (existing && !withinShift(existing)) {
+        dbg("skip cancelled (outside shift)", payload.orderId, payload.tableId);
+        return;
+      }
       updateLocalStatus(payload.orderId!, 'CANCELLED');
       await hydrateOrder(payload.orderId!);
       toast({ title: t('toasts.order_cancelled'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
+      dbg("realtime cancelled", payload.orderId, "table", payload.tableId);
     };
     const handlePaid = async (payload: unknown) => {
       if (!isOrderEventPayload(payload)) return;
-      if (assignedTableIds.size > 0 && payload.tableId && !assignedTableIds.has(payload.tableId)) return;
+      if (!shouldShowTable(payload.tableId)) {
+        dbg("skip paid (not my table)", payload.orderId, payload.tableId);
+        return;
+      }
+      const existing = ordersRef.current.find((o) => o.id === payload.orderId);
+      if (existing && !withinShift(existing)) {
+        dbg("skip paid (outside shift)", payload.orderId, payload.tableId);
+        return;
+      }
       updateLocalStatus(payload.orderId!, 'PAID');
       await hydrateOrder(payload.orderId!);
+      dbg("realtime paid", payload.orderId, "table", payload.tableId);
     };
     const handleWaiterCall = (payload: unknown) => {
       if (!isWaiterCallPayload(payload)) return;
-      if (assignedTableIds.size > 0 && !assignedTableIds.has(payload.tableId)) return;
+      if (!shouldShowTable(payload.tableId)) {
+        dbg("skip waiter call (not my table)", payload.tableId, payload.action);
+        return;
+      }
       if (payload.action === 'called') {
         setLastCallTableId(payload.tableId);
         toast({ title: t('toasts.waiter_called'), description: t('toasts.table', { table: payload.tableId }) });
       } else if (payload.action === 'cleared') {
         setLastCallTableId((current) => (current === payload.tableId ? null : current));
       }
+      dbg("waiter call", payload.tableId, payload.action);
     };
     realtimeService
       .connect()
@@ -365,19 +491,30 @@ export default function WaiterDashboard() {
       realtimeService.unsubscribe(`${storeSlug}/orders/paid`, handlePaid);
       realtimeService.unsubscribe(`${storeSlug}/waiter/call`, handleWaiterCall);
     };
-  }, [assignmentsLoaded, storeSlug, assignedTableIds, upsertOrder, updateLocalStatus, toast, t]);
+  }, [assignmentsLoaded, shiftLoaded, storeSlug, assignedTableIds, shouldShowTable, upsertOrder, updateLocalStatus, toast, t, withinShift]);
 
   // Derived list from local cache
   const orders = useMemo(() => {
-    let list = ordersAll;
-    if (user?.role === 'waiter' && assignedTableIds.size > 0) {
-      list = list.filter((o) => assignedTableIds.has(o.tableId));
-    }
+    let list = ordersAll.filter((o) => shouldShowTable(o.tableId) && withinShift(o));
     if (statusFilter !== 'ALL') {
       list = list.filter((o) => o.status === statusFilter);
     }
     return list;
-  }, [ordersAll, user?.role, assignedTableIds, statusFilter]);
+  }, [ordersAll, shouldShowTable, statusFilter, withinShift]);
+
+  useEffect(() => {
+    const tableStats = orders.reduce<Record<string, number>>((acc, order) => {
+      const key = `${order.tableLabel || '??'} (${order.tableId})`;
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    dbg("render orders derived", {
+      total: ordersAll.length,
+      visible: orders.length,
+      filter: statusFilter,
+      tableStats,
+    });
+  }, [ordersAll.length, orders.length, statusFilter, orders]);
 
   const statusButtons: Array<{ key: StatusKey; cls: string }> = [
     { key: 'ALL', cls: 'bg-muted text-foreground hover:bg-muted/80' },

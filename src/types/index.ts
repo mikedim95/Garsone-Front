@@ -242,6 +242,12 @@ export interface OrderResponse {
 
 export interface OrdersResponse {
   orders: Order[];
+  shift?: {
+    id?: string;
+    status?: string;
+    start?: string;
+    end?: string;
+  };
 }
 
 export interface ImageUploadPayload {
