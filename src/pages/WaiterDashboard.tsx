@@ -13,6 +13,8 @@ import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { LogOut, Check, X } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
+import { PageTransition } from '@/components/ui/page-transition';
+import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 
 const ORDER_FETCH_LIMIT = 50;
 const DEBUG_LOG = true;
@@ -190,9 +192,41 @@ export default function WaiterDashboard() {
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusKey>('ALL');
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
+  const [viewFilter, setViewFilter] = useState<'ALL' | 'MY' | 'READY' | 'PENDING'>('ALL');
+  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
+  const seenIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     ordersRef.current = ordersAll;
+  }, [ordersAll]);
+
+  // Track new orders for brief highlight
+  useEffect(() => {
+    const seen = seenIdsRef.current;
+    const newOnes: string[] = [];
+    ordersAll.forEach((order) => {
+      if (!seen.has(order.id)) {
+        seen.add(order.id);
+        newOnes.push(order.id);
+      }
+    });
+    if (newOnes.length) {
+      setHighlightedIds((prev) => {
+        const next = new Set(prev);
+        newOnes.forEach((id) => next.add(id));
+        return next;
+      });
+      newOnes.forEach((id) => {
+        setTimeout(() => {
+          setHighlightedIds((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        }, 1800);
+      });
+    }
   }, [ordersAll]);
 
   const shouldShowTable = useCallback(
@@ -496,11 +530,18 @@ export default function WaiterDashboard() {
   // Derived list from local cache
   const orders = useMemo(() => {
     let list = ordersAll.filter((o) => shouldShowTable(o.tableId) && withinShift(o));
+    if (viewFilter === 'MY') {
+      list = list.filter((o) => (o.tableId ? assignedTableIds.has(o.tableId) : false));
+    } else if (viewFilter === 'READY') {
+      list = list.filter((o) => o.status === 'READY');
+    } else if (viewFilter === 'PENDING') {
+      list = list.filter((o) => o.status === 'PLACED' || o.status === 'PREPARING');
+    }
     if (statusFilter !== 'ALL') {
       list = list.filter((o) => o.status === statusFilter);
     }
     return list;
-  }, [ordersAll, shouldShowTable, statusFilter, withinShift]);
+  }, [ordersAll, shouldShowTable, statusFilter, withinShift, viewFilter, assignedTableIds]);
 
   useEffect(() => {
     const tableStats = orders.reduce<Record<string, number>>((acc, order) => {
@@ -551,9 +592,10 @@ export default function WaiterDashboard() {
   };
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+  const loadingOrders = !assignmentsLoaded || !shiftLoaded;
 
   return (
-    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
       <DashboardHeader
         title={t('waiter.dashboard')}
@@ -577,9 +619,29 @@ export default function WaiterDashboard() {
       />
 
       <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 flex-1 w-full">
-        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-          <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
+            <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {[
+              { key: 'ALL', label: 'All' },
+              { key: 'MY', label: 'My tables' },
+              { key: 'READY', label: 'Ready' },
+              { key: 'PENDING', label: 'Pending' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setViewFilter(key as 'ALL' | 'MY' | 'READY' | 'PENDING')}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition active:scale-95 border shadow-sm hover:shadow-md ${
+                  viewFilter === key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-border'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Status filter toolbar */}
@@ -595,19 +657,24 @@ export default function WaiterDashboard() {
           ))}
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-          {orders.map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              onUpdateStatus={handleUpdateStatus}
-              mode="waiter"
-              busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
-            />
-          ))}
-        </div>
+        {loadingOrders ? (
+          <DashboardGridSkeleton count={6} />
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+            {orders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                onUpdateStatus={handleUpdateStatus}
+                mode="waiter"
+                busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
+                highlighted={highlightedIds.has(order.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
-    </div>
-    </div>
+      </div>
+    </PageTransition>
   );
 }

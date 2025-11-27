@@ -8,6 +8,8 @@ import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AppBurger } from "./AppBurger";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useTheme } from "@/components/theme-provider-context";
 import { useCartStore } from "@/store/cartStore";
 import { api, ApiError, visitTokenStore } from "@/lib/api";
 import { useMenuStore } from "@/store/menuStore";
@@ -27,6 +29,7 @@ import { Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
+import { Sun, Moon } from "lucide-react";
 
 type CategorySummary = Pick<MenuCategory, "id" | "title">;
 type MenuModifierLink = {
@@ -111,6 +114,7 @@ export default function TableMenu() {
   const location = useLocation();
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const { theme, setTheme } = useTheme();
   const { addItem, clearCart } = useCartStore();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
@@ -809,9 +813,18 @@ export default function TableMenu() {
                 </p>
               ) : (
                 <Skeleton className="h-4 w-20 rounded-full" />
-              )}
-            </div>
+          )}
+        </div>
             <div className="flex gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                className="inline-flex items-center justify-center h-10 w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
+              >
+                {theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              </button>
+              <LanguageSwitcher />
               <AppBurger title={storeName}>
                 {lastOrder ? (
                   <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">

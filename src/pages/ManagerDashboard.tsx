@@ -33,8 +33,6 @@ import {
   ListChecks,
   Users,
   UtensilsCrossed,
-  PanelLeftClose,
-  PanelLeftOpen,
   ChevronDown,
   ChevronUp,
   RefreshCcw,
@@ -81,11 +79,14 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { realtimeService } from '@/lib/realtime';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
+import { PageTransition } from '@/components/ui/page-transition';
 
 type ManagerMode = 'basic' | 'pro';
 type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
@@ -276,6 +277,7 @@ export default function ManagerDashboard() {
   const [loadingWaiters, setLoadingWaiters] = useState(true);
   const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
   const [loadingQrTiles, setLoadingQrTiles] = useState(false);
@@ -313,16 +315,8 @@ export default function ManagerDashboard() {
     return 'basic';
   });
   const [activeTab, setActiveTab] = useState<ManagerTab>('economics');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        return localStorage.getItem('MANAGER_NAV_COLLAPSED') === '1';
-      } catch {
-        // ignore
-      }
-    }
-    return false;
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [econRange, setEconRange] = useState<EconRange>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -428,9 +422,15 @@ export default function ManagerDashboard() {
         }
       } catch (error) {
         console.error('Failed to load orders', error);
+      } finally {
+        setOrdersLoading(false);
       }
     };
-    if (isAuthenticated() && isManagerRole) initOrders();
+    if (isAuthenticated() && isManagerRole) {
+      initOrders();
+    } else {
+      setOrdersLoading(false);
+    }
   }, [isAuthenticated, isManagerRole, setOrdersLocal]);
 
   const loadWaiterData = async () => {
@@ -1899,18 +1899,12 @@ export default function ManagerDashboard() {
   };
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+  const ordersBusy = ordersLoading && ordersAll.length === 0;
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem('MANAGER_NAV_COLLAPSED', sidebarCollapsed ? '1' : '0');
-    } catch {
-      // ignore
-    }
-  }, [sidebarCollapsed]);
+  useEffect(() => {}, []);
 
   return (
-    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
       <DashboardHeader
         title={t('manager.dashboard')}
@@ -1947,53 +1941,27 @@ export default function ManagerDashboard() {
                 aria-label="Toggle manager mode"
               />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSidebarCollapsed((prev) => !prev)}
-              className="inline-flex items-center gap-2"
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="h-4 w-4" />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" />
-              )}
-              <span className="hidden sm:inline">
-                {sidebarCollapsed
-                  ? t('manager.show_navigation', { defaultValue: 'Show menu' })
-                  : t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
-              </span>
-              <span className="sm:hidden">{sidebarCollapsed ? 'Show' : 'Hide'}</span>
-            </Button>
           </div>
         }
       />
 
       <div className="flex-1 flex min-h-0 relative">
-        {sidebarCollapsed && (
-          <div className="absolute inset-x-4 top-4 z-20 flex justify-center sm:justify-start pointer-events-none">
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed(false)}
-              className="pointer-events-auto flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start rounded-full border border-border/70 bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-              {t('manager.show_navigation', { defaultValue: 'Show menu' })}
-            </button>
-          </div>
-        )}
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as ManagerTab)}
+          onValueChange={(value) => {
+            setActiveTab(value as ManagerTab);
+            setSidebarCollapsed(true);
+          }}
           className="flex flex-1 min-h-0"
         >
           <aside
             className={clsx(
-              'hidden sm:flex flex-col bg-card/80 border-r border-border/60 transition-[width,opacity,transform] duration-200 ease-in-out',
-              sidebarCollapsed ? 'w-0 opacity-0 -translate-x-4 pointer-events-none' : 'w-64'
+              'hidden sm:flex flex-col absolute z-30 left-4 top-4 rounded-2xl bg-card/90 border border-border/60 shadow-2xl backdrop-blur-sm transition duration-200 ease-in-out max-h-[80vh] overflow-hidden',
+              sidebarCollapsed ? '-translate-x-[110%] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100 pointer-events-auto w-64'
             )}
+            aria-hidden={sidebarCollapsed}
           >
-            <div className="px-4 py-5 border-b border-border/60 flex items-center justify-between gap-2">
+            <div className="px-4 py-4 border-b border-border/60 flex items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   {t('manager.nav_title', { defaultValue: 'Dashboard' })}
@@ -2002,14 +1970,6 @@ export default function ManagerDashboard() {
                   {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSidebarCollapsed((prev) => !prev)}
-                aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-              >
-                {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-              </Button>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
               <TabsList className="flex flex-col w-full text-xs sm:text-sm gap-2">
@@ -2044,50 +2004,86 @@ export default function ManagerDashboard() {
               </TabsList>
             </div>
           </aside>
-
-          {/* Mobile tabs fallback */}
-          {!sidebarCollapsed && (
-            <div className="w-full border-b border-border/60 bg-card/80 sm:hidden">
-              <div className="w-full max-w-7xl mx-auto px-3 py-2">
-                <TabsList className="flex flex-col w-full text-xs gap-2">
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="economics"
-                  >
-                    {t('manager.economics', { defaultValue: 'Economics' })}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="orders"
-                  >
-                    {t('waiter.orders', { defaultValue: 'Orders' })}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="personnel"
-                  >
-                    {t('manager.personnel', { defaultValue: 'Personnel' })}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="menu"
-                  >
-                    {t('menu.title')}
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-          )}
-
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            className={clsx(
+              'hidden sm:flex absolute z-40 h-12 w-8 items-center justify-center rounded-l-none rounded-r-full bg-card text-foreground shadow-2xl transition-transform duration-200 ease-out border border-border/60',
+              sidebarCollapsed ? 'left-4 top-[120px] translate-x-0' : 'left-[272px] top-[120px] translate-x-0'
+            )}
+            aria-label={sidebarCollapsed ? t('manager.show_navigation', { defaultValue: 'Show menu' }) : t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
+          >
+            <span className="text-lg leading-none">{sidebarCollapsed ? '›' : '‹'}</span>
+          </button>
           <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-8 space-y-6 sm:space-y-8">
+          <div className="sm:hidden flex justify-end">
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full border-border/70 bg-card/80 shadow-sm"
+                  aria-label={t('manager.nav_title', { defaultValue: 'Dashboard' })}
+                >
+                  {t('app.navigation', { defaultValue: 'Navigation' })}
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="w-[300px] sm:w-[320px] bg-background text-foreground rounded-2xl border-border/80 shadow-2xl my-4 ml-4 h-auto max-h-[80vh] overflow-y-auto"
+              >
+                <SheetHeader>
+                  <SheetTitle className="text-base font-semibold">
+                    {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="mt-4 space-y-2">
+                  {[
+                    { key: 'economics', label: t('manager.economics', { defaultValue: 'Economics' }), icon: <BarChart2 className="h-4 w-4" /> },
+                    { key: 'orders', label: t('waiter.orders', { defaultValue: 'Orders' }), icon: <ListChecks className="h-4 w-4" /> },
+                    { key: 'personnel', label: t('manager.personnel', { defaultValue: 'Personnel' }), icon: <Users className="h-4 w-4" /> },
+                    { key: 'menu', label: t('menu.title'), icon: <UtensilsCrossed className="h-4 w-4" /> },
+                  ].map(({ key, label, icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setActiveTab(key as ManagerTab);
+                        setMobileNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition shadow-sm ${
+                        activeTab === key
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-card text-foreground border-border hover:bg-accent'
+                      }`}
+                    >
+                      <span className="text-primary">{icon}</span>
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            className={clsx(
+              'hidden sm:flex absolute z-40 top-24 h-12 w-8 items-center justify-center rounded-l-full bg-foreground/80 text-background shadow-2xl transition-transform duration-200 ease-out',
+              sidebarCollapsed ? 'right-0 translate-x-[110%]' : '-right-8 translate-x-0'
+            )}
+            aria-label={sidebarCollapsed ? t('manager.show_navigation', { defaultValue: 'Show menu' }) : t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
+          >
+            <span className="text-lg leading-none">{sidebarCollapsed ? '›' : '‹'}</span>
+          </button>
 
           <TabsContent value="economics" className="space-y-6">
-            <Card className="p-4 sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                <p className="text-sm text-muted-foreground">
-                  {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
-                </p>
-                <div className="inline-flex w-full sm:w-auto rounded-md border bg-background overflow-hidden">
+            {ordersBusy ? (
+              <DashboardGridSkeleton count={4} />
+            ) : (
+            <>
+            <div className="relative mb-6">
+              <div className="h-16 sm:h-18 flex items-center justify-center">
+                <div className="inline-flex rounded-md border bg-background overflow-hidden shadow-sm">
                   {([
                     { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
                     { key: 'last24h', label: t('date_range.last24h', { defaultValue: 'Last 24h' }) },
@@ -2109,32 +2105,39 @@ export default function ManagerDashboard() {
                     </button>
                   ))}
                 </div>
-                {econRange === 'custom' && (
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{t('date_range.start', { defaultValue: 'Start' })}</span>
-                      <input
-                        type="date"
-                        value={customRange.start}
-                        onChange={(e) =>
-                          setCustomRange((prev) => ({ ...prev, start: e.target.value || prev.start }))
-                        }
-                        className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
-                      />
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{t('date_range.end', { defaultValue: 'End' })}</span>
-                      <input
-                        type="date"
-                        value={customRange.end}
-                        onChange={(e) =>
-                          setCustomRange((prev) => ({ ...prev, end: e.target.value || prev.end }))
-                        }
-                        className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
-                      />
-                    </label>
-                  </div>
-                )}
+              </div>
+              {econRange === 'custom' && (
+                <div className="mt-2 flex flex-col sm:flex-row gap-2 justify-center">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{t('date_range.start', { defaultValue: 'Start' })}</span>
+                    <input
+                      type="date"
+                      value={customRange.start}
+                      onChange={(e) =>
+                        setCustomRange((prev) => ({ ...prev, start: e.target.value || prev.start }))
+                      }
+                      className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{t('date_range.end', { defaultValue: 'End' })}</span>
+                    <input
+                      type="date"
+                      value={customRange.end}
+                      onChange={(e) =>
+                        setCustomRange((prev) => ({ ...prev, end: e.target.value || prev.end }))
+                      }
+                      className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col items-center gap-3 mb-4">
+                <p className="text-sm text-muted-foreground text-center">
+                  {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
+                </p>
               </div>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
@@ -2200,7 +2203,7 @@ export default function ManagerDashboard() {
               </div>
             </Card>
 
-            <Card className="p-4 sm:p-6">
+            <Card className="p-4 sm:p-6 revenue-category-card">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-sm text-muted-foreground">
@@ -2210,29 +2213,43 @@ export default function ManagerDashboard() {
                     {t('manager.revenue_by_category', { defaultValue: 'Revenue by category' })}
                   </h3>
                 </div>
-                <div className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                  €
-                </div>
               </div>
               <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoryRevenue}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="category" />
-                    <YAxis />
-                    <Tooltip
-                      formatter={(value: ValueType) => {
-                        const numericValue =
-                          typeof value === 'number' ? value : Number(value ?? 0);
-                        return [
-                          formatCurrency(numericValue),
-                          t('manager.revenue', { defaultValue: 'Revenue' }),
-                        ];
-                      }}
-                    />
-                    <Bar dataKey="revenue" fill="hsl(var(--primary))" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {ordersBusy || categoryRevenue.length === 0 ? (
+                  <div className="h-full w-full rounded-xl border border-dashed border-border bg-muted/20 p-4 animate-pulse flex flex-col justify-between">
+                    <div className="flex gap-3">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <div className="flex items-end gap-3 flex-1 pb-2">
+                      {Array.from({ length: 7 }).map((_, idx) => (
+                        <div key={idx} className="flex-1 flex flex-col justify-end gap-2">
+                          <Skeleton className="h-20 w-full rounded-md" />
+                          <Skeleton className="h-3 w-10 mx-auto" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryRevenue}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="category" />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value: ValueType) => {
+                          const numericValue =
+                            typeof value === 'number' ? value : Number(value ?? 0);
+                          return [
+                            formatCurrency(numericValue),
+                            t('manager.revenue', { defaultValue: 'Revenue' }),
+                          ];
+                        }}
+                      />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Card>
 
@@ -2369,9 +2386,15 @@ export default function ManagerDashboard() {
                 {t('manager.export_csv', { defaultValue: 'Export CSV' })}
               </Button>
             </div>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="orders" className="space-y-6">
+            {ordersBusy ? (
+              <DashboardGridSkeleton count={3} />
+            ) : (
+            <>
             <Card className="p-4 sm:p-6">
               <p className="text-sm text-muted-foreground mb-4">Operations KPIs</p>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
@@ -2674,6 +2697,8 @@ export default function ManagerDashboard() {
                 </table>
               </div>
             </Card>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="personnel" className="space-y-6">
@@ -2690,11 +2715,7 @@ export default function ManagerDashboard() {
                 </div>
               </div>
               {loadingWaiters ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-20 w-full rounded-xl" />
-                  ))}
-                </div>
+                <DashboardGridSkeleton count={4} className="grid md:grid-cols-2" />
               ) : waiterDetails.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {t('manager.no_waiters', {
@@ -2948,11 +2969,7 @@ export default function ManagerDashboard() {
                 </div>
               </div>
               {loadingTables ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-20 w-full rounded-xl" />
-                  ))}
-                </div>
+                <DashboardGridSkeleton count={4} className="grid sm:grid-cols-2" />
               ) : tablesCollapsed ? (
                 <p className="text-sm text-muted-foreground">
                   {t('manager.tables_collapsed_hint', { defaultValue: 'Tables hidden. Expand to manage assignments.' })}
@@ -3047,11 +3064,7 @@ export default function ManagerDashboard() {
               {!storeId ? (
                 <p className="text-sm text-muted-foreground">Load store info first to manage QR tiles.</p>
               ) : loadingQrTiles ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-24 w-full rounded-xl" />
-                  ))}
-                </div>
+                <DashboardGridSkeleton count={3} className="grid md:grid-cols-2" />
               ) : qrTiles.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No QR tiles found. Ask your architect to generate tiles, then bind them here.
@@ -3643,6 +3656,6 @@ export default function ManagerDashboard() {
         </DialogContent>
       </Dialog>
     </div>
-    </div>
+    </PageTransition>
   );
 }

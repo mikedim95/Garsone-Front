@@ -17,6 +17,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { api, ApiError, API_BASE } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import type { ManagerTableSummary, QRTile, StoreInfo } from '@/types';
+import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
+import { PageTransition } from '@/components/ui/page-transition';
 
 type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug'>;
 
@@ -38,6 +40,8 @@ export default function ArchitectQrTiles() {
   const [recentTiles, setRecentTiles] = useState<QRTile[]>([]);
   const [loadingStores, setLoadingStores] = useState(false);
   const [loadingTiles, setLoadingTiles] = useState(false);
+  const storesLoading = loadingStores && stores.length === 0;
+  const tilesLoading = loadingTiles && tiles.length === 0;
   const [refreshing, setRefreshing] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [count, setCount] = useState<string>('12');
@@ -269,7 +273,7 @@ export default function ArchitectQrTiles() {
   }, [tiles, codeSearch]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
         title="QR Tile Architect"
         subtitle={storeName ? `Managing ${storeName}` : 'Generate & assign QR tiles'}
@@ -309,185 +313,181 @@ export default function ArchitectQrTiles() {
               </CardTitle>
               <CardDescription>Choose a venue to inspect and manage its QR tiles.</CardDescription>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-              <div className="flex items-center gap-2">
-                <Search className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search code"
-                  value={codeSearch}
-                  onChange={(e) => setCodeSearch(e.target.value)}
-                  className="w-44"
-                />
+            {storesLoading ? (
+              <DashboardGridSkeleton count={2} className="w-full grid sm:grid-cols-2" />
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search code"
+                    value={codeSearch}
+                    onChange={(e) => setCodeSearch(e.target.value)}
+                    className="w-44"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="store-select">Store</Label>
+                  <Select
+                    value={selectedStoreId}
+                    onValueChange={(value) => setSelectedStoreId(value)}
+                    disabled={loadingStores || stores.length === 0}
+                  >
+                    <SelectTrigger id="store-select" className="w-64">
+                      <SelectValue placeholder="Select store" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stores.map((store) => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.name} {store.slug ? `(${store.slug})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="outline" onClick={loadStores} disabled={loadingStores}>
+                  {loadingStores ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                  Reload stores
+                </Button>
+                <Button onClick={() => setDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Generate QR tiles
+                </Button>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="store-select">Store</Label>
-                <Select
-                  value={selectedStoreId}
-                  onValueChange={(value) => setSelectedStoreId(value)}
-                  disabled={loadingStores || stores.length === 0}
-                >
-                  <SelectTrigger id="store-select" className="w-64">
-                    <SelectValue placeholder="Select store" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stores.map((store) => (
-                      <SelectItem key={store.id} value={store.id}>
-                        {store.name} {store.slug ? `(${store.slug})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button variant="outline" onClick={loadStores} disabled={loadingStores}>
-                {loadingStores ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-                Reload stores
-              </Button>
-              <Button onClick={() => setDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Generate QR tiles
-              </Button>
-            </div>
+            )}
           </CardHeader>
         </Card>
 
         <Card>
-            <CardHeader>
-              <CardTitle>QR tiles</CardTitle>
-              <CardDescription>Copy, assign, deactivate, or delete tiles.</CardDescription>
+          <CardHeader>
+            <CardTitle>QR tiles</CardTitle>
+            <CardDescription>Copy, assign, deactivate, or delete tiles.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/40">
-                        <TableHead className="w-[180px]">Public code</TableHead>
-                        <TableHead className="w-[220px]">Assigned table</TableHead>
-                        <TableHead className="w-[260px]">URL</TableHead>
-                        <TableHead className="w-[160px] text-center">QR</TableHead>
-                        <TableHead className="w-[120px] text-center">Active</TableHead>
-                        <TableHead className="w-[190px] text-right">Created</TableHead>
-                        <TableHead className="w-[80px] text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loadingTiles ? (
-                        [...Array(4)].map((_, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-mono text-sm text-muted-foreground">Loading…</TableCell>
-                        <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
-                        <TableCell><div className="h-4 w-32 bg-muted rounded animate-pulse" /></TableCell>
-                        <TableCell className="text-center"><div className="h-16 w-16 bg-muted rounded mx-auto animate-pulse" /></TableCell>
-                        <TableCell className="text-center"><div className="h-4 w-10 bg-muted rounded mx-auto animate-pulse" /></TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">—</TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">—</TableCell>
-                      </TableRow>
-                    ))
-                  ) : filteredTiles.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                        No QR tiles yet. Generate a batch to get started.
-                      </TableCell>
+            {tilesLoading ? (
+              <DashboardGridSkeleton count={6} className="grid md:grid-cols-2" />
+            ) : (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="w-[180px]">Public code</TableHead>
+                      <TableHead className="w-[220px]">Assigned table</TableHead>
+                      <TableHead className="w-[260px]">URL</TableHead>
+                      <TableHead className="w-[160px] text-center">QR</TableHead>
+                      <TableHead className="w-[120px] text-center">Active</TableHead>
+                      <TableHead className="w-[190px] text-right">Created</TableHead>
+                      <TableHead className="w-[80px] text-right">Actions</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredTiles.map((tile) => (
-                      <TableRow key={tile.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm">{tile.publicCode}</span>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTiles.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                          No QR tiles yet. Generate a batch to get started.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredTiles.map((tile) => (
+                        <TableRow key={tile.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm">{tile.publicCode}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => copyTileCode(tile.publicCode)}
+                                aria-label={`Copy ${tile.publicCode}`}
+                              >
+                                {copiedCode === tile.publicCode ? (
+                                  <Check className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={tile.tableId ?? 'unassigned'}
+                              onValueChange={(value) =>
+                                handleUpdateTile(tile.id, { tableId: value === 'unassigned' ? null : value })
+                              }
+                            >
+                              <SelectTrigger className="w-[200px]">
+                                <SelectValue>
+                                  {tile.tableLabel ?? 'Unassigned'}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unassigned">Unassigned</SelectItem>
+                                {tables.map((table) => (
+                                  <SelectItem key={table.id} value={table.id}>
+                                    {table.label} {table.isActive ? '' : '(inactive)'}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs break-all">{buildPublicUrl(tile.publicCode)}</span>
+                              <Button variant="ghost" size="icon" onClick={() => copyTileUrl(tile.publicCode)} aria-label="Copy URL">
+                                {copiedCode === tile.publicCode ? <Check className="h-4 w-4 text-green-600" /> : <LinkIcon className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewQr({
+                                  code: tile.publicCode,
+                                  url: buildPublicUrl(tile.publicCode),
+                                })
+                              }
+                              className="inline-block rounded border border-border bg-card p-1 transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            >
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                                  buildPublicUrl(tile.publicCode)
+                                )}`}
+                                alt={`QR for ${tile.publicCode}`}
+                                className="h-20 w-20"
+                                loading="lazy"
+                              />
+                            </button>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center">
+                              <Switch
+                                checked={tile.isActive}
+                                onCheckedChange={(checked) => handleUpdateTile(tile.id, { isActive: checked })}
+                                disabled={updatingTileId === tile.id}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {formatDate(tile.createdAt || tile.updatedAt)}
+                          </TableCell>
+                          <TableCell className="text-right">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
-                              onClick={() => copyTileCode(tile.publicCode)}
-                              aria-label={`Copy ${tile.publicCode}`}
+                              onClick={() => handleDeleteTile(tile.id)}
+                              aria-label="Delete tile"
                             >
-                              {copiedCode === tile.publicCode ? (
-                                <Check className="h-4 w-4 text-green-600" />
-                              ) : (
-                                <Copy className="h-4 w-4" />
-                              )}
+                              <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={tile.tableId ?? 'unassigned'}
-                            onValueChange={(value) =>
-                              handleUpdateTile(tile.id, { tableId: value === 'unassigned' ? null : value })
-                            }
-                          >
-                            <SelectTrigger className="w-[200px]">
-                              <SelectValue>
-                                {tile.tableLabel ?? 'Unassigned'}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="unassigned">Unassigned</SelectItem>
-                              {tables.map((table) => (
-                                <SelectItem key={table.id} value={table.id}>
-                                  {table.label} {table.isActive ? '' : '(inactive)'}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs break-all">{buildPublicUrl(tile.publicCode)}</span>
-                            <Button variant="ghost" size="icon" onClick={() => copyTileUrl(tile.publicCode)} aria-label="Copy URL">
-                              {copiedCode === tile.publicCode ? <Check className="h-4 w-4 text-green-600" /> : <LinkIcon className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPreviewQr({
-                                code: tile.publicCode,
-                                url: buildPublicUrl(tile.publicCode),
-                              })
-                            }
-                            className="inline-block rounded border border-border bg-card p-1 transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                          >
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                                buildPublicUrl(tile.publicCode)
-                              )}`}
-                              alt={`QR for ${tile.publicCode}`}
-                              className="h-20 w-20"
-                              loading="lazy"
-                            />
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center">
-                            <Switch
-                              checked={tile.isActive}
-                              onCheckedChange={(checked) => handleUpdateTile(tile.id, { isActive: checked })}
-                              disabled={updatingTileId === tile.id}
-                            />
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">
-                          {formatDate(tile.createdAt || tile.updatedAt)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteTile(tile.id)}
-                            aria-label="Delete tile"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -595,6 +595,6 @@ export default function ArchitectQrTiles() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageTransition>
   );
 }

@@ -1,5 +1,8 @@
 import { ReactNode } from 'react';
 import { AppBurger } from '@/pages/AppBurger';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useTheme } from '@/components/theme-provider-context';
+import { Sun, Moon } from 'lucide-react';
 
 interface DashboardHeaderProps {
   title: string;
@@ -32,6 +35,10 @@ export const DashboardHeader = ({
         ? 'text-accent-foreground'
         : 'text-primary';
 
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
+
   return (
     <header className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-40 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 py-3 sm:py-5 flex items-center justify-between gap-3 sm:gap-4">
@@ -47,13 +54,22 @@ export const DashboardHeader = ({
               <p className="text-sm text-muted-foreground truncate">{subtitle}</p>
             )}
           </div>
-          {rightContent && (
-            <div className="hidden sm:flex items-center ml-auto">
+        </div>
+        <div className="flex items-center gap-2">
+          {rightContent ? (
+            <div className="hidden sm:flex items-center text-sm font-medium text-foreground mr-2">
               {rightContent}
             </div>
-          )}
-        </div>
-        <div className="flex gap-2 items-center flex-shrink-0">
+          ) : null}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+            className="inline-flex items-center justify-center h-10 w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
+          >
+            {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          </button>
+          <LanguageSwitcher />
           <AppBurger title={title}>
             {burgerActions}
           </AppBurger>

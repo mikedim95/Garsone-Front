@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { Home, LogIn, QrCode } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Link } from 'react-router-dom';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { useAuthStore } from '@/store/authStore';
@@ -23,7 +22,7 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
   const themedSheet = clsx(themeClass, { dark: dashboardDark });
 
   return (
-    <Sheet modal={false} open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
           className={`relative inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-lg border border-border/60 bg-card/80 hover:bg-accent transition-colors duration-150 ${className}`}
@@ -38,7 +37,7 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
       <SheetContent
         side="right"
         className={clsx(
-          'w-[80vw] max-w-xs sm:max-w-sm flex flex-col bg-background text-foreground',
+          'w-[320px] sm:w-[360px] bg-background text-foreground rounded-2xl border-border/80 shadow-2xl my-4 mr-4 h-auto max-h-[80vh] overflow-y-auto',
           themedSheet
         )}
       >
@@ -47,7 +46,7 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
             {title ?? t('menu.title')}
           </SheetTitle>
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        <div className="px-4 py-3 space-y-4">
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.navigation', { defaultValue: 'Navigation' })}</h3>
             <NavLink to="/" label={t('nav.home')} icon={<Home className="h-4 w-4" />} />
@@ -62,7 +61,6 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
               {t('app.preferences', { defaultValue: 'Preferences' })}
             </h3>
             <div className="flex flex-col gap-2">
-              <LanguageSwitcher />
               {children}
               <DashboardThemeToggle />
             </div>

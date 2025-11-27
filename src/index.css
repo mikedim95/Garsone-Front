@@ -642,6 +642,17 @@
 
 body {
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide stray currency toggle inside revenue-by-category card */
+.revenue-category-card button {
+  display: none !important;
 }
 
 /* Ensure dialogs don't cause layout shifts */

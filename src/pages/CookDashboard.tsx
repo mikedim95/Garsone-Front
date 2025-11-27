@@ -9,6 +9,8 @@ import { realtimeService } from "@/lib/realtime";
 import type { Order, CartItem } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageTransition } from "@/components/ui/page-transition";
+import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
@@ -123,6 +125,7 @@ export default function CookDashboard() {
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
+  const [loadingOrders, setLoadingOrders] = useState(true);
 
   useEffect(() => {
     if (
@@ -161,6 +164,8 @@ export default function CookDashboard() {
         setOrdersLocal(mapped);
       } catch (error) {
         console.error('Failed to load cook dashboard data', error);
+      } finally {
+        setLoadingOrders(false);
       }
     };
     init();
@@ -301,7 +306,7 @@ export default function CookDashboard() {
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
   return (
-    <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
+    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
         title={t('cook.dashboard') || 'Cook Dashboard'}
@@ -334,99 +339,103 @@ export default function CookDashboard() {
             {incoming.length}
           </div>
         </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-          {incoming.map((o, idx) => (
-            <Card
-              key={o.id}
-              className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-slide-in"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
-                    {o.tableLabel}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
-                      <span>Table {o.tableLabel}</span>
-                      <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
-                        Priority #{idx + 1}
-                      </span>
+        {loadingOrders ? (
+          <DashboardGridSkeleton count={4} />
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+            {incoming.map((o, idx) => (
+              <Card
+                key={o.id}
+                className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-slide-in"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
+                      {o.tableLabel}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(o.createdAt).toLocaleTimeString()}
+                    <div>
+                      <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
+                        <span>Table {o.tableLabel}</span>
+                        <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
+                          Priority #{idx + 1}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(o.createdAt).toLocaleTimeString()}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                {(o.items ?? []).map((line, idx: number) => {
-                  const qty = line.quantity;
-                  const name = line.item?.name ?? line.item?.title ?? 'Item';
-                  return (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
-                        {qty}
+                <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
+                  {(o.items ?? []).map((line, idx: number) => {
+                    const qty = line.quantity;
+                    const name = line.item?.name ?? line.item?.title ?? 'Item';
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
+                          {qty}
+                        </div>
+                        <span className="text-foreground font-medium">
+                          {name}
+                        </span>
                       </div>
-                      <span className="text-foreground font-medium">
-                        {name}
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Button
+                    className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                    onClick={() => accept(o.id)}
+                    disabled={accepting.has(o.id)}
+                    aria-label={acceptLabel}
+                    title={acceptLabel}
+                  >
+                    {accepting.has(o.id) && (
+                      <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {!accepting.has(o.id) && (
+                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                        ✅
                       </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Button
-                  className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-                  onClick={() => accept(o.id)}
-                  disabled={accepting.has(o.id)}
-                  aria-label={acceptLabel}
-                  title={acceptLabel}
-                >
-                  {accepting.has(o.id) && (
-                    <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {!accepting.has(o.id) && (
-                    <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                      ✅
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  className="w-full inline-flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-md"
-                  onClick={() => acceptWithPrint(o)}
-                  disabled={printing.has(o.id)}
-                  aria-label={acceptWithPrintLabel}
-                  title={acceptWithPrintLabel}
-                >
-                  {printing.has(o.id) && (
-                    <span className="h-4 w-4 border-2 border-secondary-foreground/60 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {!printing.has(o.id) && (
-                    <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                      🖨️
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  className="w-full inline-flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md transition-shadow"
-                  onClick={() => cancelOrder(o.id)}
-                  disabled={actingIds.has(`cancel:${o.id}`)}
-                  aria-label={cancelLabel}
-                  title={cancelLabel}
-                >
-                  {actingIds.has(`cancel:${o.id}`) && (
-                    <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {!actingIds.has(`cancel:${o.id}`) && (
-                    <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                      ❌
-                    </span>
-                  )}
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+                    )}
+                  </Button>
+                  <Button
+                    className="w-full inline-flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-md"
+                    onClick={() => acceptWithPrint(o)}
+                    disabled={printing.has(o.id)}
+                    aria-label={acceptWithPrintLabel}
+                    title={acceptWithPrintLabel}
+                  >
+                    {printing.has(o.id) && (
+                      <span className="h-4 w-4 border-2 border-secondary-foreground/60 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {!printing.has(o.id) && (
+                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                        🖨️
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    className="w-full inline-flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md transition-shadow"
+                    onClick={() => cancelOrder(o.id)}
+                    disabled={actingIds.has(`cancel:${o.id}`)}
+                    aria-label={cancelLabel}
+                    title={cancelLabel}
+                  >
+                    {actingIds.has(`cancel:${o.id}`) && (
+                      <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {!actingIds.has(`cancel:${o.id}`) && (
+                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                        ❌
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 sm:gap-3 mt-10">
           <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
@@ -435,71 +444,75 @@ export default function CookDashboard() {
             {preparing.length}
           </div>
         </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-          {preparing.map((o) => (
-            <Card
-              key={o.id}
-              className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
-                    {o.tableLabel}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-foreground text-sm sm:text-base">
-                      Table {o.tableLabel}
-                      {typeof o.priority === 'number' && (
-                        <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
-                          Priority #{o.priority}
-                        </span>
-                      )}
+        {loadingOrders ? (
+          <DashboardGridSkeleton count={3} />
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+            {preparing.map((o) => (
+              <Card
+                key={o.id}
+                className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
+                      {o.tableLabel}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(o.createdAt).toLocaleTimeString()}
+                    <div>
+                      <div className="font-semibold text-foreground text-sm sm:text-base">
+                        Table {o.tableLabel}
+                        {typeof o.priority === 'number' && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
+                            Priority #{o.priority}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(o.createdAt).toLocaleTimeString()}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                {(o.items ?? []).map((line, idx: number) => {
-                  const qty = line.quantity;
-                  const name = line.item?.name ?? line.item?.title ?? 'Item';
-                  return (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
-                        {qty}
+                <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
+                  {(o.items ?? []).map((line, idx: number) => {
+                    const qty = line.quantity;
+                    const name = line.item?.name ?? line.item?.title ?? 'Item';
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
+                          {qty}
+                        </div>
+                        <span className="text-foreground font-medium">
+                          {name}
+                        </span>
                       </div>
-                      <span className="text-foreground font-medium">
-                        {name}
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                    onClick={() => markReady(o.id)}
+                    disabled={actingIds.has(`ready:${o.id}`)}
+                    aria-label={markReadyLabel}
+                    title={markReadyLabel}
+                  >
+                    {actingIds.has(`ready:${o.id}`) && (
+                      <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {!actingIds.has(`ready:${o.id}`) && (
+                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                        🍽️
                       </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-                  onClick={() => markReady(o.id)}
-                  disabled={actingIds.has(`ready:${o.id}`)}
-                  aria-label={markReadyLabel}
-                  title={markReadyLabel}
-                >
-                  {actingIds.has(`ready:${o.id}`) && (
-                    <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {!actingIds.has(`ready:${o.id}`) && (
-                    <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                      🍽️
-                    </span>
-                  )}
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+                    )}
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
-    </div>
+      </div>
+    </PageTransition>
   );
 }

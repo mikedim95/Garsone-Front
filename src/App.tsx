@@ -67,6 +67,7 @@ const queryClient = new QueryClient();
 const BrandedLoadingScreen = () => {
   const location = useLocation();
   const isLanding = location.pathname === "/";
+  const isCustomerMenu = location.pathname.startsWith("/table/");
 
   let label = isLanding ? "Garsone" : "Garsone";
   let roleLabel: string | null = null;
@@ -77,6 +78,10 @@ const BrandedLoadingScreen = () => {
       label = storedName || storedSlug || "Garsone";
     } catch {
       label = "Garsone";
+    }
+    if (!isCustomerMenu) {
+      const storedRole = window.localStorage.getItem("USER_ROLE");
+      if (storedRole) roleLabel = storedRole;
     }
   }
 
