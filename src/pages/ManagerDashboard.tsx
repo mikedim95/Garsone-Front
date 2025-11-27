@@ -89,7 +89,7 @@ import { useDashboardTheme } from '@/hooks/useDashboardDark';
 
 type ManagerMode = 'basic' | 'pro';
 type ManagerTab = 'economics' | 'orders' | 'personnel' | 'menu';
-type EconRange = 'today' | 'week' | 'month' | 'custom';
+type EconRange = 'today' | 'last24h' | 'week' | 'month' | 'custom';
 type MenuCategoryMode = 'units' | 'share';
 type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
 type TableSummary = { id: string; label: string; active: boolean; isActive: boolean; waiterCount: number; orderCount: number; openOrders: number };
@@ -148,12 +148,22 @@ const isWaiterCallEvent = (payload: unknown): payload is { tableId?: string; act
   isRecord(payload) && (typeof payload.tableId === 'string' || typeof payload.action === 'string');
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const addDays = (d: Date, days: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+const addDays = (d: Date, days: number) => new Date(d.getTime() + days * 86400000);
 const toISODate = (d: Date) => d.toISOString().slice(0, 10);
 const withinRange = (d: Date | null, start: Date, end: Date) => {
   if (!d) return false;
-  const endExclusive = addDays(end, 1);
-  return d >= start && d < endExclusive;
+  const isWholeDayWindow =
+    start.getHours() === 0 &&
+    start.getMinutes() === 0 &&
+    start.getSeconds() === 0 &&
+    end.getHours() === 0 &&
+    end.getMinutes() === 0 &&
+    end.getSeconds() === 0;
+  if (isWholeDayWindow) {
+    const endExclusive = addDays(end, 1);
+    return d >= start && d < endExclusive;
+  }
+  return d >= start && d <= end;
 };
 
 const parseDate = (value?: string | null) => {
@@ -173,6 +183,7 @@ const getUpdatedDate = (order: Order) =>
 
 const getServedDate = (order: Order) =>
   parseDate(order.servedAt) || (isServedStatus(order.status) ? getUpdatedDate(order) : null);
+const getRevenueDate = (order: Order) => getServedDate(order) || getPlacedDate(order);
 
 const getOrderTotalCents = (order: Order) => {
   if (typeof order.totalCents === 'number' && Number.isFinite(order.totalCents)) {
@@ -316,7 +327,7 @@ export default function ManagerDashboard() {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('MANAGER_ECON_RANGE');
-        if (saved === 'today' || saved === 'week' || saved === 'month' || saved === 'custom') return saved;
+        if (saved === 'today' || saved === 'last24h' || saved === 'week' || saved === 'month' || saved === 'custom') return saved as EconRange;
       } catch {
         // ignore
       }
@@ -682,6 +693,13 @@ export default function ManagerDashboard() {
       const prevStart = addDays(prevEnd, -(days - 1));
       return { start: validStart, end: validEnd, prevStart, prevEnd, days };
     }
+    if (econRange === 'last24h') {
+      const end = now;
+      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+      const prevEnd = start;
+      const prevStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+      return { start, end, prevStart, prevEnd, days: 1 };
+    }
     const end = startOfDay(now);
     let days = 7;
     if (econRange === 'today') days = 1;
@@ -703,12 +721,23 @@ export default function ManagerDashboard() {
 
   // Date parsing helpers used across analytics
   // Economics tab (range-scoped)
-  const servedInRange = useMemo(
+  const ordersInRange = useMemo(
     () =>
-      servedOrders.filter((order) =>
-        withinRange(getPlacedDate(order), rangeInfo.start, rangeInfo.end)
+      ordersAll.filter((order) =>
+        withinRange(getRevenueDate(order), rangeInfo.start, rangeInfo.end)
       ),
-    [servedOrders, rangeInfo]
+    [ordersAll, rangeInfo.start, rangeInfo.end]
+  );
+  const ordersPrevRange = useMemo(
+    () =>
+      ordersAll.filter((order) =>
+        withinRange(getRevenueDate(order), rangeInfo.prevStart, rangeInfo.prevEnd)
+      ),
+    [ordersAll, rangeInfo.prevStart, rangeInfo.prevEnd]
+  );
+  const servedInRange = useMemo(
+    () => servedOrders.filter((order) => withinRange(getRevenueDate(order), rangeInfo.start, rangeInfo.end)),
+    [servedOrders, rangeInfo.start, rangeInfo.end]
   );
   const cancelledInRange = useMemo(
     () =>
@@ -720,7 +749,7 @@ export default function ManagerDashboard() {
   const servedPrevRange = useMemo(
     () =>
       servedOrders.filter((order) =>
-        withinRange(getPlacedDate(order), rangeInfo.prevStart, rangeInfo.prevEnd)
+        withinRange(getRevenueDate(order), rangeInfo.prevStart, rangeInfo.prevEnd)
       ),
     [servedOrders, rangeInfo]
   );
@@ -752,11 +781,11 @@ export default function ManagerDashboard() {
       : null;
 
     const placedInRange = servedInRange
-      .map((order) => getPlacedDate(order))
+      .map((order) => getRevenueDate(order))
       .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
       .map((d) => d.toISOString());
     const placedPrevRange = servedPrevRange
-      .map((order) => getPlacedDate(order))
+      .map((order) => getRevenueDate(order))
       .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
       .map((d) => d.toISOString());
 
@@ -795,21 +824,34 @@ export default function ManagerDashboard() {
   ]);
 
   const revenueTimeline = useMemo(() => {
-    // When viewing Today use hourly buckets, otherwise use daypart segments for the selected range
-    if (econRange === 'today') {
-      const hourly = new Map<string, number>();
-      servedInRange.forEach((order) => {
-        const date = getPlacedDate(order) || new Date();
-        const key = `${date.getHours().toString().padStart(2, '0')}:00`;
-        hourly.set(key, (hourly.get(key) ?? 0) + getOrderTotalCents(order) / 100);
-      });
+    // When viewing Today/Last24h use hourly buckets, otherwise use daypart or daily segments for the selected range
+    if (econRange === 'today' || econRange === 'last24h') {
+      const buildHourMap = (orders: Order[]) => {
+        const hourly = new Map<string, number>();
+        orders.forEach((order) => {
+          const date = getRevenueDate(order) || new Date();
+          const key = `${date.getHours().toString().padStart(2, '0')}:00`;
+          hourly.set(key, (hourly.get(key) ?? 0) + getOrderTotalCents(order) / 100);
+        });
+        return hourly;
+      };
+      const hourly = buildHourMap(servedInRange);
+      const hourlyPrev = buildHourMap(servedPrevRange);
       const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
       for (let i = 0; i < 24; i++) {
-        const hourLabel = `${i.toString().padStart(2, '0')}:00`;
+        const bucketStart =
+          econRange === 'today'
+            ? new Date(rangeInfo.start.getTime() + i * 60 * 60 * 1000)
+            : new Date(rangeInfo.start.getTime() + i * 60 * 60 * 1000);
+        const hourKey = `${bucketStart.getHours().toString().padStart(2, '0')}:00`;
+        const label =
+          econRange === 'today'
+            ? hourKey
+            : bucketStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         rows.push({
-          date: hourLabel,
-          revenue: hourly.get(hourLabel) ?? 0,
-          prevRevenue: 0,
+          date: label,
+          revenue: hourly.get(hourKey) ?? 0,
+          prevRevenue: hourlyPrev.get(hourKey) ?? 0,
         });
       }
       return rows;
@@ -822,7 +864,7 @@ export default function ManagerDashboard() {
         const map = new Map<string, Map<string, number>>();
         dayparts.forEach((part) => map.set(part, new Map(labels.map((label) => [label, 0]))));
         orders.forEach((order) => {
-          const date = getPlacedDate(order) || new Date();
+          const date = getRevenueDate(order) || new Date();
           const dayLabel = labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
           const part = daypartOf(date);
           const row = map.get(part) ?? new Map();
@@ -848,13 +890,13 @@ export default function ManagerDashboard() {
 
     const curMap = new Map<string, number>();
     servedInRange.forEach((order) => {
-      const d = getPlacedDate(order) || new Date();
+      const d = getRevenueDate(order) || new Date();
       const key = toISODate(d);
       curMap.set(key, (curMap.get(key) ?? 0) + getOrderTotalCents(order) / 100);
     });
     const prevMap = new Map<string, number>();
     servedPrevRange.forEach((order) => {
-      const d = getPlacedDate(order) || new Date();
+      const d = getRevenueDate(order) || new Date();
       const key = toISODate(d);
       prevMap.set(key, (prevMap.get(key) ?? 0) + getOrderTotalCents(order) / 100);
     });
@@ -1030,22 +1072,31 @@ export default function ManagerDashboard() {
   }, [servedInRange, resolveCategoryLabel, hasCostData]);
 
   const topItems = useMemo(() => {
+    const pickName = (line: any) =>
+      pickLabel(line?.item?.title) ||
+      pickLabel(line?.item?.name) ||
+      pickLabel((line?.item as { label?: string })?.label) ||
+      pickLabel(line?.title) ||
+      pickLabel((line as { titleSnapshot?: string })?.titleSnapshot) ||
+      pickLabel(line?.name) ||
+      'Item';
+
     const map = new Map<string, { name: string; revenue: number }>();
-    servedOrders.forEach((order) => {
+    servedInRange.forEach((order) => {
+      // skip items outside the selected revenue window if placed/served is missing
+      const revenueDate = getRevenueDate(order);
+      if (!withinRange(revenueDate, rangeInfo.start, rangeInfo.end)) return;
       (order.items ?? []).forEach((line) => {
-        const name =
-          line.item?.name ??
-          line.item?.title ??
-          pickLabel((line.item as { label?: string })?.label) ??
-          'Item';
+        const name = pickName(line);
+        const key = line.item?.id || name;
         const revenue = unitPrice(line) * getLineQuantity(line);
-        const current = map.get(name) ?? { name, revenue: 0 };
+        const current = map.get(key) ?? { name, revenue: 0 };
         current.revenue += revenue;
-        map.set(name, current);
+        map.set(key, current);
       });
     });
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, [servedOrders]);
+  }, [servedInRange, rangeInfo.start, rangeInfo.end]);
 
   const dayFormatter = useMemo(
     () =>
@@ -1477,18 +1528,23 @@ export default function ManagerDashboard() {
   });
   }, [sortedTables, ordersByTable]);
 
-  const totalOrders = ordersAll.length;
+  const totalOrders = useMemo(
+    () =>
+    ordersInRange
+        .length,
+    [ordersInRange]
+  );
 
   const serveDurationsMinutes = useMemo(() => {
     const durations: number[] = [];
-    servedOrders.forEach((order) => {
+    servedInRange.forEach((order) => {
       const minutes = minutesBetween(getPlacedDate(order), getServedDate(order));
       if (minutes != null) {
         durations.push(minutes);
       }
     });
     return durations;
-  }, [servedOrders]);
+  }, [servedInRange]);
   const avgServeTimeMinutes = useMemo(() => {
     if (!serveDurationsMinutes.length) return null;
     const sum = serveDurationsMinutes.reduce((acc, value) => acc + value, 0);
@@ -1498,9 +1554,11 @@ export default function ManagerDashboard() {
 
   const prepDurationsMinutes = useMemo(() => {
     const durations: number[] = [];
-    ordersAll.forEach((order) => {
+    ordersInRange.forEach((order) => {
       if (order.status === 'PLACED') return;
       if (order.status === 'CANCELLED') return;
+      const revenueDate = getRevenueDate(order);
+      if (!withinRange(revenueDate, rangeInfo.start, rangeInfo.end)) return;
       const minutes =
         isServedStatus(order.status)
           ? minutesBetween(getPlacedDate(order), getServedDate(order))
@@ -1510,13 +1568,14 @@ export default function ManagerDashboard() {
       }
     });
     return durations;
-  }, [ordersAll]);
+  }, [ordersInRange, rangeInfo.start, rangeInfo.end]);
   const medianPrepMinutes = useMemo(() => median(prepDurationsMinutes), [prepDurationsMinutes]);
 
   const busiestHourLabel = useMemo(() => {
-    if (!ordersAll.length) return null;
+    const relevant = ordersInRange;
+    if (!relevant.length) return null;
     const buckets = Array.from({ length: 24 }, () => 0);
-    ordersAll.forEach((order) => {
+    relevant.forEach((order) => {
       const hour = getPlacedDate(order).getHours();
       buckets[hour] = (buckets[hour] ?? 0) + 1;
     });
@@ -1526,12 +1585,13 @@ export default function ManagerDashboard() {
     const startLabel = `${hourIndex.toString().padStart(2, '0')}:00`;
     const endLabel = `${((hourIndex + 1) % 24).toString().padStart(2, '0')}:00`;
     return `${startLabel} – ${endLabel}`;
-  }, [ordersAll]);
+  }, [ordersAll, rangeInfo.start, rangeInfo.end]);
 
   const ordersTimeline = useMemo(() => {
     const map = new Map<string, number>();
-    ordersAll.forEach((order) => {
-      const dayKey = getPlacedDate(order).toISOString().slice(0, 10);
+    ordersInRange.forEach((order) => {
+      const placed = getPlacedDate(order);
+      const dayKey = placed.toISOString().slice(0, 10);
       map.set(dayKey, (map.get(dayKey) ?? 0) + 1);
     });
     return Array.from(map.entries())
@@ -1545,21 +1605,12 @@ export default function ManagerDashboard() {
   }, [ordersAll, dayFormatter]);
 
   const ordersTimelineTrend = useMemo(() => {
-    // Compare last 7 days vs previous 7 days
-    const map = new Map<string, number>();
-    ordersAll.forEach((order) => {
-      const key = getPlacedDate(order).toISOString().slice(0, 10);
-      map.set(key, (map.get(key) ?? 0) + 1);
-    });
-    const allDays = Array.from(map.keys()).sort();
-    const last = allDays.slice(-7);
-    const prev = allDays.slice(-14, -7);
-    const sum = (arr: string[]) => arr.reduce((s, k) => s + (map.get(k) ?? 0), 0);
-    const curr = sum(last);
-    const prior = sum(prev);
+    const sumOrders = (orders: Order[]) => orders.length;
+    const curr = sumOrders(ordersInRange);
+    const prior = sumOrders(ordersPrevRange);
     const deltaPct = prior > 0 ? ((curr - prior) / prior) * 100 : curr > 0 ? 100 : 0;
     return { curr, prior, deltaPct };
-  }, [ordersAll]);
+  }, [ordersInRange, ordersPrevRange]);
 
   const ordersByStatus = useMemo(() => {
     const base: Record<OrderStatus, number> = {
@@ -1573,7 +1624,7 @@ export default function ManagerDashboard() {
     const now = Date.now();
     const statusHasThreshold = (status: OrderStatus) => STATUS_THRESHOLD_MINUTES[status] != null;
     const atRiskMap: Partial<Record<OrderStatus, boolean>> = {};
-    ordersAll.forEach((order) => {
+    ordersInRange.forEach((order) => {
       base[order.status] = (base[order.status] ?? 0) + 1;
       const threshold = STATUS_THRESHOLD_MINUTES[order.status];
       if (threshold != null) {
@@ -1589,7 +1640,7 @@ export default function ManagerDashboard() {
       count: base[status],
       atRisk: Boolean(atRiskMap[status] && statusHasThreshold(status)),
     }));
-  }, [ordersAll]);
+  }, [ordersInRange, rangeInfo.start, rangeInfo.end]);
 
   // Pro analytics for Orders
   const prepHistogram = useMemo(() => {
@@ -1610,7 +1661,7 @@ export default function ManagerDashboard() {
 
   const SLA_TARGET_MINUTES = 20;
   const slaBreaches = useMemo(() => {
-    return servedOrders
+    return servedInRange
       .map((o) => ({
         order: o,
         minutes: minutesBetween(getPlacedDate(o), getServedDate(o)),
@@ -1618,7 +1669,7 @@ export default function ManagerDashboard() {
       .filter((x) => (x.minutes ?? 0) > SLA_TARGET_MINUTES)
       .sort((a, b) => (b.minutes ?? 0) - (a.minutes ?? 0))
       .slice(0, 8);
-  }, [servedOrders]);
+  }, [servedInRange]);
 
   const bottleneckMatrix = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, h) => h);
@@ -1633,7 +1684,7 @@ export default function ManagerDashboard() {
       SERVED: makeRow(),
       CANCELLED: makeRow(),
     };
-    ordersAll.forEach((order) => {
+    ordersInRange.forEach((order) => {
       const hour = getPlacedDate(order).getHours();
       if (statuses.includes(order.status)) {
         matrix[order.status][hour] = (matrix[order.status][hour] ?? 0) + 1;
@@ -1646,12 +1697,12 @@ export default function ManagerDashboard() {
       });
     });
     return { hours, statuses, matrix, max: Math.max(max, 1) };
-  }, [ordersAll]);
+  }, [ordersInRange]);
 
   const REORDER_WINDOW_MINUTES = 45;
   const reorderRate = useMemo(() => {
     const byTable = new Map<string, Date[]>();
-    ordersAll.forEach((o) => {
+    ordersInRange.forEach((o) => {
       const key = o.tableId || o.tableLabel || 'unknown';
       const arr = byTable.get(key) || [];
       arr.push(getPlacedDate(o));
@@ -1673,7 +1724,7 @@ export default function ManagerDashboard() {
     });
     const percent = tablesWithOrders ? Math.round((tablesWithReorder / tablesWithOrders) * 100) : 0;
     return { percent, tablesWithOrders, tablesWithReorder };
-  }, [ordersAll]);
+  }, [ordersInRange]);
 
   const throughputHistogram = useMemo(() => {
     const bins = [
@@ -1696,7 +1747,7 @@ export default function ManagerDashboard() {
   const stuckOrders = useMemo(() => {
     const now = Date.now();
     const entries: Array<{ order: Order; minutes: number; threshold: number }> = [];
-    ordersAll.forEach((order) => {
+    ordersInRange.forEach((order) => {
       const threshold = STATUS_THRESHOLD_MINUTES[order.status];
       if (threshold == null) return;
       const reference =
@@ -1711,13 +1762,13 @@ export default function ManagerDashboard() {
 
   const recentOrders = useMemo(
     () =>
-      ordersAll
+      ordersInRange
         .slice()
         .sort(
           (a, b) => getPlacedDate(b).getTime() - getPlacedDate(a).getTime()
         )
         .slice(0, 20),
-    [ordersAll]
+    [ordersInRange]
   );
 
   const openCreateTable = () => {
@@ -2039,6 +2090,7 @@ export default function ManagerDashboard() {
                 <div className="inline-flex w-full sm:w-auto rounded-md border bg-background overflow-hidden">
                   {([
                     { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
+                    { key: 'last24h', label: t('date_range.last24h', { defaultValue: 'Last 24h' }) },
                     { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
                     { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
                     { key: 'custom', label: t('date_range.custom', { defaultValue: 'Custom' }) },
@@ -2111,7 +2163,7 @@ export default function ManagerDashboard() {
                 <div>
                   <p className="text-sm text-muted-foreground">{t('manager.timeline', { defaultValue: 'Timeline' })}</p>
                   <h3 className="text-lg font-semibold">
-                    {econRange === 'today'
+                    {econRange === 'today' || econRange === 'last24h'
                       ? t('manager.revenue_by_hour', { defaultValue: 'Revenue by hour' })
                       : econRange === 'week'
                       ? t('manager.revenue_by_daypart', { defaultValue: 'Revenue by daypart' })

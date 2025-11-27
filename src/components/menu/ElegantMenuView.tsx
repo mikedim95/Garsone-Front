@@ -253,7 +253,9 @@ export const ElegantMenuView = ({
         disabled={callStatus === 'pending'}
         className={[
           'fixed bottom-6 left-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out overflow-hidden',
-          expandedBubble === 'call' ? 'w-80 pl-4 pr-3 justify-between' : 'w-16 justify-center hover:scale-110',
+          expandedBubble === 'call'
+            ? 'pl-4 pr-3 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
+            : 'w-16 justify-center hover:scale-110',
           callStatus === 'pending' ? 'opacity-80 cursor-wait' : expandedBubble === 'none' && 'active:scale-95',
         ].join(' ')}
       >
