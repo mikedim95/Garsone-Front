@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Order, OrderStatus } from '@/types';
+import { formatTableLabel } from '@/lib/formatTableLabel';
 import { Loader2 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -47,7 +48,7 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false, 
     >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="font-semibold text-lg">Table {order.tableLabel}</h3>
+          <h3 className="font-semibold text-lg">{formatTableLabel(order.tableLabel)}</h3>
           <p className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleTimeString()}</p>
         </div>
         <Badge className={`${statusClass} animate-in fade-in zoom-in-90 duration-200`}>{statusLabel}</Badge>

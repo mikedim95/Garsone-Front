@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { realtimeService } from "@/lib/realtime";
 import type { Order, CartItem } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -355,7 +356,7 @@ export default function CookDashboard() {
                     </div>
                     <div>
                       <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
-                        <span>Table {o.tableLabel}</span>
+                        <span>{formatTableLabel(o.tableLabel)}</span>
                         <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
                           Priority #{idx + 1}
                         </span>
@@ -460,7 +461,7 @@ export default function CookDashboard() {
                     </div>
                     <div>
                       <div className="font-semibold text-foreground text-sm sm:text-base">
-                        Table {o.tableLabel}
+                        {formatTableLabel(o.tableLabel)}
                         {typeof o.priority === 'number' && (
                           <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
                             Priority #{o.priority}
