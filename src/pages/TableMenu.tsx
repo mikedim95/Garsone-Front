@@ -204,6 +204,7 @@ export default function TableMenu() {
   const menuCache = useMenuStore((s) => s.data);
   const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -556,6 +557,7 @@ export default function TableMenu() {
   };
 
   const handleCheckout = async (note?: string) => {
+    if (checkoutBusy) return null;
     if (!activeTableId || !menuData) {
       toast({
         title: t("menu.toast_error_title", { defaultValue: "Error placing order" }),
@@ -565,6 +567,7 @@ export default function TableMenu() {
     }
 
     try {
+      setCheckoutBusy(true);
       const cartItems = useCartStore.getState().items;
 
       const orderData: CreateOrderPayload = {
@@ -637,6 +640,9 @@ export default function TableMenu() {
                 }),
         });
       }
+    }
+    finally {
+      setCheckoutBusy(false);
     }
     return null;
   };
@@ -989,6 +995,7 @@ export default function TableMenu() {
               selectedCategory={selectedCategory}
               onAddItem={handleAddItem}
               onCheckout={handleCheckout}
+              checkoutBusy={checkoutBusy}
               callButtonLabel={callButtonLabel}
               callStatus={calling}
               callPrompted={callPrompted}

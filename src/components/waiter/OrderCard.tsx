@@ -149,12 +149,23 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false, 
             {order.status === 'READY' && (
               <Button
                 size="sm"
-                onClick={() => onUpdateStatus(order.id, 'SERVED')}
-                className="flex-1 inline-flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                onClick={() => {
+                  setLocalBusy(true);
+                  Promise.resolve(onUpdateStatus(order.id, 'SERVED'))
+                    .catch(() => {})
+                    .finally(() => setLocalBusy(false));
+                }}
+                className="relative flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                aria-busy={isBusy}
+                data-busy={isBusy ? 'true' : 'false'}
+                disabled={isBusy}
                 aria-label={markServedLabel}
                 title={markServedLabel}
               >
-                <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                <span className={`absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${isBusy ? 'opacity-100' : 'opacity-0'}`}>
+                  <Loader2 className="h-5 w-5 animate-spin text-primary-foreground" />
+                </span>
+                <span className={`transition-opacity ${isBusy ? 'opacity-0' : 'opacity-100'}`} role="img" aria-hidden="true">
                   🥂
                 </span>
               </Button>

@@ -1,6 +1,6 @@
 import type { MenuItem, MenuCategory } from '@/types';
 import { Button } from '../ui/button';
-import { Plus, ShoppingCart, X, Pencil, Bell } from 'lucide-react';
+import { Plus, ShoppingCart, X, Pencil, Bell, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCartStore } from '@/store/cartStore';
 import { Card } from '../ui/card';
@@ -22,6 +22,7 @@ interface Props {
   callStatus?: 'idle' | 'pending' | 'accepted';
   callPrompted?: boolean;
   onCallClick?: () => void;
+  checkoutBusy?: boolean;
 }
 
 export const ElegantMenuView = ({
@@ -34,6 +35,7 @@ export const ElegantMenuView = ({
   callStatus = 'idle',
   callPrompted = false,
   onCallClick,
+  checkoutBusy = false,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -92,6 +94,7 @@ export const ElegantMenuView = ({
     : [{ category: categories.find(c => c.id === selectedCategory) || { id: selectedCategory, title: '' }, items: filteredItems }];
 
   const handleCheckout = () => {
+    if (checkoutBusy) return;
     setCartOpen(false);
     onCheckout(orderNote);
     setOrderNote('');
@@ -112,6 +115,7 @@ export const ElegantMenuView = ({
   };
 
   const handleCartButtonClick = () => {
+    if (checkoutBusy) return;
     if (expandedBubble === 'cart') {
       setCartOpen(true);
       setExpandedBubble('none');
@@ -210,6 +214,7 @@ export const ElegantMenuView = ({
       {/* Floating Cart Button */}
       <button
         onClick={handleCartButtonClick}
+        disabled={checkoutBusy}
         className={[
           'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
           expandedBubble === 'cart'
@@ -244,6 +249,11 @@ export const ElegantMenuView = ({
         {expandedBubble === 'cart' && (
           <span className="text-xs text-primary-foreground/60 whitespace-nowrap animate-fade-in">
             {t('menu.tap_checkout', { defaultValue: 'Tap to checkout' })}
+          </span>
+        )}
+        {checkoutBusy && (
+          <span className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-full">
+            <Loader2 className="h-5 w-5 animate-spin" />
           </span>
         )}
       </button>
@@ -470,9 +480,17 @@ export const ElegantMenuView = ({
 
                 <Button
                   onClick={handleCheckout}
-                  className="w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
+                  disabled={checkoutBusy}
+                  aria-busy={checkoutBusy}
+                  data-busy={checkoutBusy ? 'true' : 'false'}
+                  className="relative w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] disabled:opacity-80"
                 >
-                  {t('menu.checkout', { defaultValue: 'Place Order' })}
+                  <span className={`absolute inset-0 flex items-center justify-center transition-opacity ${checkoutBusy ? 'opacity-100' : 'opacity-0'}`}>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </span>
+                  <span className={checkoutBusy ? 'opacity-0' : 'opacity-100'}>
+                    {t('menu.checkout', { defaultValue: 'Place Order' })}
+                  </span>
                 </Button>
               </div>
             )}
