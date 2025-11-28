@@ -11,9 +11,9 @@ import { AppBurger } from "./AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
 import { useCartStore } from "@/store/cartStore";
-import { api, ApiError, visitTokenStore } from "@/lib/api";
-import { useMenuStore } from "@/store/menuStore";
+import { api, ApiError } from "@/lib/api";
 import { realtimeService } from "@/lib/realtime";
+import { useMenuStore } from "@/store/menuStore";
 import type {
   CreateOrderPayload,
   MenuCategory,
@@ -61,21 +61,53 @@ const mapCategories = (
   }, []);
 
 const buildMenuState = (
-  payload?: Partial<MenuStateData> & {
-    categories?: Array<{ id?: string; title?: string }>;
+  payload: Partial<MenuStateData> & {
+    categories?: Array<{ id?: string; title?: string; titleEn?: string; titleEl?: string }>;
     items?: MenuItem[];
-  }
-): MenuStateData => ({
-  categories: mapCategories(payload?.categories),
-  items: (payload?.items ?? []).map((item) => ({
-    ...item,
-    image: item.image ?? item.imageUrl ?? '',
-    imageUrl: item.imageUrl ?? item.image ?? '',
-  })),
-  modifiers: payload?.modifiers ?? [],
-  modifierOptions: payload?.modifierOptions ?? [],
-  itemModifiers: payload?.itemModifiers ?? [],
-});
+  } = {},
+  preferGreek: boolean
+): MenuStateData => {
+  const localizeText = (en?: string, el?: string, fallback?: string) =>
+    preferGreek ? el || en || fallback || '' : en || el || fallback || '';
+
+  const localizedModifiers = (mods?: Modifier[]) =>
+    (mods ?? [])
+      .filter((m) => m.isAvailable !== false)
+      .map((m) => ({
+        ...m,
+        name: localizeText(m.titleEn, m.titleEl, m.name),
+        options: (m.options ?? []).map((opt) => ({
+          ...opt,
+          label: localizeText(opt.titleEn, opt.titleEl, opt.label),
+        })),
+      }));
+
+  return {
+    categories: mapCategories(
+      (payload?.categories ?? []).map((cat) => ({
+        ...cat,
+        title: localizeText(cat.titleEn, cat.titleEl, cat.title),
+      }))
+    ),
+    items: (payload?.items ?? []).map((item) => {
+      const name = localizeText(item.titleEn || item.name, item.titleEl, item.name || item.title);
+      const description = localizeText(item.descriptionEn, item.descriptionEl, item.description);
+      return {
+        ...item,
+        name,
+        displayName: name,
+        displayDescription: description,
+        description,
+        image: item.image ?? item.imageUrl ?? '',
+        imageUrl: item.imageUrl ?? item.image ?? '',
+        modifiers: localizedModifiers(item.modifiers),
+      };
+    }),
+    modifiers: localizedModifiers(payload?.modifiers),
+    modifierOptions: payload?.modifierOptions ?? [],
+    itemModifiers: payload?.itemModifiers ?? [],
+  };
+};
 
 const matchesCategory = (
   item: MenuItem,
@@ -109,7 +141,8 @@ const isOrderEventMessage = (
 
 export default function TableMenu() {
   const { tableId } = useParams();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const preferGreek = i18n.language?.toLowerCase().startsWith('el');
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -120,10 +153,6 @@ export default function TableMenu() {
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
   const [storeSlug, setStoreSlug] = useState<string>("demo-cafe");
-  const [visitToken, setVisitToken] = useState<string | null>(() => {
-    const stored = visitTokenStore.get();
-    return stored ?? null;
-  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -173,20 +202,6 @@ export default function TableMenu() {
   const menuCache = useMenuStore((s) => s.data);
   const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
-
-  useEffect(() => {
-    const qs = new URLSearchParams(location.search);
-    const fromQuery = qs.get("visit");
-    if (fromQuery) {
-      visitTokenStore.set(fromQuery);
-      setVisitToken(fromQuery);
-      return;
-    }
-    const stored = visitTokenStore.get();
-    if (stored && stored !== visitToken) {
-      setVisitToken(stored);
-    }
-  }, [location.search, visitToken]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -287,7 +302,7 @@ export default function TableMenu() {
             modifiers: [],
             modifierOptions: [],
             itemModifiers: [],
-          })
+          }, preferGreek)
         );
         setError(null);
       } catch (err) {
@@ -309,7 +324,7 @@ export default function TableMenu() {
             modifiers: [],
             modifierOptions: [],
             itemModifiers: [],
-          })
+          }, preferGreek)
         );
       } finally {
         setLoading(false);
@@ -322,38 +337,10 @@ export default function TableMenu() {
     setMenuCache,
     offlineFallbackMessage,
     fallbackCategoryLabel,
+    preferGreek,
   ]);
 
-  // Live refresh when manager updates menu
-  useEffect(() => {
-    let subscribed: string | null = null;
-    realtimeService.connect().then(() => {
-      const topic = `stores/${storeSlug}/menu/updated`;
-      subscribed = topic;
-      realtimeService.subscribe(topic, async () => {
-        try {
-          const data = await api.getMenu();
-          setMenuCache(data);
-          setMenuData(
-            buildMenuState({
-              categories: data?.categories,
-              items: data?.items,
-              modifiers: [],
-              modifierOptions: [],
-              itemModifiers: [],
-            })
-          );
-        } catch (error) {
-          console.error("Failed to refresh menu after realtime event", error);
-        }
-      });
-    });
-    return () => {
-      if (subscribed) realtimeService.unsubscribe(subscribed);
-    };
-  }, [storeSlug, setMenuCache]);
-
-  // Fallback polling ONLY when realtime channel is not connected
+  // Poll for menu updates (realtime disabled)
   useEffect(() => {
     let intervalId: number | undefined;
     let lastSnapshot: string | undefined;
@@ -366,17 +353,12 @@ export default function TableMenu() {
           modifiers: [],
           modifierOptions: [],
           itemModifiers: [],
-        })
+        }, preferGreek)
       );
     };
 
     const poll = async () => {
       try {
-        // If realtime is connected, stop polling immediately
-        if (realtimeService.isConnected()) {
-          stop();
-          return;
-        }
         const data = await api.getMenu();
         // Avoid unnecessary re-renders when data is unchanged
         const snapshot = JSON.stringify({
@@ -398,7 +380,7 @@ export default function TableMenu() {
     };
 
     const start = () => {
-      if (intervalId || realtimeService.isConnected()) return;
+      if (intervalId) return;
       // Less aggressive: 20s to reduce UX disturbance
       intervalId = window.setInterval(poll, 20_000);
     };
@@ -411,12 +393,8 @@ export default function TableMenu() {
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        if (!realtimeService.isConnected()) {
-          poll();
-          start();
-        } else {
-          stop();
-        }
+        poll();
+        start();
       } else {
         stop();
       }
@@ -428,7 +406,7 @@ export default function TableMenu() {
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [setMenuCache]);
+  }, [setMenuCache, preferGreek]);
 
   const categories = menuData ? menuData.categories : [];
   const filteredItems = menuData
@@ -597,7 +575,6 @@ export default function TableMenu() {
       setEditingOrderId(null);
       // pass tableId so the thanks page can subscribe to the ready topic
       const params = new URLSearchParams({ tableId });
-      if (visitToken) params.set("visit", visitToken);
       if (orderId) {
         navigate(`/order/${orderId}/thanks?${params.toString()}`);
       }

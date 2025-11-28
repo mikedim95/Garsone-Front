@@ -46,11 +46,16 @@ const GreekFlag = () => (
   <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8">
     <rect width="60" height="40" fill="#0d5eaf" />
     <g fill="#ffffff">
-      <rect x="0" y="16" width="60" height="8" />
-      <rect x="0" y="0" width="60" height="8" />
-      <rect x="0" y="32" width="60" height="8" />
-      <rect x="0" y="8" width="24" height="8" />
-      <rect x="8" y="0" width="8" height="24" />
+      {/* Horizontal stripes */}
+      <rect y="4" width="60" height="4" />
+      <rect y="12" width="60" height="4" />
+      <rect y="20" width="60" height="4" />
+      <rect y="28" width="60" height="4" />
+      <rect y="36" width="60" height="4" />
+      {/* Canton cross */}
+      <rect width="24" height="16" />
+      <rect x="8" width="8" height="16" fill="#0d5eaf" />
+      <rect y="4" width="24" height="4" fill="#0d5eaf" />
     </g>
   </svg>
 );
@@ -58,17 +63,17 @@ const GreekFlag = () => (
 const UkFlag = () => (
   <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8">
     <rect width="60" height="40" fill="#012169" />
-    <g fill="#ffffff">
-      <polygon points="0,0 25,0 60,24 60,40 35,40 0,16" />
-      <polygon points="60,0 35,0 0,24 0,40 25,40 60,16" />
-      <rect x="24" width="12" height="40" />
-      <rect y="14" width="60" height="12" />
-    </g>
-    <g fill="#c8102e">
-      <polygon points="0,0 20,0 60,26.7 60,40 40,40 0,13.3" />
-      <polygon points="60,0 40,0 0,26.7 0,40 20,40 60,13.3" />
-      <rect x="26" width="8" height="40" />
-      <rect y="16" width="60" height="8" />
-    </g>
+    {/* White diagonals */}
+    <polygon fill="#fff" points="0,0 7,0 60,30 60,40 53,40 0,10" />
+    <polygon fill="#fff" points="60,0 53,0 0,30 0,40 7,40 60,10" />
+    {/* Red diagonals */}
+    <polygon fill="#C8102E" points="0,0 3,0 60,33 60,40 57,40 0,7" />
+    <polygon fill="#C8102E" points="60,0 57,0 0,33 0,40 3,40 60,7" />
+    {/* White cross */}
+    <rect x="24" width="12" height="40" fill="#fff" />
+    <rect y="14" width="60" height="12" fill="#fff" />
+    {/* Red cross */}
+    <rect x="26" width="8" height="40" fill="#C8102E" />
+    <rect y="16" width="60" height="8" fill="#C8102E" />
   </svg>
 );

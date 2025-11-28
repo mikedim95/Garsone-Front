@@ -650,6 +650,17 @@ body::-webkit-scrollbar {
   display: none;
 }
 
+/* Stop Radix scroll lock from adding phantom gutter on desktop (burger menu jump) */
+html body[data-scroll-locked]:not(:root) {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+.with-scroll-bars-hidden:not(:root) {
+  padding-right: 0 !important;
+}
+
 /* Hide stray currency toggle inside revenue-by-category card */
 .revenue-category-card button {
   display: none !important;

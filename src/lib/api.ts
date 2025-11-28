@@ -55,38 +55,6 @@ export function isOffline() {
   return String(v ?? '').toLowerCase() === '1' || String(v ?? '').toLowerCase() === 'true';
 }
 
-const VISIT_TOKEN_KEY = 'TABLE_VISIT_TOKEN';
-
-function getVisitToken() {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const token = window.localStorage?.getItem(VISIT_TOKEN_KEY);
-    return token?.trim() || undefined;
-  } catch (error) {
-    console.warn('Failed to read visit token', error);
-    return undefined;
-  }
-}
-
-function setVisitToken(token?: string | null) {
-  if (typeof window === 'undefined') return;
-  try {
-    if (token && token.trim().length > 0) {
-      window.localStorage?.setItem(VISIT_TOKEN_KEY, token.trim());
-    } else {
-      window.localStorage?.removeItem(VISIT_TOKEN_KEY);
-    }
-  } catch (error) {
-    console.warn('Failed to persist visit token', error);
-  }
-}
-
-export const visitTokenStore = {
-  get: getVisitToken,
-  set: (token?: string | null) => setVisitToken(token),
-  clear: () => setVisitToken(null),
-};
-
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -94,11 +62,7 @@ export class ApiError extends Error {
   }
 }
 
-const withVisit = <T extends Record<string, any>>(payload: T): T & { visit?: string } => {
-  const visitToken = getVisitToken();
-  if (!visitToken) return payload;
-  return { ...payload, visit: visitToken };
-};
+const withVisit = <T extends Record<string, any>>(payload: T): T => payload;
 
 type ManagerTableCreateInput = { label: string; isActive?: boolean };
 type ManagerTableUpdateInput = Partial<ManagerTableCreateInput>;
@@ -117,13 +81,11 @@ async function fetchApi<T>(
 ): Promise<T> {
   try {
     const token = useAuthStore.getState().token;
-    const visitToken = getVisitToken();
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
         ...(options?.body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(visitToken ? { "X-Table-Visit": visitToken } : {}),
         ...options?.headers,
       },
     });
@@ -325,6 +287,8 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
+  getItemDetail: (id: string): Promise<{ item?: ManagerItemSummary; modifiers: Modifier[]; links: Array<{ modifierId: string; isRequired: boolean }> }> =>
+    fetchApi(`/manager/items/${id}/detail`),
   updateItem: (id: string, data: ManagerItemUpdatePayload): Promise<{ item: ManagerItemSummary | undefined }> =>
     isOffline()
       ? devMocks.updateItem(id, data)
@@ -408,12 +372,12 @@ export const api = {
     isOffline()
       ? devMocks.listCategories()
       : fetchApi<{ categories: MenuCategory[] }>('/manager/categories'),
-  createCategory: (title: string, sortOrder?: number): Promise<{ category: MenuCategory }> =>
+  createCategory: (titleEn: string, titleEl: string, sortOrder?: number): Promise<{ category: MenuCategory }> =>
     isOffline()
-      ? devMocks.createCategory(title, sortOrder)
+      ? devMocks.createCategory(titleEn, sortOrder)
       : fetchApi<{ category: MenuCategory }>('/manager/categories', {
           method: 'POST',
-          body: JSON.stringify({ title, sortOrder }),
+          body: JSON.stringify({ titleEn, titleEl, sortOrder }),
         }),
   updateCategory: (id: string, data: Partial<CategoryPayload>): Promise<{ category?: MenuCategory }> =>
     isOffline()

@@ -498,32 +498,9 @@ export default function WaiterDashboard() {
       }
       dbg("waiter call", payload.tableId, payload.action);
     };
-    realtimeService
-      .connect()
-      .then(() => {
-        if (unsubscribed) return;
-        realtimeService.subscribe(`${storeSlug}/orders/placed`, handlePlaced);
-        realtimeService.subscribe(`${storeSlug}/orders/prepairing`, handlePreparing);
-        realtimeService.subscribe(`${storeSlug}/orders/preparing`, handlePreparing);
-        realtimeService.subscribe(`${storeSlug}/orders/ready`, handleReady);
-        realtimeService.subscribe(`${storeSlug}/orders/cancelled`, handleCancelled);
-        realtimeService.subscribe(`${storeSlug}/orders/canceled`, handleCancelled);
-        realtimeService.subscribe(`${storeSlug}/orders/paid`, handlePaid);
-        realtimeService.subscribe(`${storeSlug}/waiter/call`, handleWaiterCall);
-      })
-      .catch((error) => {
-        console.warn('Realtime connection failed', error);
-      });
+    // Realtime disabled; no subscriptions
     return () => {
       unsubscribed = true;
-      realtimeService.unsubscribe(`${storeSlug}/orders/placed`, handlePlaced);
-      realtimeService.unsubscribe(`${storeSlug}/orders/prepairing`, handlePreparing);
-      realtimeService.unsubscribe(`${storeSlug}/orders/preparing`, handlePreparing);
-      realtimeService.unsubscribe(`${storeSlug}/orders/ready`, handleReady);
-      realtimeService.unsubscribe(`${storeSlug}/orders/cancelled`, handleCancelled);
-      realtimeService.unsubscribe(`${storeSlug}/orders/canceled`, handleCancelled);
-      realtimeService.unsubscribe(`${storeSlug}/orders/paid`, handlePaid);
-      realtimeService.unsubscribe(`${storeSlug}/waiter/call`, handleWaiterCall);
     };
   }, [assignmentsLoaded, shiftLoaded, storeSlug, assignedTableIds, shouldShowTable, upsertOrder, updateLocalStatus, toast, t, withinShift]);
 

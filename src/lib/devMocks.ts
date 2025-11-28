@@ -727,8 +727,8 @@ export const devMocks = {
 
   // Manager: categories
   listCategories() { const db = snapshot(); return Promise.resolve({ categories: db.categories }); },
-  createCategory(title: string, sortOrder?: number) {
-    const db = snapshot(); const c: Category = { id: uid('cat'), title, sortOrder: sortOrder ?? db.categories.length };
+  createCategory(titleEn: string, sortOrder?: number, titleEl?: string) {
+    const db = snapshot(); const c: Category = { id: uid('cat'), title: titleEn, titleEn, titleEl: titleEl ?? titleEn, sortOrder: sortOrder ?? db.categories.length };
     db.categories.push(c); save(db); return Promise.resolve({ category: c });
   },
   updateCategory(id: Id, data: Partial<Category>) {
@@ -741,7 +741,7 @@ export const devMocks = {
   // Manager: items
   listItems() { const db = snapshot(); return Promise.resolve({ items: db.items }); },
   createItem(data: Partial<Item>) {
-    const db = snapshot(); const it: Item = { id: uid('item'), title: data.title || 'Item', description: data.description, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl };
+    const db = snapshot(); const it: Item = { id: uid('item'), title: data.titleEn || data.title || 'Item', titleEn: data.titleEn || data.title || 'Item', titleEl: (data as any).titleEl || data.title || 'Item', description: (data as any).descriptionEn || data.description, descriptionEn: (data as any).descriptionEn, descriptionEl: (data as any).descriptionEl, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl };
     db.items.push(it); save(db); return Promise.resolve({ item: it });
   },
   updateItem(id: Id, data: Partial<Item>) {
@@ -760,8 +760,8 @@ export const devMocks = {
       })) 
     }); 
   },
-  createModifier(data: { title: string; minSelect: number; maxSelect: number|null }) {
-    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.title, name: data.title, minSelect: data.minSelect, maxSelect: data.maxSelect, options: [] };
+  createModifier(data: { titleEn: string; titleEl: string; minSelect: number; maxSelect: number|null; isAvailable?: boolean }) {
+    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.titleEn, titleEn: data.titleEn, titleEl: data.titleEl, name: data.titleEn, minSelect: data.minSelect, maxSelect: data.maxSelect, isAvailable: data.isAvailable ?? true, options: [] };
     db.modifiers.push(m); save(db); 
     return Promise.resolve({ modifier: { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } });
   },
@@ -770,8 +770,8 @@ export const devMocks = {
     return Promise.resolve({ modifier: m ? { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } : m }); 
   },
   deleteModifier(id: Id) { const db = snapshot(); db.modifiers = db.modifiers.filter(m=>m.id!==id); db.itemModifiers = db.itemModifiers.filter(im=>im.modifierId!==id); save(db); return Promise.resolve({ ok: true }); },
-  createModifierOption(data: { modifierId: Id; title: string; priceDeltaCents: number; sortOrder: number }) { 
-    const db = snapshot(); const m = db.modifiers.find(x=>x.id===data.modifierId); const opt: ModifierOption = { id: uid('opt'), title: data.title, label: data.title, priceDeltaCents: data.priceDeltaCents, sortOrder: data.sortOrder }; if (m) m.options.push(opt); save(db); 
+  createModifierOption(data: { modifierId: Id; titleEn: string; titleEl: string; priceDeltaCents: number; sortOrder: number }) { 
+    const db = snapshot(); const m = db.modifiers.find(x=>x.id===data.modifierId); const opt: ModifierOption = { id: uid('opt'), title: data.titleEn, label: data.titleEn, titleEn: data.titleEn, titleEl: data.titleEl, priceDeltaCents: data.priceDeltaCents, sortOrder: data.sortOrder }; if (m) m.options.push(opt); save(db); 
     return Promise.resolve({ option: { ...opt, label: opt.title } }); 
   },
   updateModifierOption(id: Id, data: Partial<ModifierOption>) { const db = snapshot(); for (const m of db.modifiers) { const o = m.options.find(x=>x.id===id); if (o) { Object.assign(o, data); break; } } save(db); return Promise.resolve({ ok: true }); },

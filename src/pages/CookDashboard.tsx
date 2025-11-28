@@ -171,30 +171,30 @@ export default function CookDashboard() {
     init();
   }, [setOrdersLocal]);
 
-  // Realtime updates -> local store
+  // Realtime (WSS): listen for newly placed orders
   useEffect(() => {
-    realtimeService.connect().then(() => {
-      realtimeService.subscribe(`${storeSlug}/orders/placed`, (payload) => {
-        if (!isOrderPlacedPayload(payload)) return;
-        const normalized = normalizeOrder(
-          {
-            id: payload.orderId,
-            tableId: payload.tableId,
-            tableLabel: payload.tableLabel,
-            note: payload.note,
-            totalCents: payload.totalCents,
-            createdAt: payload.createdAt,
-            status: 'PLACED',
-            items: payload.items,
-          },
-          Date.now()
-        );
-        if (!normalized) return;
-        upsertOrder(normalized);
-      });
-    });
+    const topic = `${storeSlug}/orders/placed`;
+    const handler = (payload: unknown) => {
+      if (!isOrderPlacedPayload(payload)) return;
+      const normalized = normalizeOrder(
+        {
+          id: payload.orderId,
+          tableId: payload.tableId,
+          tableLabel: payload.tableLabel,
+          note: payload.note,
+          totalCents: payload.totalCents,
+          createdAt: payload.createdAt,
+          status: 'PLACED',
+          items: payload.items,
+        },
+        Date.now()
+      );
+      if (normalized) upsertOrder(normalized);
+    };
+    realtimeService.connect();
+    realtimeService.subscribe(topic, handler);
     return () => {
-      realtimeService.unsubscribe(`${storeSlug}/orders/placed`);
+      realtimeService.unsubscribe(topic, handler);
     };
   }, [storeSlug, upsertOrder]);
 

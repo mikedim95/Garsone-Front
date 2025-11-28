@@ -4,28 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, MenuData, Modifier, ModifierOption } from '@/types';
+import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
-type CustomOption = { title: string; price: string };
-type CustomModifier = { title: string; required: boolean; options: CustomOption[] };
+type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
+type CustomModifier = { id?: string; titleEn: string; titleEl: string; required: boolean; isAvailable: boolean; options: CustomOption[]; originalOptionIds?: string[] };
 type ItemForm = {
-  title: string;
-  description: string;
+  titleEn: string;
+  titleEl: string;
+  descriptionEn: string;
+  descriptionEl: string;
   imageUrl: string;
   price: string;
   categoryId: string;
   newCategoryTitle: string;
   isAvailable: boolean;
-};
-type EditableModifierOption = { id?: string; title: string; price: string };
-type ModifierEditState = {
-  id: string;
-  title: string;
-  required: boolean;
-  options: EditableModifierOption[];
 };
 
 export const ManagerMenuPanel = () => {
@@ -40,8 +35,10 @@ export const ManagerMenuPanel = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ManagerItemSummary | null>(null);
   const [form, setForm] = useState<ItemForm>({
-    title: '',
-    description: '',
+    titleEn: '',
+    titleEl: '',
+    descriptionEn: '',
+    descriptionEl: '',
     imageUrl: '',
     price: '0.00',
     categoryId: '',
@@ -50,22 +47,9 @@ export const ManagerMenuPanel = () => {
   });
   const [savingItem, setSavingItem] = useState(false);
 
-  // Read-only modifiers for the currently editing item
-  const [itemMods, setItemMods] = useState<Modifier[]>([]);
-
-  // Per-item custom modifiers builder
+  // Modifiers editor state for the current item
   const [customMods, setCustomMods] = useState<CustomModifier[]>([]);
-
-  // Edit existing modifier modal
-  const [modEditOpen, setModEditOpen] = useState(false);
-  const [modEditSaving, setModEditSaving] = useState(false);
-  const [modEdit, setModEdit] = useState<ModifierEditState>({
-    id: '',
-    title: '',
-    required: false,
-    options: [],
-  });
-  const [modEditOriginalIds, setModEditOriginalIds] = useState<string[]>([]);
+  const [originalModifierIds, setOriginalModifierIds] = useState<Set<string>>(new Set());
 
   // UI helpers
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -79,7 +63,12 @@ export const ManagerMenuPanel = () => {
     try {
       const [itemsRes, categoriesRes] = await Promise.all([api.listItems(), api.listCategories()]);
       setItems(itemsRes.items ?? []);
-      setCategories(categoriesRes.categories ?? []);
+      setCategories(
+        (categoriesRes.categories ?? []).map((c) => ({
+          ...c,
+          title: c.title || c.titleEn || c.titleEl || '',
+        }))
+      );
     } catch (error) {
       console.error('Failed to load menu data', error);
       toast({ title: 'Load failed', description: 'Could not load menu data' });
@@ -112,24 +101,28 @@ export const ManagerMenuPanel = () => {
     setEditing(null);
     const fallbackCategory = prefCategoryId || categories[0]?.id || '';
     setForm({
-      title: '',
-      description: '',
+      titleEn: '',
+      titleEl: '',
+      descriptionEn: '',
+      descriptionEl: '',
       imageUrl: '',
       price: '0.00',
       categoryId: fallbackCategory,
       newCategoryTitle: '',
       isAvailable: true,
     });
-    setItemMods([]);
     setCustomMods([]);
+    setOriginalModifierIds(new Set());
     setModalOpen(true);
   };
 
   const openEdit = async (item: ManagerItemSummary) => {
     setEditing(item);
     setForm({
-      title: item.title ?? item.name ?? '',
-      description: item.description ?? '',
+      titleEn: item.titleEn ?? item.title ?? item.name ?? '',
+      titleEl: item.titleEl ?? item.title ?? item.name ?? '',
+      descriptionEn: item.descriptionEn ?? item.description ?? '',
+      descriptionEl: item.descriptionEl ?? item.description ?? '',
       imageUrl: item.image ?? item.imageUrl ?? '',
       price: typeof item.priceCents === 'number' ? (item.priceCents / 100).toFixed(2) : '0.00',
       categoryId: item.categoryId ?? '',
@@ -137,13 +130,31 @@ export const ManagerMenuPanel = () => {
       isAvailable: item.isAvailable ?? true,
     });
     try {
-      const menu: MenuData = await api.getMenu();
-      const found = menu.items.find((x) => x.id === item.id);
-      setItemMods(found?.modifiers ?? []);
+      const detail = await api.getItemDetail(item.id);
+      const links = detail.links || [];
+      const mods = detail.modifiers || [];
+      setOriginalModifierIds(new Set(links.map((l) => l.modifierId)));
+      setCustomMods(
+        mods.map((mod) => ({
+          id: mod.id,
+          titleEn: mod.titleEn || mod.title || '',
+          titleEl: mod.titleEl || mod.title || '',
+          required: links.find((l) => l.modifierId === mod.id)?.isRequired ?? mod.minSelect > 0,
+          isAvailable: mod.isAvailable ?? true,
+          options: (mod.options ?? []).map((opt) => ({
+            id: opt.id,
+            titleEn: opt.titleEn || opt.title || opt.label || '',
+            titleEl: opt.titleEl || opt.title || opt.label || '',
+            price: ((opt.priceDeltaCents ?? opt.priceDelta ?? 0) / 100).toFixed(2),
+          })),
+          originalOptionIds: (mod.options ?? []).map((o) => o.id || '').filter(Boolean),
+        }))
+      );
     } catch (error) {
       console.error('Failed to load item modifiers', error);
+      setCustomMods([]);
+      setOriginalModifierIds(new Set());
     }
-    setCustomMods([]);
     setModalOpen(true);
   };
 
@@ -164,7 +175,7 @@ export const ManagerMenuPanel = () => {
             const t = (title || '').trim();
             if (!t) return;
             try {
-              await api.createCategory(t);
+              await api.createCategory(t, t);
               await load();
               toast({ title: 'Category added', description: t });
             } catch (error) {
@@ -202,7 +213,7 @@ export const ManagerMenuPanel = () => {
                   const title = window.prompt('Rename category', cat.title);
                   if (!title || title.trim() === cat.title) return;
                   try {
-                    await api.updateCategory(cat.id, { title: title.trim() });
+                    await api.updateCategory(cat.id, { titleEn: title.trim(), titleEl: title.trim() });
                     await load();
                     toast({ title: 'Category renamed', description: title.trim() });
                   } catch (error) {
@@ -231,12 +242,12 @@ export const ManagerMenuPanel = () => {
                 <div key={item.id} className={`flex items-center justify-between border rounded-lg p-3 ${item.isAvailable === false ? 'opacity-60' : ''}`}>
                   <div>
                     <div className="font-medium">
-                      {item.title ?? item.name}
+                      {item.titleEn || item.titleEl || item.title || item.name}
                       <span className="text-xs text-muted-foreground">
                         €{((item.priceCents ?? 0) / 100).toFixed(2)}
                       </span>
                     </div>
-                    <div className="text-xs text-muted-foreground">{item.description || '—'}</div>
+                    <div className="text-xs text-muted-foreground">{item.descriptionEn || item.descriptionEl || item.description || '—'}</div>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -340,8 +351,14 @@ export const ManagerMenuPanel = () => {
             <DialogTitle>{editing ? 'Edit Item' : 'Add Item'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-            <Input placeholder="Title" value={form.title} onChange={(e)=>setForm({...form, title: e.target.value})}/>
-            <Textarea placeholder="Description" value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})}/>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Title (EN)" value={form.titleEn} onChange={(e)=>setForm({...form, titleEn: e.target.value})}/>
+              <Input placeholder="Title (EL)" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Textarea placeholder="Description (EN)" value={form.descriptionEn} onChange={(e)=>setForm({...form, descriptionEn: e.target.value})}/>
+              <Textarea placeholder="Description (EL)" value={form.descriptionEl} onChange={(e)=>setForm({...form, descriptionEl: e.target.value})}/>
+            </div>
             <Input placeholder="Image URL (https://...)" value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
             <div className="text-xs text-muted-foreground">
               Or upload an image: <input type="file" accept="image/*" onChange={(e)=>{
@@ -376,89 +393,48 @@ export const ManagerMenuPanel = () => {
               Available
             </label>
 
-            {/* Read-only display of current item modifiers */}
-            <div className="mt-3">
-              <div className="text-sm font-medium mb-2">Modifiers</div>
-              <div className="max-h-56 overflow-auto space-y-3 border rounded p-3">
-                {itemMods.length === 0 && (
-                  <div className="text-xs text-muted-foreground">No modifiers yet.</div>
-                )}
-                {itemMods.map((modifier)=> (
-                  <div key={modifier.id} className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{modifier.name}{modifier.required ? ' (required)' : ''}</div>
-                      <ul className="ml-4 text-sm text-muted-foreground list-disc">
-                        {(modifier.options ?? []).map((option)=> (
-                          <li key={option.id}>{option.label}{(option.priceDelta ?? 0) > 0 ? ` +€${(option.priceDelta).toFixed(2)}` : ''}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    {editing && (
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => {
-                          setModEdit({
-                            id: modifier.id,
-                            title: modifier.name ?? '',
-                            required: !!modifier.required,
-                            options: (modifier.options ?? []).map((option) => ({
-                              id: option.id,
-                              title: option.label,
-                              price: ((option.priceDelta ?? 0)).toFixed(2),
-                            })),
-                          });
-                          setModEditOriginalIds(
-                            (modifier.options ?? [])
-                              .map((option) => option.id ?? '')
-                              .filter((id): id is string => Boolean(id))
-                          );
-                          setModEditOpen(true);
-                        }}>Edit</Button>
-                        <Button variant="destructive" size="sm" onClick={async ()=>{
-                          const yes = window.confirm('Unlink this modifier from the item? You can optionally delete it if unused.');
-                          if (!yes) return;
-                          try {
-                            await api.unlinkItemModifier(editing.id, modifier.id);
-                            try {
-                              await api.deleteModifier(modifier.id);
-                            }
-                            // eslint-disable-next-line no-empty -- best-effort cleanup; orphaned modifier is harmless
-                            catch {}
-                            setItemMods((prev) => prev.filter((existing) => existing.id !== modifier.id));
-                            toast({ title: 'Modifier unlinked', description: modifier.name ?? '' });
-                          } catch(error) {
-                            const message = error instanceof Error ? error.message : 'Could not unlink modifier';
-                            toast({ title: 'Failed', description: message });
-                          }
-                        }}><Trash2 className="h-4 w-4"/></Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom modifiers builder */}
+            {/* Modifiers builder */}
             <div className="mt-6">
-              <div className="text-sm font-medium mb-2">Custom modifiers for this item</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium">Modifiers</div>
+                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, isAvailable:true, options:[] }])}>+ Add modifier</Button>
+              </div>
               <div className="space-y-4">
                 {customMods.map((cm, idx) => (
                   <div key={idx} className="border rounded p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Input placeholder="Modifier title (e.g., Milk, Size)" value={cm.title} onChange={(e)=>{
-                        const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, title: v}: m));
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <Input placeholder="Modifier title (EN)" value={cm.titleEn} onChange={(e)=>{
+                        const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, titleEn: v}: m));
                       }}/>
+                      <Input placeholder="Modifier title (EL)" value={cm.titleEl} onChange={(e)=>{
+                        const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, titleEl: v}: m));
+                      }}/>
+                    </div>
+                    <div className="flex items-center gap-3 mb-2">
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={cm.required} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, required: v}: m));
                         }}/>
                         required
                       </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={cm.isAvailable} onChange={(e)=>{
+                          const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, isAvailable: v}: m));
+                        }}/>
+                        Available
+                      </label>
+                      <Button variant="ghost" size="sm" onClick={()=> setCustomMods(mods=>mods.filter((_,i)=> i!==idx))}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Remove
+                      </Button>
                     </div>
                     <div className="space-y-2">
                       {cm.options.map((opt, oi) => (
-                        <div key={oi} className="grid grid-cols-2 gap-2">
-                          <Input placeholder="Option label (e.g., Oat)" value={opt.title} onChange={(e)=>{
-                            const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: m.options.map((o,j)=> j===oi? { ...o, title: v}: o)}: m));
+                        <div key={oi} className="grid grid-cols-3 gap-2">
+                          <Input placeholder="Option label EN (e.g., Oat)" value={opt.titleEn} onChange={(e)=>{
+                            const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: m.options.map((o,j)=> j===oi? { ...o, titleEn: v}: o)}: m));
+                          }}/>
+                          <Input placeholder="Option label EL" value={opt.titleEl} onChange={(e)=>{
+                            const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: m.options.map((o,j)=> j===oi? { ...o, titleEl: v}: o)}: m));
                           }}/>
                           <Input placeholder="Price +€ (e.g., 0.50)" type="number" min={0} step={0.01} value={opt.price} onChange={(e)=>{
                             const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: m.options.map((o,j)=> j===oi? { ...o, price: v}: o)}: m));
@@ -467,25 +443,23 @@ export const ManagerMenuPanel = () => {
                       ))}
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { title:'', price:''}] }: m))}>+ Option</Button>
-                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.filter((_,i)=> i!==idx))}>Remove modifier</Button>
+                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { titleEn:'', titleEl:'', price:''}] }: m))}>+ Option</Button>
                     </div>
                   </div>
                 ))}
               </div>
-              <Button size="sm" className="mt-2" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { title:'', required:false, options:[{ title:'', price:''}] }])}>+ Add custom modifier</Button>
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={()=>setModalOpen(false)}>Cancel</Button>
             {(() => {
               const priceNum = parseFloat(form.price || '');
-              const modifierMissingTitle = customMods.some((cm) => cm.options.length > 0 && !cm.title.trim());
+              const modifierMissingTitle = customMods.some((cm) => cm.options.length > 0 && (!cm.titleEn.trim() || !cm.titleEl.trim()));
               const modifierMissingOptionLabel = customMods.some((cm) =>
-                cm.options.some((opt) => !opt.title.trim())
+                cm.options.some((opt) => !opt.titleEn.trim() || !opt.titleEl.trim())
               );
               const hasModifierValidationError = modifierMissingTitle || modifierMissingOptionLabel;
-              const canSave = form.title.trim().length > 0 && Number.isFinite(priceNum) && !hasModifierValidationError;
+              const canSave = form.titleEn.trim().length > 0 && form.titleEl.trim().length > 0 && Number.isFinite(priceNum) && !hasModifierValidationError;
               return (
                 <Button
                   onClick={async ()=>{
@@ -495,11 +469,14 @@ export const ManagerMenuPanel = () => {
                       const categoryId = form.categoryId;
                       if (!categoryId) return;
                       const payload: ManagerItemPayload = {
-                        title: form.title.trim(),
-                        description: form.description,
+                        titleEn: form.titleEn.trim(),
+                        titleEl: form.titleEl.trim(),
+                        descriptionEn: form.descriptionEn,
+                        descriptionEl: form.descriptionEl,
                         priceCents: Math.round((parseFloat(form.price || '0') || 0) * 100),
                         categoryId,
                         isAvailable: form.isAvailable,
+                        imageUrl: form.imageUrl.trim() || undefined,
                       };
                       const typedImageUrl = form.imageUrl.trim();
 
@@ -539,27 +516,70 @@ export const ManagerMenuPanel = () => {
                         }
                       }
                       if (itemId) {
+                        const seenModifiers = new Set<string>();
                         for (const cm of customMods) {
-                          if (!cm.title.trim()) continue;
-                          const createdModifier = await api.createModifier({
-                            title: cm.title,
-                            minSelect: cm.required ? 1 : 0,
-                            maxSelect: null,
-                          });
-                          const modifierId = createdModifier.modifier.id;
-                          let index = 0;
-                          for (const opt of cm.options) {
-                            if (!opt.title.trim()) continue;
-                            const priceCents = Math.round((parseFloat(opt.price || '0') || 0) * 100);
-                            await api.createModifierOption({
-                              modifierId,
-                              title: opt.title,
-                              priceDeltaCents: priceCents,
-                              sortOrder: index++,
+                          if (!cm.titleEn.trim() && !cm.titleEl.trim()) continue;
+                          let modifierId = cm.id;
+                          if (modifierId) {
+                            await api.updateModifier(modifierId, {
+                              titleEn: cm.titleEn.trim(),
+                              titleEl: cm.titleEl.trim(),
+                              minSelect: cm.required ? 1 : 0,
+                              maxSelect: null,
+                              isAvailable: cm.isAvailable,
                             });
+                          } else {
+                            const createdModifier = await api.createModifier({
+                              titleEn: cm.titleEn.trim(),
+                              titleEl: cm.titleEl.trim(),
+                              minSelect: cm.required ? 1 : 0,
+                              maxSelect: null,
+                              isAvailable: cm.isAvailable,
+                            });
+                            modifierId = createdModifier.modifier.id;
                           }
+                          if (!modifierId) continue;
+                          seenModifiers.add(modifierId);
+                          let index = 0;
+                          const keep = new Set<string>();
+                          for (const opt of cm.options) {
+                            if (!opt.titleEn.trim() && !opt.titleEl.trim()) continue;
+                            const priceCents = Math.round((parseFloat(opt.price || '0') || 0) * 100);
+                            if (opt.id) {
+                              keep.add(opt.id);
+                              await api.updateModifierOption(opt.id, {
+                                titleEn: opt.titleEn.trim(),
+                                titleEl: opt.titleEl.trim(),
+                                priceDeltaCents: priceCents,
+                                sortOrder: index++,
+                              });
+                            } else {
+                              const createdOpt = await api.createModifierOption({
+                                modifierId,
+                                titleEn: opt.titleEn.trim(),
+                                titleEl: opt.titleEl.trim(),
+                                priceDeltaCents: priceCents,
+                                sortOrder: index++,
+                              });
+                              keep.add(createdOpt.option.id);
+                            }
+                          }
+                          (cm.originalOptionIds || []).forEach(async (oid) => {
+                            if (!keep.has(oid)) {
+                              try {
+                                await api.deleteModifierOption(oid);
+                              } catch (error) {
+                                console.warn('Failed to delete option', error);
+                              }
+                            }
+                          });
                           await api.linkItemModifier(itemId, modifierId, cm.required);
                         }
+                        originalModifierIds.forEach(async (mid) => {
+                          if (!seenModifiers.has(mid)) {
+                            await api.unlinkItemModifier(itemId!, mid);
+                          }
+                        });
                       }
                       await load();
                       setModalOpen(false);
@@ -575,87 +595,6 @@ export const ManagerMenuPanel = () => {
                 </Button>
               );
             })()}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Edit existing modifier for this item */}
-      <Dialog open={modEditOpen} onOpenChange={setModEditOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Modifier</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Input placeholder="Modifier title" value={modEdit.title} onChange={(e)=>setModEdit({...modEdit, title: e.target.value})} />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={modEdit.required} onChange={(e)=>setModEdit({...modEdit, required: e.target.checked})}/>
-                required
-              </label>
-            </div>
-            <div className="space-y-2">
-              {modEdit.options.map((opt, idx) => (
-                <div key={idx} className="grid grid-cols-5 gap-2 items-center">
-                  <Input className="col-span-2" placeholder="Option label" value={opt.title} onChange={(e)=>{
-                    const v=e.target.value; setModEdit(me=>({ ...me, options: me.options.map((o,i)=> i===idx? { ...o, title: v }: o) }));
-                  }}/>
-                  <Input placeholder="Price +€" type="number" min={0} step={0.01} value={opt.price} onChange={(e)=>{
-                    const v=e.target.value; setModEdit(me=>({ ...me, options: me.options.map((o,i)=> i===idx? { ...o, price: v }: o) }));
-                  }}/>
-                  <div className="flex gap-1 justify-end">
-                    <Button variant="outline" size="sm" onClick={()=> setModEdit(me=>{
-                      if (idx<=0) return me; const arr=[...me.options]; const t=arr[idx-1]; arr[idx-1]=arr[idx]; arr[idx]=t; return {...me, options: arr};
-                    })}><ArrowUp className="h-4 w-4"/></Button>
-                    <Button variant="outline" size="sm" onClick={()=> setModEdit(me=>{
-                      if (idx>=me.options.length-1) return me; const arr=[...me.options]; const t=arr[idx+1]; arr[idx+1]=arr[idx]; arr[idx]=t; return {...me, options: arr};
-                    })}><ArrowDown className="h-4 w-4"/></Button>
-                    <Button variant="outline" size="sm" onClick={()=> setModEdit(me=>({ ...me, options: me.options.filter((_,i)=> i!==idx) }))}>Remove</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Button size="sm" variant="outline" onClick={()=> setModEdit(me=>({ ...me, options: [...me.options, { title:'', price:'' }] }))}>+ Option</Button>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={()=>setModEditOpen(false)}>Cancel</Button>
-            <Button disabled={modEditSaving} className="inline-flex items-center gap-2" onClick={async ()=>{
-              if (!editing) return;
-              setModEditSaving(true);
-              try {
-                await api.updateModifier(modEdit.id, { title: modEdit.title, minSelect: modEdit.required ? 1 : 0, maxSelect: null });
-                await api.linkItemModifier(editing.id, modEdit.id, modEdit.required);
-                // Options: update/create
-                const keep = new Set<string>();
-                for (let i=0;i<modEdit.options.length;i++) {
-                  const o = modEdit.options[i];
-                  const priceCents = Math.round(parseFloat(o.price||'0')*100) || 0;
-                  if (o.id) {
-                    keep.add(o.id);
-                    await api.updateModifierOption(o.id, { title: o.title, priceDeltaCents: priceCents, sortOrder: i });
-                  } else {
-                    const created = await api.createModifierOption({ modifierId: modEdit.id, title: o.title, priceDeltaCents: priceCents, sortOrder: i });
-                    keep.add(created.option.id);
-                  }
-                }
-                // Delete removed options
-                for (const oid of modEditOriginalIds) {
-                  if (!keep.has(oid)) await api.deleteModifierOption(oid);
-                }
-                // Refresh item modifiers view
-                try {
-                  const menu = await api.getMenu();
-                  const found = menu.items.find((x)=>x.id===editing.id);
-                  setItemMods(found?.modifiers ?? []);
-                } catch (error) {
-                  console.warn('Failed to refresh modifiers', error);
-                }
-                setModEditOpen(false);
-              } finally {
-                setModEditSaving(false);
-              }
-            }}>
-              {modEditSaving && <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin"/>}
-              Save
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

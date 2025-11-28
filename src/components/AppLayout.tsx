@@ -97,13 +97,13 @@ const AppLayout: React.FC = () => {
       const wrapper = demoRef.current;
       if (!wrapper) return;
 
-      const targetNode = wrapper.querySelector('[data-section=\"demo-qr\"]') as HTMLElement | null;
+      const targetNode = wrapper.querySelector('[data-section="demo-qr"]') as HTMLElement | null;
       const liveQrAnchor = wrapper.querySelector('[data-live-qr-anchor]') as HTMLElement | null;
       const anchor =
-        (liveQrAnchor?.querySelector('svg') as HTMLElement | null) ||
+        (liveQrAnchor?.querySelector('svg') as Element | null) ||
         liveQrAnchor ||
-        (targetNode?.querySelector('img') as HTMLElement | null) ||
-        (targetNode?.querySelector('svg') as HTMLElement | null) ||
+        (targetNode?.querySelector('img') as Element | null) ||
+        (targetNode?.querySelector('svg') as Element | null) ||
         targetNode ||
         wrapper;
 
@@ -156,18 +156,6 @@ const AppLayout: React.FC = () => {
     }
     if (typeof window !== 'undefined') {
       window.__OF_LANDING__ = true;
-    }
-    try {
-      realtimeService.disconnect();
-    } catch (error) {
-      console.warn('Failed to disconnect realtime service', error);
-    }
-    if (typeof window !== 'undefined') {
-      try {
-        window.dispatchEvent(new CustomEvent<{ connected: boolean }>('realtime-status', { detail: { connected: false } }));
-      } catch (error) {
-        console.warn('Failed to dispatch realtime status', error);
-      }
     }
     return () => {
       if (typeof window !== 'undefined' && window.__OF_LANDING__) {

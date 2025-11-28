@@ -5,7 +5,11 @@ export interface MenuItem {
   id: string;
   name?: string;
   title?: string;
+  titleEn?: string;
+  titleEl?: string;
   description?: string;
+  descriptionEn?: string;
+  descriptionEl?: string;
   price?: number;
   priceCents?: number;
   cost?: number;
@@ -16,22 +20,29 @@ export interface MenuItem {
   categoryId?: string;
   available?: boolean;
   isAvailable?: boolean;
+  displayName?: string;
+  displayDescription?: string;
   modifiers?: Modifier[];
 }
 
 export interface Modifier {
   id: string;
   name: string;
+  titleEn?: string;
+  titleEl?: string;
   options: ModifierOption[];
   required?: boolean;
   minSelect?: number;
   maxSelect?: number | null;
   title?: string;
+  isAvailable?: boolean;
 }
 
 export interface ModifierOption {
   id: string;
   label: string;
+  titleEn?: string;
+  titleEl?: string;
   priceDelta?: number;
   priceDeltaCents?: number;
   title?: string;
@@ -101,6 +112,8 @@ export interface OrderQueueSummary {
 export interface MenuCategory {
   id: string;
   title: string;
+  titleEn?: string;
+  titleEl?: string;
   sortOrder?: number;
 }
 
@@ -170,8 +183,12 @@ export interface WaiterTableOverview {
 export interface ManagerItemSummary {
   id: string;
   title?: string;
+  titleEn?: string;
+  titleEl?: string;
   name?: string;
   description?: string;
+  descriptionEn?: string;
+  descriptionEl?: string;
   priceCents?: number;
   costCents?: number;
   categoryId?: string;
@@ -182,8 +199,10 @@ export interface ManagerItemSummary {
 }
 
 export interface ManagerItemPayload {
-  title: string;
-  description?: string;
+  titleEn: string;
+  titleEl: string;
+  descriptionEn?: string;
+  descriptionEl?: string;
   priceCents: number;
   categoryId: string;
   isAvailable?: boolean;
@@ -191,26 +210,32 @@ export interface ManagerItemPayload {
 }
 
 export interface ModifierInput {
-  title: string;
+  titleEn: string;
+  titleEl: string;
   minSelect: number;
   maxSelect: number | null;
+  isAvailable?: boolean;
 }
 
 export interface ModifierOptionPayload {
   modifierId: string;
-  title: string;
+  titleEn: string;
+  titleEl: string;
   priceDeltaCents: number;
   sortOrder: number;
 }
 
 export interface ModifierOptionUpdatePayload {
   title?: string;
+  titleEn?: string;
+  titleEl?: string;
   priceDeltaCents?: number;
   sortOrder?: number;
 }
 
 export interface CategoryPayload {
-  title: string;
+  titleEn: string;
+  titleEl: string;
   sortOrder?: number;
 }
 

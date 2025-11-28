@@ -84,7 +84,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { realtimeService } from '@/lib/realtime';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 
@@ -183,7 +182,9 @@ const getUpdatedDate = (order: Order) =>
   new Date();
 
 const getServedDate = (order: Order) =>
-  parseDate(order.servedAt) || (isServedStatus(order.status) ? getUpdatedDate(order) : null);
+  parseDate((order as any).paidAt) ||
+  parseDate(order.servedAt) ||
+  (isServedStatus(order.status) ? getUpdatedDate(order) : null);
 const getRevenueDate = (order: Order) => getServedDate(order) || getPlacedDate(order);
 
 const getOrderTotalCents = (order: Order) => {
@@ -191,6 +192,15 @@ const getOrderTotalCents = (order: Order) => {
     return order.totalCents;
   }
   return Math.round((order.total ?? 0) * 100);
+};
+
+const getOrderRevenue = (order: Order) => {
+  const lines = order.items ?? [];
+  const lineSum =
+    lines.reduce((sum, line) => sum + unitPrice(line) * getLineQuantity(line), 0) || 0;
+  if (lineSum > 0) return lineSum;
+  const fallbackCents = getOrderTotalCents(order);
+  return fallbackCents / 100;
 };
 
 const minutesBetween = (start: Date | null, end: Date | null) => {
@@ -558,7 +568,10 @@ export default function ManagerDashboard() {
         const categoriesMap = new Map<string, string>();
         (categoriesRes?.categories ?? []).forEach((category) => {
           if (!category?.id || typeof category !== 'object') return;
-          const label = pickLabel((category as MenuCategory).title);
+          const label =
+            pickLabel((category as MenuCategory).title) ??
+            pickLabel((category as any).titleEn) ??
+            pickLabel((category as any).titleEl);
           if (label) {
             categoriesMap.set(category.id, label);
           }
@@ -711,7 +724,7 @@ export default function ManagerDashboard() {
   }, [econRange, customRange]);
 
   const totalRevenue = useMemo(
-    () => servedOrders.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
+    () => servedOrders.reduce((sum, order) => sum + getOrderRevenue(order), 0),
     [servedOrders]
   );
   const servedCount = servedOrders.length;
@@ -754,11 +767,11 @@ export default function ManagerDashboard() {
     [servedOrders, rangeInfo]
   );
   const totalRevenueInRange = useMemo(
-    () => servedInRange.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
+    () => servedInRange.reduce((sum, order) => sum + getOrderRevenue(order), 0),
     [servedInRange]
   );
   const totalRevenuePrevRange = useMemo(
-    () => servedPrevRange.reduce((sum, order) => sum + getOrderTotalCents(order), 0) / 100,
+    () => servedPrevRange.reduce((sum, order) => sum + getOrderRevenue(order), 0),
     [servedPrevRange]
   );
   const servedCountInRange = servedInRange.length;
@@ -831,7 +844,7 @@ export default function ManagerDashboard() {
         orders.forEach((order) => {
           const date = getRevenueDate(order) || new Date();
           const key = `${date.getHours().toString().padStart(2, '0')}:00`;
-          hourly.set(key, (hourly.get(key) ?? 0) + getOrderTotalCents(order) / 100);
+          hourly.set(key, (hourly.get(key) ?? 0) + getOrderRevenue(order));
         });
         return hourly;
       };
@@ -858,62 +871,61 @@ export default function ManagerDashboard() {
     }
 
     if (econRange === 'week') {
-      const dayparts = ['Breakfast', 'Lunch', 'Afternoon', 'Evening'] as const;
-      const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      const buildMap = (orders: Order[]) => {
-        const map = new Map<string, Map<string, number>>();
-        dayparts.forEach((part) => map.set(part, new Map(labels.map((label) => [label, 0]))));
-        orders.forEach((order) => {
-          const date = getRevenueDate(order) || new Date();
-          const dayLabel = labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
-          const part = daypartOf(date);
-          const row = map.get(part) ?? new Map();
-          row.set(dayLabel, (row.get(dayLabel) ?? 0) + getOrderTotalCents(order) / 100);
-          map.set(part, row);
-        });
-        return map;
-      };
-      const currentMap = buildMap(servedInRange);
-      const prevMap = buildMap(servedPrevRange);
-      const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
-      dayparts.forEach((part) => {
-        labels.forEach((label) => {
-          rows.push({
-            date: `${label} ${part}`,
-            revenue: currentMap.get(part)?.get(label) ?? 0,
-            prevRevenue: prevMap.get(part)?.get(label) ?? 0,
-          });
-        });
+      const formatDay = (d: Date) =>
+        d.toLocaleDateString(undefined, { weekday: 'short' });
+      const curMap = new Map<string, number>();
+      servedInRange.forEach((order) => {
+        const d = getRevenueDate(order) || new Date();
+        const key = toISODate(d);
+        curMap.set(key, (curMap.get(key) ?? 0) + getOrderRevenue(order));
       });
+      const prevMap = new Map<string, number>();
+      servedPrevRange.forEach((order) => {
+        const d = getRevenueDate(order) || new Date();
+        const key = toISODate(d);
+        prevMap.set(key, (prevMap.get(key) ?? 0) + getOrderRevenue(order));
+      });
+      const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
+      for (let i = 0; i < 7; i++) {
+        const curDate = addDays(rangeInfo.start, i);
+        const prevDate = addDays(rangeInfo.prevStart, i);
+        const curKey = toISODate(curDate);
+        const prevKey = toISODate(prevDate);
+        rows.push({
+          date: formatDay(curDate),
+          revenue: curMap.get(curKey) ?? 0,
+          prevRevenue: prevMap.get(prevKey) ?? 0,
+        });
+      }
       return rows;
     }
 
-    const curMap = new Map<string, number>();
-    servedInRange.forEach((order) => {
-      const d = getRevenueDate(order) || new Date();
-      const key = toISODate(d);
-      curMap.set(key, (curMap.get(key) ?? 0) + getOrderTotalCents(order) / 100);
-    });
-    const prevMap = new Map<string, number>();
-    servedPrevRange.forEach((order) => {
-      const d = getRevenueDate(order) || new Date();
-      const key = toISODate(d);
-      prevMap.set(key, (prevMap.get(key) ?? 0) + getOrderTotalCents(order) / 100);
-    });
-    const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
-    for (let i = 0; i < rangeInfo.days; i++) {
-      const curDate = addDays(rangeInfo.start, i);
-      const prevDate = addDays(rangeInfo.prevStart, i);
-      const curKey = toISODate(curDate);
-      const prevKey = toISODate(prevDate);
-      rows.push({
-        date: curKey,
-        revenue: curMap.get(curKey) ?? 0,
-        prevRevenue: prevMap.get(prevKey) ?? 0,
+      const curMap = new Map<string, number>();
+      servedInRange.forEach((order) => {
+        const d = getRevenueDate(order) || new Date();
+        const key = toISODate(d);
+        curMap.set(key, (curMap.get(key) ?? 0) + getOrderRevenue(order));
       });
-    }
-    return rows;
-  }, [servedInRange, servedPrevRange, rangeInfo, econRange]);
+      const prevMap = new Map<string, number>();
+      servedPrevRange.forEach((order) => {
+        const d = getRevenueDate(order) || new Date();
+        const key = toISODate(d);
+        prevMap.set(key, (prevMap.get(key) ?? 0) + getOrderRevenue(order));
+      });
+      const rows: Array<{ date: string; revenue: number; prevRevenue: number }> = [];
+      for (let i = 0; i < rangeInfo.days; i++) {
+        const curDate = addDays(rangeInfo.start, i);
+        const prevDate = addDays(rangeInfo.prevStart, i);
+        const curKey = toISODate(curDate);
+        const prevKey = toISODate(prevDate);
+        rows.push({
+          date: curKey,
+          revenue: curMap.get(curKey) ?? 0,
+          prevRevenue: prevMap.get(prevKey) ?? 0,
+        });
+      }
+      return rows;
+    }, [servedInRange, servedPrevRange, rangeInfo, econRange]);
 
   const resolveCategoryLabel = useCallback(
     (source?: unknown) => {
@@ -938,6 +950,8 @@ export default function ManagerDashboard() {
         (typeof category === 'string' && pickLabel(category)) ??
         (typeof category === 'object'
           ? pickLabel((category as { title?: string }).title) ??
+            pickLabel((category as { titleEn?: string }).titleEn) ??
+            pickLabel((category as { titleEl?: string }).titleEl) ??
             pickLabel((category as { name?: string }).name) ??
             pickLabel((category as { label?: string }).label)
           : null) ??
@@ -986,27 +1000,29 @@ export default function ManagerDashboard() {
     });
   }, [econRange, servedInRange, resolveCategoryLabel, menuMetaReady]);
   const categoryRevenue = useMemo(() => {
-    if (!menuMetaReady) return [] as Array<{ category: string; revenue: number; share: number }>;
+    if (!menuMetaReady) return null;
     const buckets = new Map<string, number>();
     servedInRange.forEach((order) => {
-      let orderLineRevenue = 0;
       const lines = order.items ?? [];
-      lines.forEach((item) => {
-        const category = resolveCategoryLabel(item.item ?? item);
-        const revenue = unitPrice(item) * getLineQuantity(item);
-        orderLineRevenue += revenue;
-        buckets.set(category, (buckets.get(category) ?? 0) + revenue);
-      });
-      // Fallback: if line items had no price, use order total as uncategorized
-      if (orderLineRevenue === 0) {
-        const fallbackTotal =
-          typeof order.totalCents === 'number'
-            ? order.totalCents / 100
-            : typeof order.total === 'number'
-            ? order.total
-            : 0;
-        if (fallbackTotal > 0) {
+      const lineRevenues = lines.map((item) => unitPrice(item) * getLineQuantity(item));
+      const orderLineRevenue = lineRevenues.reduce((a, b) => a + b, 0);
+      const fallbackTotal = orderLineRevenue > 0 ? 0 : getOrderRevenue(order);
+
+      if (orderLineRevenue > 0) {
+        lines.forEach((item, idx) => {
+          const category = resolveCategoryLabel(item.item ?? item);
+          const revenue = lineRevenues[idx];
+          buckets.set(category, (buckets.get(category) ?? 0) + revenue);
+        });
+      } else if (fallbackTotal > 0) {
+        if (lines.length === 0) {
           buckets.set('Uncategorized', (buckets.get('Uncategorized') ?? 0) + fallbackTotal);
+        } else {
+          const share = fallbackTotal / lines.length;
+          lines.forEach((item) => {
+            const category = resolveCategoryLabel(item.item ?? item);
+            buckets.set(category, (buckets.get(category) ?? 0) + share);
+          });
         }
       }
     });
@@ -1016,7 +1032,7 @@ export default function ManagerDashboard() {
       revenue,
       share: (revenue / total) * 100,
     }));
-  }, [servedInRange, resolveCategoryLabel]);
+  }, [servedInRange, resolveCategoryLabel, menuMetaReady]);
 
   const avgTicketByDaypart = useMemo(() => {
     const parts = ['Breakfast', 'Lunch', 'Afternoon', 'Evening'] as const;
@@ -1368,41 +1384,10 @@ export default function ManagerDashboard() {
 
   // Personnel: Pro analytics (defined after waiterDetails)
 
-  // Call-waiter response times (live realtime channel only)
-  const [callResponseDurations, setCallResponseDurations] = useState<number[]>([]);
-  const lastCallByTable = useRef<Map<string, Date>>(new Map());
-  useEffect(() => {
-    const storeSlug = (typeof window !== 'undefined' && window.localStorage.getItem('STORE_SLUG')) || 'store';
-    let subscribed = false;
-    realtimeService.connect().then(() => {
-      const topic = `${storeSlug}/waiter/call`;
-      realtimeService.subscribe(topic, (payload) => {
-        if (!isWaiterCallEvent(payload) || !payload.tableId || !payload.action) return;
-        const ts = payload.ts ? new Date(payload.ts) : new Date();
-        if (payload.action === 'called') {
-          lastCallByTable.current.set(payload.tableId, ts);
-        } else if (payload.action === 'accepted') {
-          const started = lastCallByTable.current.get(payload.tableId);
-          if (started) {
-            const mins = (ts.getTime() - started.getTime()) / 60000;
-            if (Number.isFinite(mins) && mins >= 0) {
-              setCallResponseDurations((arr) => [...arr, mins]);
-            }
-            lastCallByTable.current.delete(payload.tableId);
-          }
-        }
-      });
-      subscribed = true;
-    });
-    return () => {
-      if (subscribed) {
-        const storeSlug = (typeof window !== 'undefined' && window.localStorage.getItem('STORE_SLUG')) || 'store';
-        realtimeService.unsubscribe(`${storeSlug}/waiter/call`);
-      }
-    };
-  }, []);
-  const callMedian = useMemo(() => median(callResponseDurations), [callResponseDurations]);
-  const callP95 = useMemo(() => percentile(callResponseDurations, 95), [callResponseDurations]);
+  // Call-waiter response times (realtime disabled)
+  const callResponseDurations: number[] = [];
+  const callMedian = null;
+  const callP95 = null;
 
   const ordersByTable = useMemo(() => {
     const map = new Map<string, Order[]>();
@@ -1903,6 +1888,69 @@ export default function ManagerDashboard() {
 
   useEffect(() => {}, []);
 
+  const DateRangeHeader = () => (
+    <div className="relative flex items-center justify-center">
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-card/95 border border-border/50 shadow-lg backdrop-blur-sm text-sm font-medium text-foreground hover:bg-accent transition-colors absolute left-0 top-1/2 -translate-y-1/2"
+          aria-label={t('manager.expand_navigation', { defaultValue: 'Expand navigation' })}
+        >
+          <BarChart2 className="h-4 w-4" />
+          <span>›</span>
+        </button>
+      )}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-center sm:justify-center gap-3 w-full">
+        <div className="flex items-center gap-2 flex-wrap justify-center">
+          <div className="inline-flex rounded-lg border border-border/60 bg-card overflow-hidden shadow-sm">
+            {[
+              { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
+              { key: 'last24h', label: t('date_range.last24h', { defaultValue: 'Last 24h' }) },
+              { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
+              { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
+              { key: 'custom', label: t('date_range.custom', { defaultValue: 'Custom' }) },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setEconRange(opt.key as EconRange)}
+                className={clsx(
+                  'px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors',
+                  econRange === opt.key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-card text-foreground hover:bg-accent'
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {econRange === 'custom' && (
+          <div className="flex items-center gap-2 text-sm">
+            <input
+              type="date"
+              value={customRange.start}
+              onChange={(e) =>
+                setCustomRange((prev) => ({ ...prev, start: e.target.value || prev.start }))
+              }
+              className="rounded-lg border border-border/60 bg-card px-3 py-1.5 text-foreground text-sm"
+            />
+            <span className="text-muted-foreground">–</span>
+            <input
+              type="date"
+              value={customRange.end}
+              onChange={(e) =>
+                setCustomRange((prev) => ({ ...prev, end: e.target.value || prev.end }))
+              }
+              className="rounded-lg border border-border/60 bg-card px-3 py-1.5 text-foreground text-sm"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
@@ -1952,92 +2000,77 @@ export default function ManagerDashboard() {
             setActiveTab(value as ManagerTab);
             setSidebarCollapsed(true);
           }}
-          className="flex flex-1 min-h-0"
+          className="flex flex-1 min-h-0 relative"
         >
           <aside
             className={clsx(
-              'hidden sm:flex flex-col absolute z-30 left-4 top-4 rounded-2xl bg-card/90 border border-border/60 shadow-2xl backdrop-blur-sm transition duration-200 ease-in-out max-h-[80vh] overflow-hidden',
-              sidebarCollapsed ? '-translate-x-[110%] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100 pointer-events-auto w-64'
+              'hidden sm:flex flex-col absolute z-40 left-4 top-4 rounded-2xl bg-card/95 border border-border/50 shadow-2xl backdrop-blur-sm transition-all duration-200 ease-out w-56',
+              sidebarCollapsed ? '-translate-x-[calc(100%+24px)] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'
             )}
-            aria-hidden={sidebarCollapsed}
           >
-            <div className="px-4 py-4 border-b border-border/60 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
                   {t('manager.nav_title', { defaultValue: 'Dashboard' })}
                 </p>
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-sm font-medium text-foreground truncate">
                   {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(true)}
+                className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={t('manager.hide_navigation', { defaultValue: 'Collapse' })}
+              >
+                <span className="text-base leading-none block">‹</span>
+              </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
-              <TabsList className="flex flex-col w-full text-xs sm:text-sm gap-2">
-                <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
-                  value="economics"
-                >
-                  <BarChart2 className="h-4 w-4" />
-                  <span>{t('manager.economics', { defaultValue: 'Economics' })}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
-                  value="orders"
-                >
-                  <ListChecks className="h-4 w-4" />
-                  <span>{t('waiter.orders', { defaultValue: 'Orders' })}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
-                  value="personnel"
-                >
-                  <Users className="h-4 w-4" />
-                  <span>{t('manager.personnel', { defaultValue: 'Personnel' })}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2 whitespace-nowrap"
-                  value="menu"
-                >
-                  <UtensilsCrossed className="h-4 w-4" />
-                  <span>{t('menu.title')}</span>
-                </TabsTrigger>
+            <div className="px-2 py-2">
+              <TabsList className="flex flex-col w-full gap-1 bg-transparent">
+                {[
+                  { key: 'economics', label: t('manager.economics', { defaultValue: 'Economics' }), icon: <BarChart2 className="h-4 w-4 shrink-0" /> },
+                  { key: 'orders', label: t('waiter.orders', { defaultValue: 'Orders' }), icon: <ListChecks className="h-4 w-4 shrink-0" /> },
+                  { key: 'personnel', label: t('manager.personnel', { defaultValue: 'Personnel' }), icon: <Users className="h-4 w-4 shrink-0" /> },
+                  { key: 'menu', label: t('menu.title'), icon: <UtensilsCrossed className="h-4 w-4 shrink-0" /> },
+                ].map(({ key, label, icon }) => (
+                  <TabsTrigger
+                    key={key}
+                    value={key}
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm transition-all duration-150"
+                  >
+                    {icon}
+                    <span className="truncate">{label}</span>
+                  </TabsTrigger>
+                ))}
               </TabsList>
             </div>
           </aside>
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed((prev) => !prev)}
-            className={clsx(
-              'hidden sm:flex absolute z-40 h-12 w-8 items-center justify-center rounded-l-none rounded-r-full bg-card text-foreground shadow-2xl transition-transform duration-200 ease-out border border-border/60',
-              sidebarCollapsed ? 'left-4 top-[120px] translate-x-0' : 'left-[272px] top-[120px] translate-x-0'
-            )}
-            aria-label={sidebarCollapsed ? t('manager.show_navigation', { defaultValue: 'Show menu' }) : t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
-          >
-            <span className="text-lg leading-none">{sidebarCollapsed ? '›' : '‹'}</span>
-          </button>
-          <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-8 space-y-6 sm:space-y-8">
-          <div className="sm:hidden flex justify-end">
+
+          {/* Mobile Navigation */}
+          <div className="sm:hidden fixed bottom-4 left-4 z-50">
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <SheetTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
-                  className="rounded-full border-border/70 bg-card/80 shadow-sm"
+                  className="rounded-full shadow-lg px-4"
                   aria-label={t('manager.nav_title', { defaultValue: 'Dashboard' })}
                 >
-                  {t('app.navigation', { defaultValue: 'Navigation' })}
+                  <BarChart2 className="h-4 w-4 mr-2" />
+                  {t('app.navigation', { defaultValue: 'Menu' })}
                 </Button>
               </SheetTrigger>
               <SheetContent
                 side="left"
-                className="w-[300px] sm:w-[320px] bg-background text-foreground rounded-2xl border-border/80 shadow-2xl my-4 ml-4 h-auto max-h-[80vh] overflow-y-auto"
+                className="w-[280px] bg-background text-foreground"
               >
                 <SheetHeader>
                   <SheetTitle className="text-base font-semibold">
                     {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
                   </SheetTitle>
                 </SheetHeader>
-                <div className="mt-4 space-y-2">
+                <div className="mt-4 space-y-1">
                   {[
                     { key: 'economics', label: t('manager.economics', { defaultValue: 'Economics' }), icon: <BarChart2 className="h-4 w-4" /> },
                     { key: 'orders', label: t('waiter.orders', { defaultValue: 'Orders' }), icon: <ListChecks className="h-4 w-4" /> },
@@ -2048,15 +2081,16 @@ export default function ManagerDashboard() {
                       key={key}
                       onClick={() => {
                         setActiveTab(key as ManagerTab);
+                        setSidebarCollapsed(true);
                         setMobileNavOpen(false);
                       }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition shadow-sm ${
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                         activeTab === key
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-card text-foreground border-border hover:bg-accent'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-accent'
                       }`}
                     >
-                      <span className="text-primary">{icon}</span>
+                      {icon}
                       <span>{label}</span>
                     </button>
                   ))}
@@ -2064,81 +2098,20 @@ export default function ManagerDashboard() {
               </SheetContent>
             </Sheet>
           </div>
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed((prev) => !prev)}
-            className={clsx(
-              'hidden sm:flex absolute z-40 top-24 h-12 w-8 items-center justify-center rounded-l-full bg-foreground/80 text-background shadow-2xl transition-transform duration-200 ease-out',
-              sidebarCollapsed ? 'right-0 translate-x-[110%]' : '-right-8 translate-x-0'
-            )}
-            aria-label={sidebarCollapsed ? t('manager.show_navigation', { defaultValue: 'Show menu' }) : t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
-          >
-            <span className="text-lg leading-none">{sidebarCollapsed ? '›' : '‹'}</span>
-          </button>
+
+          <div className="flex-1 w-full overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-6">
 
           <TabsContent value="economics" className="space-y-6">
             {ordersBusy ? (
               <DashboardGridSkeleton count={4} />
             ) : (
             <>
-            <div className="relative mb-6">
-              <div className="h-16 sm:h-18 flex items-center justify-center">
-                <div className="inline-flex rounded-md border bg-background overflow-hidden shadow-sm">
-                  {([
-                    { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
-                    { key: 'last24h', label: t('date_range.last24h', { defaultValue: 'Last 24h' }) },
-                    { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
-                    { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
-                    { key: 'custom', label: t('date_range.custom', { defaultValue: 'Custom' }) },
-                  ] as const).map((opt) => (
-                    <button
-                      key={opt.key}
-                      onClick={() => setEconRange(opt.key)}
-                      className={
-                        'flex-1 px-3 py-1.5 text-xs border-l first:border-l-0 transition-colors ' +
-                        (econRange === opt.key
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-muted')
-                      }
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {econRange === 'custom' && (
-                <div className="mt-2 flex flex-col sm:flex-row gap-2 justify-center">
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{t('date_range.start', { defaultValue: 'Start' })}</span>
-                    <input
-                      type="date"
-                      value={customRange.start}
-                      onChange={(e) =>
-                        setCustomRange((prev) => ({ ...prev, start: e.target.value || prev.start }))
-                      }
-                      className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{t('date_range.end', { defaultValue: 'End' })}</span>
-                    <input
-                      type="date"
-                      value={customRange.end}
-                      onChange={(e) =>
-                        setCustomRange((prev) => ({ ...prev, end: e.target.value || prev.end }))
-                      }
-                      className="rounded border border-border/60 bg-background px-2 py-1 text-foreground"
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
+            <DateRangeHeader />
             <Card className="p-4 sm:p-6">
-              <div className="flex flex-col items-center gap-3 mb-4">
-                <p className="text-sm text-muted-foreground text-center">
-                  {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
-                </p>
-              </div>
+              <h3 className="text-lg font-semibold mb-4">
+                {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
+              </h3>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
                   <p className="text-xs text-muted-foreground">{t('manager.total_revenue', { defaultValue: 'Total Revenue' })}</p>
@@ -2162,18 +2135,13 @@ export default function ManagerDashboard() {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('manager.timeline', { defaultValue: 'Timeline' })}</p>
-                  <h3 className="text-lg font-semibold">
-                    {econRange === 'today' || econRange === 'last24h'
-                      ? t('manager.revenue_by_hour', { defaultValue: 'Revenue by hour' })
-                      : econRange === 'week'
-                      ? t('manager.revenue_by_daypart', { defaultValue: 'Revenue by daypart' })
-                      : t('manager.revenue_by_day', { defaultValue: 'Revenue by day' })}
-                  </h3>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold mb-4">
+                {econRange === 'today' || econRange === 'last24h'
+                  ? t('manager.revenue_by_hour', { defaultValue: 'Revenue by hour' })
+                  : econRange === 'week'
+                  ? t('manager.revenue_by_daypart', { defaultValue: 'Revenue by daypart' })
+                  : t('manager.revenue_by_day', { defaultValue: 'Revenue by day' })}
+              </h3>
               <div className="h-72 flex items-center justify-center">
                 <div className="h-full w-full max-w-4xl px-4 mx-auto">
                   <ResponsiveContainer width="100%" height="100%">
@@ -2204,18 +2172,11 @@ export default function ManagerDashboard() {
             </Card>
 
             <Card className="p-4 sm:p-6 revenue-category-card">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    {t('manager.categories', { defaultValue: 'Categories' })}
-                  </p>
-                  <h3 className="text-lg font-semibold">
-                    {t('manager.revenue_by_category', { defaultValue: 'Revenue by category' })}
-                  </h3>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold mb-4">
+                {t('manager.revenue_by_category', { defaultValue: 'Revenue by category' })}
+              </h3>
               <div className="h-72">
-                {ordersBusy || categoryRevenue.length === 0 ? (
+                {ordersBusy || !categoryRevenue ? (
                   <div className="h-full w-full rounded-xl border border-dashed border-border bg-muted/20 p-4 animate-pulse flex flex-col justify-between">
                     <div className="flex gap-3">
                       <Skeleton className="h-4 w-32" />
@@ -2229,6 +2190,10 @@ export default function ManagerDashboard() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : categoryRevenue.length === 0 ? (
+                  <div className="h-full w-full rounded-xl border border-dashed border-border bg-muted/10 p-6 flex items-center justify-center text-sm text-muted-foreground">
+                    {t('manager.no_category_revenue', { defaultValue: 'No category revenue yet.' })}
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
@@ -2254,7 +2219,7 @@ export default function ManagerDashboard() {
             </Card>
 
             <Card className="p-4 sm:p-6">
-              <p className="text-sm text-muted-foreground mb-3">{t('manager.top_items_revenue', { defaultValue: 'Top 5 items by revenue' })}</p>
+              <h3 className="text-lg font-semibold mb-3">{t('manager.top_items_revenue', { defaultValue: 'Top 5 items by revenue' })}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -2395,6 +2360,7 @@ export default function ManagerDashboard() {
               <DashboardGridSkeleton count={3} />
             ) : (
             <>
+            <DateRangeHeader />
             <Card className="p-4 sm:p-6">
               <p className="text-sm text-muted-foreground mb-4">Operations KPIs</p>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
@@ -2702,6 +2668,7 @@ export default function ManagerDashboard() {
           </TabsContent>
 
           <TabsContent value="personnel" className="space-y-6">
+            <DateRangeHeader />
             <Card className="p-4 sm:p-6 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
@@ -3129,6 +3096,7 @@ export default function ManagerDashboard() {
       </TabsContent>
 
           <TabsContent value="menu" className="space-y-6">
+            <DateRangeHeader />
             {managerMode === 'pro' && (
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card className="p-4 sm:p-6">
@@ -3491,6 +3459,7 @@ export default function ManagerDashboard() {
 
             <ManagerMenuPanel />
           </TabsContent>
+          </div>
           </div>
         </Tabs>
       </div>

@@ -212,7 +212,9 @@ export const ElegantMenuView = ({
         onClick={handleCartButtonClick}
         className={[
           'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
-          expandedBubble === 'cart' ? 'w-80 pr-5 pl-4 justify-between' : 'w-16 justify-center hover:scale-110',
+          expandedBubble === 'cart'
+            ? 'pl-4 pr-5 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
+            : 'w-16 justify-center hover:scale-110',
           expandedBubble === 'none' && 'active:scale-95',
         ].join(' ')}
       >
@@ -220,10 +222,10 @@ export const ElegantMenuView = ({
           <ShoppingCart className={`h-6 w-6 flex-shrink-0 transition-transform duration-500 ${expandedBubble === 'cart' ? 'rotate-12' : ''}`} />
           {expandedBubble === 'cart' && cartItems.length > 0 && (
             <div className="flex flex-col leading-tight text-left min-w-0 animate-fade-in">
-              <span className="text-sm font-semibold truncate">
+              <span className="text-xs sm:text-sm font-semibold truncate max-w-[8rem]">
                 {itemCountLabel}
               </span>
-              <span className="text-xs text-primary-foreground/80 truncate">
+              <span className="text-xs text-primary-foreground/80 truncate max-w-[8rem]">
                 {formatPrice(cartTotal)}
               </span>
             </div>
@@ -267,7 +269,7 @@ export const ElegantMenuView = ({
             <Bell className={`h-6 w-6 relative transition-transform duration-300 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
           </span>
           {expandedBubble === 'call' && (
-            <span className="text-sm font-semibold whitespace-nowrap animate-fade-in">
+            <span className="text-xs sm:text-sm font-semibold whitespace-nowrap max-w-[9rem] truncate animate-fade-in">
               {t('menu.call_waiter', { defaultValue: 'Call Waiter' })}
             </span>
           )}
