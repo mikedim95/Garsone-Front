@@ -262,8 +262,6 @@ class WebSocketRealtimeService {
 }
 
 // Lightweight WebSocket client for backend WSS (no MQTT on frontend)
-import { API_BASE } from './api';
-
 type MessageHandler = (payload: any) => void;
 
 let socket: WebSocket | null = null;
@@ -271,18 +269,6 @@ let connecting = false;
 let connected = false;
 const subscriptions = new Map<string, Set<MessageHandler>>();
 let reconnectTimer: number | undefined;
-
-function buildWsUrl() {
-  if (!API_BASE) return null;
-  try {
-    const url = new URL('/events/ws', API_BASE);
-    url.protocol = url.protocol.replace('http', 'ws');
-    return url.toString();
-  } catch (error) {
-    console.error('Failed to build WS URL', error);
-    return null;
-  }
-}
 
 function notifyStatus(isConnected: boolean) {
   connected = isConnected;
@@ -314,6 +300,7 @@ function handleMessage(event: MessageEvent) {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
+  if (appOffline()) return;
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = undefined;
     realtimeService.connect().catch(() => {});
@@ -322,8 +309,12 @@ function scheduleReconnect() {
 
 export const realtimeService = {
   async connect() {
+    if (appOffline()) {
+      this.disconnect();
+      return;
+    }
     if (connected || connecting) return;
-    const wsUrl = buildWsUrl();
+    const wsUrl = buildWebSocketUrl();
     if (!wsUrl) return;
     connecting = true;
     try {
@@ -334,17 +325,20 @@ export const realtimeService = {
       });
       socket.addEventListener('close', () => {
         connecting = false;
+        socket = null;
         notifyStatus(false);
         scheduleReconnect();
       });
       socket.addEventListener('error', () => {
         connecting = false;
+        socket = null;
         notifyStatus(false);
         scheduleReconnect();
       });
       socket.addEventListener('message', handleMessage);
     } catch (error) {
       connecting = false;
+      socket = null;
       notifyStatus(false);
       scheduleReconnect();
     }

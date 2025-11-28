@@ -261,7 +261,7 @@ export default function CookDashboard() {
 
   const acceptWithPrint = async (order: Order) => {
     try {
-      await transitionToPreparing(order.id, setPrinting);
+      await transitionToPreparing(order.id, setPrinting, { skipMqtt: true });
       await sendOrderToPrinter(order);
     } catch (error) {
       console.error("Accept with print failed", error);

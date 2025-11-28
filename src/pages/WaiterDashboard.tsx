@@ -385,6 +385,13 @@ export default function WaiterDashboard() {
   useEffect(() => {
     if (!assignmentsLoaded || !shiftLoaded) return;
     let unsubscribed = false;
+    const placedTopic = `${storeSlug}/orders/placed`;
+    const preparingTopic = `${storeSlug}/orders/preparing`;
+    const readyTopic = `${storeSlug}/orders/ready`;
+    const cancelledTopic = `${storeSlug}/orders/canceled`;
+    const paidTopic = `${storeSlug}/orders/paid`;
+    const waiterCallTopic = `${storeSlug}/waiter/call`;
+
     const hydrateOrder = async (orderId: string) => {
       if (ordersRef.current.some((o) => o.id === orderId)) return;
       try {
@@ -498,9 +505,26 @@ export default function WaiterDashboard() {
       }
       dbg("waiter call", payload.tableId, payload.action);
     };
-    // Realtime disabled; no subscriptions
+
+    (async () => {
+      await realtimeService.connect();
+      if (unsubscribed) return;
+      realtimeService.subscribe(placedTopic, handlePlaced);
+      realtimeService.subscribe(preparingTopic, handlePreparing);
+      realtimeService.subscribe(readyTopic, handleReady);
+      realtimeService.subscribe(cancelledTopic, handleCancelled);
+      realtimeService.subscribe(paidTopic, handlePaid);
+      realtimeService.subscribe(waiterCallTopic, handleWaiterCall);
+    })();
+
     return () => {
       unsubscribed = true;
+      realtimeService.unsubscribe(placedTopic, handlePlaced);
+      realtimeService.unsubscribe(preparingTopic, handlePreparing);
+      realtimeService.unsubscribe(readyTopic, handleReady);
+      realtimeService.unsubscribe(cancelledTopic, handleCancelled);
+      realtimeService.unsubscribe(paidTopic, handlePaid);
+      realtimeService.unsubscribe(waiterCallTopic, handleWaiterCall);
     };
   }, [assignmentsLoaded, shiftLoaded, storeSlug, assignedTableIds, shouldShowTable, upsertOrder, updateLocalStatus, toast, t, withinShift]);
 
