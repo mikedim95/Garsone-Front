@@ -177,27 +177,34 @@ export const api = {
   // Menu & orders (public device endpoints for create + call waiter)
   getMenu: (): Promise<MenuData> =>
     isOffline() ? devMocks.getMenu() : fetchApi<MenuData>("/menu"),
-  createOrder: (data: CreateOrderPayload): Promise<OrderResponse> =>
-    isOffline()
+  createOrder: (data: CreateOrderPayload): Promise<OrderResponse> => {
+    const visitHeaders = data.visit ? { "x-table-visit": data.visit } : undefined;
+    return isOffline()
       ? devMocks.createOrder(data)
       : fetchApi<OrderResponse>("/orders", {
           method: "POST",
           body: JSON.stringify(withVisit(data)),
-        }),
-  editOrder: (orderId: string, data: EditOrderPayload): Promise<OrderResponse> =>
-    isOffline()
+          ...(visitHeaders ? { headers: visitHeaders } : {}),
+        });
+  },
+  editOrder: (orderId: string, data: EditOrderPayload): Promise<OrderResponse> => {
+    const visitHeaders = (data as any)?.visit ? { "x-table-visit": (data as any).visit } : undefined;
+    return isOffline()
       ? devMocks.createOrder(data)
       : fetchApi<OrderResponse>(`/orders/${orderId}`, {
           method: "PATCH",
           body: JSON.stringify(withVisit(data)),
-        }),
+          ...(visitHeaders ? { headers: visitHeaders } : {}),
+        });
+  },
   printOrder: (orderId: string) => fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
-  callWaiter: (tableId: string): Promise<OkResponse> =>
+  callWaiter: (tableId: string, visit?: string): Promise<OkResponse> =>
     isOffline()
       ? devMocks.callWaiter(tableId)
       : fetchApi<OkResponse>("/call-waiter", {
           method: "POST",
-          body: JSON.stringify(withVisit({ tableId })),
+          body: JSON.stringify(withVisit({ tableId, ...(visit ? { visit } : {}) })),
+          ...(visit ? { headers: { "x-table-visit": visit } } : {}),
         }),
   getOrderQueueSummary: (): Promise<OrderQueueSummary> =>
     isOffline()

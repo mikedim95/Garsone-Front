@@ -60,6 +60,10 @@ const mapCategories = (
     return acc;
   }, []);
 
+const isUuid = (value?: string | null) =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 const buildMenuState = (
   payload: Partial<MenuStateData> & {
     categories?: Array<{ id?: string; title?: string; titleEn?: string; titleEl?: string }>;
@@ -92,14 +96,16 @@ const buildMenuState = (
     items: (payload?.items ?? []).map((item) => {
       const name = localizeText(item.titleEn || item.name, item.titleEl, item.name || item.title);
       const description = localizeText(item.descriptionEn, item.descriptionEl, item.description);
+      const imageUrl = item.imageUrl ?? item.image ?? '';
       return {
         ...item,
         name,
         displayName: name,
         displayDescription: description,
         description,
-        image: item.image ?? item.imageUrl ?? '',
-        imageUrl: item.imageUrl ?? item.image ?? '',
+        // Prefer backend-provided URL so the browser downloads directly once per /menu response.
+        image: imageUrl,
+        imageUrl,
         modifiers: localizedModifiers(item.modifiers),
       };
     }),
@@ -140,7 +146,7 @@ const isOrderEventMessage = (
   isRecord(payload) && typeof payload.orderId === "string";
 
 export default function TableMenu() {
-  const { tableId } = useParams();
+  const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
   const preferGreek = i18n.language?.toLowerCase().startsWith('el');
   const navigate = useNavigate();
@@ -178,14 +184,10 @@ export default function TableMenu() {
   const [tableTranslations, setTableTranslations] = useState<
     Record<string, string>
   >({});
-  const resolvedTableLabel =
-    tableLabel ||
-    lastOrder?.tableLabel ||
-    lastOrder?.table ||
-    (tableId ? tableTranslations[tableId] : null) ||
-    null;
-  const tableLabelDisplay = resolvedTableLabel ?? "—";
-  const tableLabelReady = Boolean(resolvedTableLabel);
+  const [tableId, setTableId] = useState<string | null>(() =>
+    tableParam && isUuid(tableParam) ? tableParam : null
+  );
+  const activeTableId = tableId || (tableParam && isUuid(tableParam) ? tableParam : null);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
@@ -226,7 +228,7 @@ export default function TableMenu() {
   }, [lastOrder]);
 
   useEffect(() => {
-    if (!tableId) return;
+    if (!tableParam) return;
     let cancelled = false;
     (async () => {
       try {
@@ -240,7 +242,22 @@ export default function TableMenu() {
           {}
         );
         setTableTranslations(map);
-        if (map[tableId]) setTableLabel(map[tableId]);
+
+        const paramLower = tableParam.toLowerCase();
+        if (map[tableParam]) {
+          setTableLabel(map[tableParam]);
+          if (!tableId && isUuid(tableParam)) setTableId(tableParam);
+          return;
+        }
+
+        const found = Object.entries(map).find(
+          ([, label]) => label && label.toLowerCase() === paramLower
+        );
+        if (found) {
+          const [id, label] = found;
+          setTableLabel(label);
+          setTableId((prev) => prev ?? id);
+        }
       } catch (error) {
         console.warn("Failed to fetch table label", error);
       }
@@ -248,7 +265,7 @@ export default function TableMenu() {
     return () => {
       cancelled = true;
     };
-  }, [tableId]);
+  }, [tableParam, tableId]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
@@ -539,13 +556,19 @@ export default function TableMenu() {
   };
 
   const handleCheckout = async (note?: string) => {
-    if (!tableId || !menuData) return null;
+    if (!activeTableId || !menuData) {
+      toast({
+        title: t("menu.toast_error_title", { defaultValue: "Error placing order" }),
+        description: t("menu.toast_error_description", { defaultValue: "Missing table information. Please rescan the QR." }),
+      });
+      return null;
+    }
 
     try {
       const cartItems = useCartStore.getState().items;
 
       const orderData: CreateOrderPayload = {
-        tableId,
+        tableId: activeTableId,
         items: cartItems.map((item) => ({
           itemId: item.item.id,
           quantity: item.quantity,
@@ -561,8 +584,8 @@ export default function TableMenu() {
       if (orderFromResponse) {
         const normalized = {
           ...orderFromResponse,
-          tableId: orderFromResponse.tableId ?? tableId,
-          tableLabel: orderFromResponse.tableLabel ?? tableId,
+          tableId: orderFromResponse.tableId ?? activeTableId,
+          tableLabel: orderFromResponse.tableLabel ?? tableLabel ?? tableParam ?? activeTableId,
         };
         setLastOrder(normalized);
         if (normalized.tableLabel) setTableLabel(normalized.tableLabel);
@@ -574,7 +597,7 @@ export default function TableMenu() {
         orderFromResponse?.id || legacyResponse.orderId || editingOrderId || "";
       setEditingOrderId(null);
       // pass tableId so the thanks page can subscribe to the ready topic
-      const params = new URLSearchParams({ tableId });
+      const params = new URLSearchParams({ tableId: activeTableId });
       if (orderId) {
         navigate(`/order/${orderId}/thanks?${params.toString()}`);
       }
@@ -620,7 +643,7 @@ export default function TableMenu() {
 
   useEffect(() => {
     // subscribe for call acknowledgements for this table
-    if (!tableId) return;
+    if (!activeTableId) return;
     let mounted = true;
     const callTopic = `${storeSlug}/waiter/call`;
     const preparingTopicLegacy = `${storeSlug}/orders/prepairing`;
@@ -643,7 +666,7 @@ export default function TableMenu() {
         if (
           !mounted ||
           !isWaiterCallMessage(payload) ||
-          payload.tableId !== tableId
+          payload.tableId !== activeTableId
         )
           return;
         if (payload.action === "accepted") setCalling("accepted");
@@ -685,7 +708,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(cancelledTopic);
       realtimeService.unsubscribe(paidTopic);
     };
-  }, [storeSlug, tableId]);
+  }, [storeSlug, activeTableId]);
 
   useEffect(() => {
     // Collapse the call CTA while a call is in-flight/accepted
@@ -701,10 +724,10 @@ export default function TableMenu() {
   }, [callPrompted]);
 
   const handleCallWaiter = async () => {
-    if (!tableId) return;
+    if (!activeTableId) return;
     try {
       setCalling("pending");
-      await api.callWaiter(tableId);
+      await api.callWaiter(activeTableId);
       toast({
         title: t("menu.call_waiter_success_title", {
           defaultValue: "Waiter called",
@@ -781,17 +804,8 @@ export default function TableMenu() {
               ) : (
                 <Skeleton className="h-8 w-48 rounded-full" />
               )}
-              {tableLabelReady ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("menu.table_label", {
-                    label: tableLabelDisplay,
-                    defaultValue: `Table ${tableLabelDisplay}`,
-                  })}
-                </p>
-              ) : (
-                <Skeleton className="h-4 w-20 rounded-full" />
-          )}
-        </div>
+              {/* Table label intentionally hidden per request */}
+            </div>
             <div className="flex gap-2 items-center">
               <button
                 type="button"

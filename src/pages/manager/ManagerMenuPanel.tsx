@@ -123,7 +123,8 @@ export const ManagerMenuPanel = () => {
       titleEl: item.titleEl ?? item.title ?? item.name ?? '',
       descriptionEn: item.descriptionEn ?? item.description ?? '',
       descriptionEl: item.descriptionEl ?? item.description ?? '',
-      imageUrl: item.image ?? item.imageUrl ?? '',
+      // Prefer the backend URL so images load directly via /menu response.
+      imageUrl: item.imageUrl ?? item.image ?? '',
       price: typeof item.priceCents === 'number' ? (item.priceCents / 100).toFixed(2) : '0.00',
       categoryId: item.categoryId ?? '',
       newCategoryTitle: '',
