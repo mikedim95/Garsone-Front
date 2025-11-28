@@ -5,10 +5,10 @@ import type { CreateOrderPayload, CreateOrderPayloadItem } from "@/types";
 
 type Id = string;
 
-type Category = { id: Id; title: string; sortOrder: number };
-type Item = { id: Id; title: string; description?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
-type ModifierOption = { id: Id; title: string; label: string; priceDeltaCents: number; sortOrder: number };
-type Modifier = { id: Id; title: string; name: string; minSelect: number; maxSelect: number | null; options: ModifierOption[] };
+type Category = { id: Id; title: string; titleEn?: string; titleEl?: string; sortOrder: number };
+type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
+type ModifierOption = { id: Id; title: string; titleEn?: string; titleEl?: string; label: string; priceDeltaCents: number; sortOrder: number };
+type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; name: string; minSelect: number; maxSelect: number | null; isAvailable?: boolean; options: ModifierOption[] };
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
 type Table = { id: Id; label: string; isActive: boolean };
 type Waiter = { id: Id; email: string; displayName: string; password?: string };

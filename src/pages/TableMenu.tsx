@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
 
-type CategorySummary = Pick<MenuCategory, "id" | "title">;
+type CategorySummary = Pick<MenuCategory, "id" | "title" | "titleEn" | "titleEl">;
 type MenuModifierLink = {
   itemId: string;
   modifierId: string;

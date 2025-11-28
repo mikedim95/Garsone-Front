@@ -382,7 +382,7 @@ export default function CookDashboard() {
                     );
                   })}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button
                     className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                     onClick={() => accept(o.id)}

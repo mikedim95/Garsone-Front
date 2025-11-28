@@ -11,18 +11,25 @@ import { api } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
-import { LogOut, Check, X } from 'lucide-react';
+import { Calendar, Clock } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
 
 const ORDER_FETCH_LIMIT = 50;
 const DEBUG_LOG = true;
-const dbg = (...args: any[]) => {
+const dbg = (...args: unknown[]) => {
   if (DEBUG_LOG) console.log("[WaiterDashboard]", ...args);
 };
 
-type StatusKey = 'ALL' | 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
+// LocalStorage keys for caching
+const LS_DATE_FILTER_KEY = 'waiter_date_filter';
+const LS_VIEW_FILTER_KEY = 'waiter_view_filter';
+
+type StatusKey = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED' | 'ALL';
+type DateFilterKey = 'today' | 'last24h' | 'week' | 'custom';
 type OrderEventPayload = {
   orderId?: string;
   tableId?: string;
@@ -168,6 +175,26 @@ const isOrderEventPayload = (payload: unknown): payload is OrderEventPayload =>
 const isWaiterCallPayload = (payload: unknown): payload is WaiterCallPayload =>
   isRecord(payload) && typeof payload.tableId === 'string';
 
+// Helper to get saved filter from localStorage
+const getSavedFilter = <T,>(key: string, defaultValue: T): T => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved) as T;
+  } catch {
+    // ignore
+  }
+  return defaultValue;
+};
+
+// Helper to save filter to localStorage
+const saveFilter = <T,>(key: string, value: T) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+};
+
 export default function WaiterDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -190,11 +217,40 @@ export default function WaiterDashboard() {
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
   const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusKey>('ALL');
+  
+  // No preselected status tab
+  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
-  const [viewFilter, setViewFilter] = useState<'ALL' | 'MY' | 'READY' | 'PENDING'>('ALL');
+  
+  // View filter with localStorage caching
+  const [viewFilter, setViewFilter] = useState<'ALL' | 'MY' | 'READY' | 'PENDING'>(() => 
+    getSavedFilter(LS_VIEW_FILTER_KEY, 'ALL')
+  );
+  
+  // Date filter with localStorage caching
+  const [dateFilter, setDateFilter] = useState<DateFilterKey>(() => 
+    getSavedFilter(LS_DATE_FILTER_KEY, 'today')
+  );
+  const [customDateStart, setCustomDateStart] = useState<string>(() => {
+    const today = new Date();
+    return format(today, 'yyyy-MM-dd');
+  });
+  const [customDateEnd, setCustomDateEnd] = useState<string>(() => {
+    const today = new Date();
+    return format(today, 'yyyy-MM-dd');
+  });
+  
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
   const seenIdsRef = useRef<Set<string>>(new Set());
+
+  // Save filters to localStorage when they change
+  useEffect(() => {
+    saveFilter(LS_VIEW_FILTER_KEY, viewFilter);
+  }, [viewFilter]);
+
+  useEffect(() => {
+    saveFilter(LS_DATE_FILTER_KEY, dateFilter);
+  }, [dateFilter]);
 
   useEffect(() => {
     ordersRef.current = ordersAll;
@@ -254,6 +310,40 @@ export default function WaiterDashboard() {
     [shiftWindow]
   );
 
+  // Date filter logic
+  const withinDateFilter = useCallback(
+    (order: Order) => {
+      const orderDate = new Date(order.createdAt);
+      const now = new Date();
+      
+      switch (dateFilter) {
+        case 'today':
+          return isWithinInterval(orderDate, {
+            start: startOfDay(now),
+            end: endOfDay(now),
+          });
+        case 'last24h':
+          return isWithinInterval(orderDate, {
+            start: subHours(now, 24),
+            end: now,
+          });
+        case 'week':
+          return isWithinInterval(orderDate, {
+            start: startOfDay(subDays(now, 7)),
+            end: endOfDay(now),
+          });
+        case 'custom':
+          return isWithinInterval(orderDate, {
+            start: startOfDay(new Date(customDateStart)),
+            end: endOfDay(new Date(customDateEnd)),
+          });
+        default:
+          return true;
+      }
+    },
+    [dateFilter, customDateStart, customDateEnd]
+  );
+
   useEffect(() => {
     if (!isAuthenticated() || user?.role !== 'waiter') {
       navigate('/login');
@@ -292,7 +382,6 @@ export default function WaiterDashboard() {
         });
         const hasWaiterData = tables.some((table) => Array.isArray(table.waiters));
         if (!hasWaiterData) {
-          // Avoid wiping assignments when waiter info is missing from payload
           setAssignmentsLoaded(true);
           return;
         }
@@ -308,7 +397,6 @@ export default function WaiterDashboard() {
             next.add(table.id);
           }
         });
-        // Only overwrite if we actually received waiter data; otherwise keep previous assignments
         setAssignedTableIds(next);
         setUnassignedTableIds(unassigned);
         dbg("assignments loaded", {
@@ -330,7 +418,7 @@ export default function WaiterDashboard() {
     return () => clearInterval(int);
   }, [user?.id]);
 
-  // Initial hydrate from backend (always replace local cache once per mount)
+  // Initial hydrate from backend
   useEffect(() => {
     if (!assignmentsLoaded || !user) return;
     (async () => {
@@ -528,9 +616,9 @@ export default function WaiterDashboard() {
     };
   }, [assignmentsLoaded, shiftLoaded, storeSlug, assignedTableIds, shouldShowTable, upsertOrder, updateLocalStatus, toast, t, withinShift]);
 
-  // Derived list from local cache
+  // Derived list from local cache with date filter
   const orders = useMemo(() => {
-    let list = ordersAll.filter((o) => shouldShowTable(o.tableId) && withinShift(o));
+    let list = ordersAll.filter((o) => shouldShowTable(o.tableId) && withinShift(o) && withinDateFilter(o));
     if (viewFilter === 'MY') {
       list = list.filter((o) => (o.tableId ? assignedTableIds.has(o.tableId) : false));
     } else if (viewFilter === 'READY') {
@@ -538,11 +626,11 @@ export default function WaiterDashboard() {
     } else if (viewFilter === 'PENDING') {
       list = list.filter((o) => o.status === 'PLACED' || o.status === 'PREPARING');
     }
-    if (statusFilter !== 'ALL') {
+    if (statusFilter && statusFilter !== 'ALL') {
       list = list.filter((o) => o.status === statusFilter);
     }
     return list;
-  }, [ordersAll, shouldShowTable, statusFilter, withinShift, viewFilter, assignedTableIds]);
+  }, [ordersAll, shouldShowTable, statusFilter, withinShift, viewFilter, assignedTableIds, withinDateFilter]);
 
   useEffect(() => {
     const tableStats = orders.reduce<Record<string, number>>((acc, order) => {
@@ -558,14 +646,15 @@ export default function WaiterDashboard() {
     });
   }, [ordersAll.length, orders.length, statusFilter, orders]);
 
-  const statusButtons: Array<{ key: StatusKey; cls: string }> = [
-    { key: 'ALL', cls: 'bg-muted text-foreground hover:bg-muted/80' },
-    { key: 'PLACED', cls: 'bg-secondary text-secondary-foreground hover:bg-secondary/80' },
-    { key: 'PREPARING', cls: 'bg-accent text-accent-foreground hover:bg-accent/80' },
-    { key: 'READY', cls: 'bg-primary/10 text-primary hover:bg-primary/20' },
-    { key: 'SERVED', cls: 'bg-card text-muted-foreground hover:bg-muted' },
-    { key: 'PAID', cls: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
-    { key: 'CANCELLED', cls: 'bg-destructive/10 text-destructive hover:bg-destructive/20' },
+  // Reordered: PLACED first, ALL last
+  const statusButtons: Array<{ key: StatusKey; label: string }> = [
+    { key: 'PLACED', label: t('status.PLACED') },
+    { key: 'PREPARING', label: t('status.PREPARING') },
+    { key: 'READY', label: t('status.READY') },
+    { key: 'SERVED', label: t('status.SERVED') },
+    { key: 'PAID', label: t('status.PAID') },
+    { key: 'CANCELLED', label: t('status.CANCELLED') },
+    { key: 'ALL', label: t('status.ALL') },
   ];
 
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
@@ -595,86 +684,149 @@ export default function WaiterDashboard() {
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const loadingOrders = !assignmentsLoaded || !shiftLoaded;
 
+  const dateFilterOptions: Array<{ key: DateFilterKey; label: string }> = [
+    { key: 'today', label: 'Today' },
+    { key: 'last24h', label: 'Last 24h' },
+    { key: 'week', label: 'This Week' },
+    { key: 'custom', label: 'Custom' },
+  ];
+
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
-      <DashboardHeader
-        title={t('waiter.dashboard')}
-        subtitle={user?.displayName}
-        icon="🍽️"
-        tone="accent"
-        rightContent={user ? (
-          <div className="text-sm">
-            <a href={user.email ? `mailto:${user.email}` : undefined} className="font-medium underline underline-offset-2 hover:text-foreground">
-              {user.displayName}
-            </a>
-            {user.email ? (
-              <>
-                <span className="mx-2 text-muted-foreground">•</span>
-                <a href={`mailto:${user.email}`} className="text-muted-foreground hover:text-foreground">{user.email}</a>
-              </>
-            ) : null}
-          </div>
-        ) : undefined}
-        burgerActions={null}
-      />
+        <DashboardHeader
+          title={t('waiter.dashboard')}
+          subtitle={user?.displayName}
+          icon="🍽️"
+          tone="accent"
+          rightContent={user ? (
+            <div className="text-sm">
+              <a href={user.email ? `mailto:${user.email}` : undefined} className="font-medium underline underline-offset-2 hover:text-foreground">
+                {user.displayName}
+              </a>
+              {user.email ? (
+                <>
+                  <span className="mx-2 text-muted-foreground">•</span>
+                  <a href={`mailto:${user.email}`} className="text-muted-foreground hover:text-foreground">{user.email}</a>
+                </>
+              ) : null}
+            </div>
+          ) : undefined}
+          burgerActions={null}
+        />
 
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 flex-1 w-full">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
+        <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 flex-1 w-full">
+          {/* Header with title and date filter */}
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-1 w-10 bg-gradient-primary rounded-full" />
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
+              </div>
+              
+              {/* Date/Time Selector */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-card border border-border rounded-full p-1 shadow-sm">
+                  {dateFilterOptions.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setDateFilter(key)}
+                      className={clsx(
+                        'px-3 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200',
+                        dateFilter === key
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                
+                {dateFilter === 'custom' && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2 rounded-full">
+                        <Calendar className="h-4 w-4" />
+                        <span className="text-xs">
+                          {format(new Date(customDateStart), 'MMM d')} - {format(new Date(customDateEnd), 'MMM d')}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-4" align="end">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-muted-foreground">Start Date</label>
+                          <input
+                            type="date"
+                            value={customDateStart}
+                            onChange={(e) => setCustomDateStart(e.target.value)}
+                            className="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-muted-foreground">End Date</label>
+                          <input
+                            type="date"
+                            value={customDateEnd}
+                            onChange={(e) => setCustomDateEnd(e.target.value)}
+                            className="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
+            </div>
+
+            {/* Status filter tabs - inline, modern pill design */}
+            <div className="flex flex-wrap gap-2">
+              {statusButtons.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setStatusFilter(statusFilter === key ? null : key)}
+                  className={clsx(
+                    'px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border',
+                    statusFilter === key
+                      ? 'bg-primary text-primary-foreground border-primary shadow-md scale-105'
+                      : 'bg-card/80 text-foreground border-border hover:bg-muted hover:border-muted-foreground/20'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {[
-              { key: 'ALL', label: 'All' },
-              { key: 'MY', label: 'My tables' },
-              { key: 'READY', label: 'Ready' },
-              { key: 'PENDING', label: 'Pending' },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setViewFilter(key as 'ALL' | 'MY' | 'READY' | 'PENDING')}
-                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition active:scale-95 border shadow-sm hover:shadow-md ${
-                  viewFilter === key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-border'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+
+          {/* Orders grid */}
+          {loadingOrders ? (
+            <DashboardGridSkeleton count={6} />
+          ) : orders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">
+                <Clock className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">No orders found</h3>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                {statusFilter ? `No ${statusFilter.toLowerCase()} orders for the selected time period.` : 'Select a status filter to view orders.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {orders.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  onUpdateStatus={handleUpdateStatus}
+                  mode="waiter"
+                  busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
+                  highlighted={highlightedIds.has(order.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-
-        {/* Status filter toolbar */}
-        <div className="flex flex-wrap gap-2 sm:gap-3 mb-6 sm:mb-8 p-2 sm:p-4 bg-card/50 backdrop-blur-sm rounded-xl border border-border shadow-sm">
-          {statusButtons.map(({ key, cls }) => (
-            <button
-              key={key}
-              onClick={() => setStatusFilter(key)}
-              className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 border shadow-sm hover:shadow-md ${cls} ${statusFilter===key ? 'ring-2 ring-primary ring-offset-2 scale-105' : ''}`}
-            >
-              {t(`status.${key}`)}
-            </button>
-          ))}
-        </div>
-
-        {loadingOrders ? (
-          <DashboardGridSkeleton count={6} />
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-            {orders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onUpdateStatus={handleUpdateStatus}
-                mode="waiter"
-                busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
-                highlighted={highlightedIds.has(order.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
       </div>
     </PageTransition>
   );
