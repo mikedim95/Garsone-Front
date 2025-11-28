@@ -17,7 +17,7 @@ interface Props {
   items: MenuItem[];
   selectedCategory: string;
   onAddItem: (item: MenuItem) => void;
-  onCheckout: (note?: string) => void;
+  onCheckout: (note?: string) => void | Promise<any>;
   callButtonLabel?: string | null;
   callStatus?: 'idle' | 'pending' | 'accepted';
   callPrompted?: boolean;
@@ -93,11 +93,12 @@ export const ElegantMenuView = ({
       })).filter(group => group.items.length > 0)
     : [{ category: categories.find(c => c.id === selectedCategory) || { id: selectedCategory, title: '' }, items: filteredItems }];
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (checkoutBusy) return;
-    setCartOpen(false);
-    onCheckout(orderNote);
-    setOrderNote('');
+    const res = await onCheckout(orderNote);
+    if (res) {
+      setOrderNote('');
+    }
   };
 
   const handleEditModifiers = (index: number) => {
@@ -115,7 +116,6 @@ export const ElegantMenuView = ({
   };
 
   const handleCartButtonClick = () => {
-    if (checkoutBusy) return;
     if (expandedBubble === 'cart') {
       setCartOpen(true);
       setExpandedBubble('none');
@@ -214,7 +214,6 @@ export const ElegantMenuView = ({
       {/* Floating Cart Button */}
       <button
         onClick={handleCartButtonClick}
-        disabled={checkoutBusy}
         className={[
           'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
           expandedBubble === 'cart'
@@ -249,11 +248,6 @@ export const ElegantMenuView = ({
         {expandedBubble === 'cart' && (
           <span className="text-xs text-primary-foreground/60 whitespace-nowrap animate-fade-in">
             {t('menu.tap_checkout', { defaultValue: 'Tap to checkout' })}
-          </span>
-        )}
-        {checkoutBusy && (
-          <span className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-full">
-            <Loader2 className="h-5 w-5 animate-spin" />
           </span>
         )}
       </button>

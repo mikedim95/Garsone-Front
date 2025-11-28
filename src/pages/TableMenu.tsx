@@ -640,8 +640,6 @@ export default function TableMenu() {
                 }),
         });
       }
-    }
-    finally {
       setCheckoutBusy(false);
     }
     return null;
