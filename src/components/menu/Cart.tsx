@@ -65,6 +65,7 @@ export const Cart = ({ onCheckout, editing }: CartProps) => {
   const [queueAhead, setQueueAhead] = useState<number | null>(null);
   const [queueLoading, setQueueLoading] = useState(false);
   const [submittedAhead, setSubmittedAhead] = useState<number | null>(null);
+  const [lastSubmitWasEdit, setLastSubmitWasEdit] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
 
   const [modifyOpen, setModifyOpen] = useState(false);
@@ -73,6 +74,19 @@ export const Cart = ({ onCheckout, editing }: CartProps) => {
   const [qtyIndex, setQtyIndex] = useState<number | null>(null);
   const [qtyValue, setQtyValue] = useState<number>(1);
   const [cartOpen, setCartOpen] = useState(false);
+  const isEditingExisting = Boolean(activeOrderId);
+
+  useEffect(() => {
+    if (typeof openSignal === "number" && openSignal > 0) {
+      setCartOpen(true);
+    }
+  }, [openSignal]);
+
+  useEffect(() => {
+    if (activeOrderId) {
+      setNote(activeOrderNote ?? "");
+    }
+  }, [activeOrderId, activeOrderNote]);
 
   useEffect(() => {
     let active = true;
@@ -179,6 +193,28 @@ export const Cart = ({ onCheckout, editing }: CartProps) => {
           <DialogHeader>
             <DialogTitle>{t("menu.cart")}</DialogTitle>
           </DialogHeader>
+          {isEditingExisting && (
+            <div className="mx-1 mt-1 mb-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-primary">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  {t("menu.edit_order_banner", {
+                    defaultValue:
+                      "Updating your order before the kitchen accepts it.",
+                  })}
+                </span>
+                {onAbandonEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-primary"
+                    onClick={() => onAbandonEdit()}
+                  >
+                    {t("menu.edit_order_cancel", { defaultValue: "Start new" })}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto px-1 py-2 space-y-2">
             {items.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
@@ -479,6 +515,7 @@ export const Cart = ({ onCheckout, editing }: CartProps) => {
             <Button
               onClick={async () => {
                 try {
+                  setLastSubmitWasEdit(isEditingExisting);
                   setPlacing(true);
                   const result = await onCheckout(note || undefined);
                   const aheadValue = queueAhead ?? 0;

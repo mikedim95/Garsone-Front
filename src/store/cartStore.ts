@@ -5,6 +5,7 @@ import { CartItem } from '../types';
 interface CartStore {
   items: CartItem[];
   addItem: (item: CartItem) => void;
+  setItems: (items: CartItem[]) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   updateItemModifiers: (index: number, selectedModifiers: { [modifierId: string]: string }) => void;
@@ -16,6 +17,7 @@ export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      setItems: (items) => set({ items }),
       addItem: (newItem) =>
         set((state) => {
           const existing = state.items.find(

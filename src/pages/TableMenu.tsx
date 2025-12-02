@@ -22,6 +22,7 @@ import type {
   Modifier,
   ModifierOption,
   OrderResponse,
+  CartItem,
   SubmittedOrderItem,
   SubmittedOrderSummary,
 } from "@/types";
@@ -31,7 +32,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
 
-type CategorySummary = Pick<MenuCategory, "id" | "title" | "titleEn" | "titleEl">;
+type CategorySummary = Pick<
+  MenuCategory,
+  "id" | "title" | "titleEn" | "titleEl"
+>;
 type MenuModifierLink = {
   itemId: string;
   modifierId: string;
@@ -61,18 +65,23 @@ const mapCategories = (
   }, []);
 
 const isUuid = (value?: string | null) =>
-  typeof value === 'string' &&
+  typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 const buildMenuState = (
   payload: Partial<MenuStateData> & {
-    categories?: Array<{ id?: string; title?: string; titleEn?: string; titleEl?: string }>;
+    categories?: Array<{
+      id?: string;
+      title?: string;
+      titleEn?: string;
+      titleEl?: string;
+    }>;
     items?: MenuItem[];
   } = {},
   preferGreek: boolean
 ): MenuStateData => {
   const localizeText = (en?: string, el?: string, fallback?: string) =>
-    preferGreek ? el || en || fallback || '' : en || el || fallback || '';
+    preferGreek ? el || en || fallback || "" : en || el || fallback || "";
 
   const localizedModifiers = (mods?: Modifier[]) =>
     (mods ?? [])
@@ -94,9 +103,17 @@ const buildMenuState = (
       }))
     ),
     items: (payload?.items ?? []).map((item) => {
-      const name = localizeText(item.titleEn || item.name, item.titleEl, item.name || item.title);
-      const description = localizeText(item.descriptionEn, item.descriptionEl, item.description);
-      const imageUrl = item.imageUrl ?? item.image ?? '';
+      const name = localizeText(
+        item.titleEn || item.name,
+        item.titleEl,
+        item.name || item.title
+      );
+      const description = localizeText(
+        item.descriptionEn,
+        item.descriptionEl,
+        item.description
+      );
+      const imageUrl = item.imageUrl ?? item.image ?? "";
       return {
         ...item,
         name,
@@ -145,10 +162,49 @@ const isOrderEventMessage = (
 ): payload is { orderId: string } =>
   isRecord(payload) && typeof payload.orderId === "string";
 
+const mapOrderItemModifiers = (
+  orderItem?: SubmittedOrderItem,
+  menuItem?: MenuItem
+) => {
+  const selections: Record<string, string> = {};
+  if (!orderItem?.modifiers || !Array.isArray(orderItem.modifiers))
+    return selections;
+  for (const mod of orderItem.modifiers) {
+    const modId = mod?.modifierId;
+    const optId = mod?.modifierOptionId;
+    if (!modId || !optId) continue;
+    // Ensure the option still exists on the menu item before pre-filling
+    const matchingMod = menuItem?.modifiers?.find((m) => m.id === modId);
+    const matchingOpt = matchingMod?.options.find((o) => o.id === optId);
+    if (matchingMod && matchingOpt) {
+      selections[modId] = optId;
+    }
+  }
+  return selections;
+};
+
+const mapOrderToCartItems = (
+  order: SubmittedOrderSummary,
+  menuItems: MenuItem[]
+): CartItem[] => {
+  if (!order.items?.length) return [];
+  const mapped: CartItem[] = [];
+  for (const oi of order.items) {
+    const itemId = oi?.itemId || oi?.item?.id;
+    if (!itemId) continue;
+    const menuItem = menuItems.find((mi) => mi.id === itemId);
+    if (!menuItem) continue;
+    const quantity = Math.max(1, Number(oi?.quantity ?? oi?.qty ?? 1));
+    const selectedModifiers = mapOrderItemModifiers(oi, menuItem);
+    mapped.push({ item: menuItem, quantity, selectedModifiers });
+  }
+  return mapped;
+};
+
 export default function TableMenu() {
   const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
-  const preferGreek = i18n.language?.toLowerCase().startsWith('el');
+  const preferGreek = i18n.language?.toLowerCase().startsWith("el");
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -187,7 +243,8 @@ export default function TableMenu() {
   const [tableId, setTableId] = useState<string | null>(() =>
     tableParam && isUuid(tableParam) ? tableParam : null
   );
-  const activeTableId = tableId || (tableParam && isUuid(tableParam) ? tableParam : null);
+  const activeTableId =
+    tableId || (tableParam && isUuid(tableParam) ? tableParam : null);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
@@ -275,6 +332,81 @@ export default function TableMenu() {
     return 0;
   };
 
+  const stopEditingLastOrder = () => {
+    setEditingOrderId(null);
+    setEditingNote(undefined);
+  };
+
+  const startEditingLastOrder = () => {
+    if (!lastOrder?.id) {
+      toast({
+        title: t("menu.edit_order_unavailable_title", {
+          defaultValue: "No order to edit",
+        }),
+        description: t("menu.edit_order_unavailable_desc", {
+          defaultValue: "Place an order first.",
+        }),
+      });
+      return;
+    }
+    if (lastOrder.status && lastOrder.status !== "PLACED") {
+      toast({
+        title: t("menu.edit_order_locked_title", {
+          defaultValue: "Kitchen already accepted",
+        }),
+        description: t("menu.edit_order_locked_desc", {
+          defaultValue: "Edits are disabled once the kitchen starts preparing.",
+        }),
+      });
+      stopEditingLastOrder();
+      return;
+    }
+    if (!menuData?.items?.length) {
+      toast({
+        title: t("menu.load_error_title", {
+          defaultValue: "Menu still loading",
+        }),
+        description: t("menu.load_error_description", {
+          defaultValue: "Please try again in a moment.",
+        }),
+      });
+      return;
+    }
+
+    const mappedItems = mapOrderToCartItems(lastOrder, menuData.items);
+    if (!mappedItems.length) {
+      toast({
+        title: t("menu.edit_order_unavailable_title", {
+          defaultValue: "Unable to edit order",
+        }),
+        description: t("menu.edit_order_items_missing", {
+          defaultValue: "Items are no longer available to edit.",
+        }),
+      });
+      return;
+    }
+
+    const missingCount = Math.max(
+      0,
+      (lastOrder.items?.length ?? 0) - mappedItems.length
+    );
+    setItems(mappedItems);
+    setEditingOrderId(lastOrder.id);
+    setEditingNote(lastOrder.note ?? "");
+    setCartOpenSignal((s) => s + 1);
+    if (missingCount > 0) {
+      toast({
+        title: t("menu.edit_order_partial_title", {
+          defaultValue: "Some items were skipped",
+        }),
+        description: t("menu.edit_order_partial_desc", {
+          count: missingCount,
+          defaultValue: `${missingCount} item(s) are unavailable and were removed.`,
+        }),
+      });
+    }
+  };
+
   useEffect(() => {
     const hydrate = async () => {
       try {
@@ -314,13 +446,16 @@ export default function TableMenu() {
         }
 
         setMenuData(
-          buildMenuState({
-            categories: data?.categories,
-            items: data?.items,
-            modifiers: [],
-            modifierOptions: [],
-            itemModifiers: [],
-          }, preferGreek)
+          buildMenuState(
+            {
+              categories: data?.categories,
+              items: data?.items,
+              modifiers: [],
+              modifierOptions: [],
+              itemModifiers: [],
+            },
+            preferGreek
+          )
         );
         setError(null);
       } catch (err) {
@@ -336,13 +471,16 @@ export default function TableMenu() {
           title: name || `${fallbackCategoryLabel} ${idx + 1}`,
         }));
         setMenuData(
-          buildMenuState({
-            categories: fallbackCategories,
-            items: MENU_ITEMS,
-            modifiers: [],
-            modifierOptions: [],
-            itemModifiers: [],
-          }, preferGreek)
+          buildMenuState(
+            {
+              categories: fallbackCategories,
+              items: MENU_ITEMS,
+              modifiers: [],
+              modifierOptions: [],
+              itemModifiers: [],
+            },
+            preferGreek
+          )
         );
       } finally {
         setLoading(false);
@@ -365,13 +503,16 @@ export default function TableMenu() {
 
     const normalizeAndSet = (data: MenuData | null) => {
       setMenuData(
-        buildMenuState({
-          categories: data?.categories,
-          items: data?.items,
-          modifiers: [],
-          modifierOptions: [],
-          itemModifiers: [],
-        }, preferGreek)
+        buildMenuState(
+          {
+            categories: data?.categories,
+            items: data?.items,
+            modifiers: [],
+            modifierOptions: [],
+            itemModifiers: [],
+          },
+          preferGreek
+        )
       );
     };
 
@@ -560,8 +701,12 @@ export default function TableMenu() {
     if (checkoutBusy) return null;
     if (!activeTableId || !menuData) {
       toast({
-        title: t("menu.toast_error_title", { defaultValue: "Error placing order" }),
-        description: t("menu.toast_error_description", { defaultValue: "Missing table information. Please rescan the QR." }),
+        title: t("menu.toast_error_title", {
+          defaultValue: "Error placing order",
+        }),
+        description: t("menu.toast_error_description", {
+          defaultValue: "Missing table information. Please rescan the QR.",
+        }),
       });
       return null;
     }
@@ -569,6 +714,23 @@ export default function TableMenu() {
     try {
       setCheckoutBusy(true);
       const cartItems = useCartStore.getState().items;
+      if (
+        isEditingExisting &&
+        lastOrder?.status &&
+        lastOrder.status !== "PLACED"
+      ) {
+        toast({
+          title: t("menu.edit_order_locked_title", {
+            defaultValue: "Kitchen already accepted",
+          }),
+          description: t("menu.edit_order_locked_desc", {
+            defaultValue:
+              "Edits are disabled once the kitchen starts preparing.",
+          }),
+        });
+        stopEditingLastOrder();
+        return null;
+      }
 
       const orderData: CreateOrderPayload = {
         tableId: activeTableId,
@@ -588,13 +750,18 @@ export default function TableMenu() {
         const normalized = {
           ...orderFromResponse,
           tableId: orderFromResponse.tableId ?? activeTableId,
-          tableLabel: orderFromResponse.tableLabel ?? tableLabel ?? tableParam ?? activeTableId,
+          tableLabel:
+            orderFromResponse.tableLabel ??
+            tableLabel ??
+            tableParam ??
+            activeTableId,
         };
         setLastOrder(normalized);
         if (normalized.tableLabel) setTableLabel(normalized.tableLabel);
       }
       // Backend publishes realtime events; avoid duplicate client emits
       clearCart();
+      stopEditingLastOrder();
       const legacyResponse = response as OrderResponse & { orderId?: string };
       const orderId =
         orderFromResponse?.id || legacyResponse.orderId || editingOrderId || "";
@@ -616,7 +783,11 @@ export default function TableMenu() {
             defaultValue: "Scan the table QR again to start a new order.",
           }),
         });
-      } else if (error instanceof ApiError && error.status === 409 && editingOrderId) {
+      } else if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        editingOrderId
+      ) {
         setEditingOrderId(null);
         toast({
           title: t("menu.toast_edit_unavailable_title", {
@@ -653,7 +824,8 @@ export default function TableMenu() {
     const preparingTopicLegacy = `${storeSlug}/orders/prepairing`;
     const preparingTopic = `${storeSlug}/orders/preparing`;
     const readyTopic = `${storeSlug}/orders/ready`;
-    const cancelledTopic = `${storeSlug}/orders/cancelled`;
+    const cancelledTopic = `${storeSlug}/orders/canceled`;
+    const cancelledLegacyTopic = `${storeSlug}/orders/cancelled`;
     const paidTopic = `${storeSlug}/orders/paid`;
     (async () => {
       await realtimeService.connect();
@@ -694,6 +866,14 @@ export default function TableMenu() {
             : prev
         );
       });
+      realtimeService.subscribe(cancelledLegacyTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId
+            ? { ...prev, status: "CANCELLED" }
+            : prev
+        );
+      });
       realtimeService.subscribe(paidTopic, (payload) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
         setLastOrder((prev) =>
@@ -708,8 +888,10 @@ export default function TableMenu() {
       realtimeService.unsubscribe(callTopic);
       realtimeService.unsubscribe(preparingTopicLegacy);
       realtimeService.unsubscribe(preparingTopic);
+      realtimeService.unsubscribe(preparingFallbackTopic);
       realtimeService.unsubscribe(readyTopic);
       realtimeService.unsubscribe(cancelledTopic);
+      realtimeService.unsubscribe(cancelledLegacyTopic);
       realtimeService.unsubscribe(paidTopic);
     };
   }, [storeSlug, activeTableId]);
@@ -771,8 +953,8 @@ export default function TableMenu() {
               })
             : msg ||
               t("menu.call_waiter_generic_error", {
-            defaultValue: "Unable to call waiter.",
-          }),
+                defaultValue: "Unable to call waiter.",
+              }),
       });
       setCalling("idle");
     }
@@ -798,7 +980,9 @@ export default function TableMenu() {
       : null;
 
   return (
-    <div className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-hidden")}>
+    <div
+      className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-hidden")}
+    >
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <header className="bg-card/80 backdrop-blur border-b border-border sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -813,11 +997,19 @@ export default function TableMenu() {
             <div className="flex gap-2 items-center">
               <button
                 type="button"
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                aria-label={
+                  theme === "dark"
+                    ? "Switch to light theme"
+                    : "Switch to dark theme"
+                }
                 className="inline-flex items-center justify-center h-10 w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
               >
-                {theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                {theme === "dark" ? (
+                  <Moon className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
+                )}
               </button>
               <LanguageSwitcher />
               <AppBurger title={storeName}>
@@ -877,22 +1069,22 @@ export default function TableMenu() {
                       <span>{t("menu.total")}</span>
                       <span>€{computeOrderTotal(lastOrder).toFixed(2)}</span>
                     </div>
-                {canEditLastOrder && (
-                  <div className="pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-center"
-                      onClick={handleEditLastOrder}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      {t("actions.edit", { defaultValue: "Edit order" })}
-                    </Button>
+                    {canEditLastOrder && (
+                      <div className="pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-center"
+                          onClick={handleEditLastOrder}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          {t("actions.edit", { defaultValue: "Edit order" })}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ) : null}
+                ) : null}
               </AppBurger>
             </div>
           </div>
