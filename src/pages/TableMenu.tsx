@@ -7,11 +7,10 @@ import { ModifierDialog } from "@/components/menu/ModifierDialog";
 import { Cart } from "@/components/menu/Cart";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { HomeLink } from "@/components/HomeLink";
 import { AppBurger } from "./AppBurger";
 import { useCartStore } from "@/store/cartStore";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useMenuStore } from "@/store/menuStore";
 import { realtimeService } from "@/lib/realtime";
 import type {
@@ -22,6 +21,7 @@ import type {
   Modifier,
   ModifierOption,
   OrderResponse,
+  CartItem,
   SubmittedOrderItem,
   SubmittedOrderSummary,
 } from "@/types";
@@ -83,13 +83,45 @@ const isWaiterCallMessage = (payload: unknown): payload is { tableId: string; ac
 const isOrderEventMessage = (payload: unknown): payload is { orderId: string } =>
   isRecord(payload) && typeof payload.orderId === "string";
 
+const mapOrderItemModifiers = (orderItem?: SubmittedOrderItem, menuItem?: MenuItem) => {
+  const selections: Record<string, string> = {};
+  if (!orderItem?.modifiers || !Array.isArray(orderItem.modifiers)) return selections;
+  for (const mod of orderItem.modifiers) {
+    const modId = mod?.modifierId;
+    const optId = mod?.modifierOptionId;
+    if (!modId || !optId) continue;
+    // Ensure the option still exists on the menu item before pre-filling
+    const matchingMod = menuItem?.modifiers?.find((m) => m.id === modId);
+    const matchingOpt = matchingMod?.options.find((o) => o.id === optId);
+    if (matchingMod && matchingOpt) {
+      selections[modId] = optId;
+    }
+  }
+  return selections;
+};
+
+const mapOrderToCartItems = (order: SubmittedOrderSummary, menuItems: MenuItem[]): CartItem[] => {
+  if (!order.items?.length) return [];
+  const mapped: CartItem[] = [];
+  for (const oi of order.items) {
+    const itemId = oi?.itemId || oi?.item?.id;
+    if (!itemId) continue;
+    const menuItem = menuItems.find((mi) => mi.id === itemId);
+    if (!menuItem) continue;
+    const quantity = Math.max(1, Number(oi?.quantity ?? oi?.qty ?? 1));
+    const selectedModifiers = mapOrderItemModifiers(oi, menuItem);
+    mapped.push({ item: menuItem, quantity, selectedModifiers });
+  }
+  return mapped;
+};
+
 export default function TableMenu() {
   const { tableId } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
-  const { addItem, clearCart } = useCartStore();
+  const { addItem, clearCart, setItems } = useCartStore();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
@@ -109,6 +141,9 @@ export default function TableMenu() {
       return null;
     }
   });
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
+  const [cartOpenSignal, setCartOpenSignal] = useState(0);
   const [tableLabel, setTableLabel] = useState<string | null>(null);
   const [tableTranslations, setTableTranslations] = useState<Record<string, string>>({});
   const resolvedTableLabel =
@@ -123,6 +158,9 @@ export default function TableMenu() {
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || 'PLACED').toString(),
   });
+  const isEditingActive = Boolean(editingOrderId);
+  const canEditLastOrder =
+    Boolean(lastOrder?.id) && (lastOrder?.status ?? 'PLACED') === 'PLACED';
   const fallbackCategoryLabel = t('menu.category_label', { defaultValue: 'Category' });
   const offlineFallbackMessage = t('menu.load_error_offline', {
     defaultValue: 'Failed to load menu. Using offline mode.',
@@ -153,6 +191,13 @@ export default function TableMenu() {
   }, [lastOrder]);
 
   useEffect(() => {
+    if (lastOrder?.status && lastOrder.status !== 'PLACED') {
+      setEditingOrderId(null);
+      setEditingNote(undefined);
+    }
+  }, [lastOrder?.status]);
+
+  useEffect(() => {
     if (!tableId) return;
     let cancelled = false;
     (async () => {
@@ -179,6 +224,64 @@ export default function TableMenu() {
     if (typeof order.total === "number") return order.total;
     if (typeof order.totalCents === "number") return order.totalCents / 100;
     return 0;
+  };
+
+  const stopEditingLastOrder = () => {
+    setEditingOrderId(null);
+    setEditingNote(undefined);
+  };
+
+  const startEditingLastOrder = () => {
+    if (!lastOrder?.id) {
+      toast({
+        title: t('menu.edit_order_unavailable_title', { defaultValue: 'No order to edit' }),
+        description: t('menu.edit_order_unavailable_desc', { defaultValue: 'Place an order first.' }),
+      });
+      return;
+    }
+    if (lastOrder.status && lastOrder.status !== 'PLACED') {
+      toast({
+        title: t('menu.edit_order_locked_title', { defaultValue: 'Kitchen already accepted' }),
+        description: t('menu.edit_order_locked_desc', {
+          defaultValue: 'Edits are disabled once the kitchen starts preparing.',
+        }),
+      });
+      stopEditingLastOrder();
+      return;
+    }
+    if (!menuData?.items?.length) {
+      toast({
+        title: t('menu.load_error_title', { defaultValue: 'Menu still loading' }),
+        description: t('menu.load_error_description', { defaultValue: 'Please try again in a moment.' }),
+      });
+      return;
+    }
+
+    const mappedItems = mapOrderToCartItems(lastOrder, menuData.items);
+    if (!mappedItems.length) {
+      toast({
+        title: t('menu.edit_order_unavailable_title', { defaultValue: 'Unable to edit order' }),
+        description: t('menu.edit_order_items_missing', {
+          defaultValue: 'Items are no longer available to edit.',
+        }),
+      });
+      return;
+    }
+
+    const missingCount = Math.max(0, (lastOrder.items?.length ?? 0) - mappedItems.length);
+    setItems(mappedItems);
+    setEditingOrderId(lastOrder.id);
+    setEditingNote(lastOrder.note ?? "");
+    setCartOpenSignal((s) => s + 1);
+    if (missingCount > 0) {
+      toast({
+        title: t('menu.edit_order_partial_title', { defaultValue: 'Some items were skipped' }),
+        description: t('menu.edit_order_partial_desc', {
+          count: missingCount,
+          defaultValue: `${missingCount} item(s) are unavailable and were removed.`,
+        }),
+      });
+    }
   };
 
   useEffect(() => {
@@ -385,8 +488,21 @@ export default function TableMenu() {
   const handleCheckout = async (note?: string) => {
     if (!tableId || !menuData) return null;
 
+    const activeEditId = editingOrderId;
+    const isEditingExisting = Boolean(activeEditId);
+
     try {
       const cartItems = useCartStore.getState().items;
+      if (isEditingExisting && lastOrder?.status && lastOrder.status !== 'PLACED') {
+        toast({
+          title: t('menu.edit_order_locked_title', { defaultValue: 'Kitchen already accepted' }),
+          description: t('menu.edit_order_locked_desc', {
+            defaultValue: 'Edits are disabled once the kitchen starts preparing.',
+          }),
+        });
+        stopEditingLastOrder();
+        return null;
+      }
 
       const orderData: CreateOrderPayload = {
         tableId,
@@ -398,7 +514,10 @@ export default function TableMenu() {
         note: note ?? "",
       };
 
-      const response = await api.createOrder(orderData);
+      const response = isEditingExisting && activeEditId
+        ? await api.editOrder(activeEditId, orderData)
+        : await api.createOrder(orderData);
+
       const orderFromResponse = response?.order ?? null;
       if (orderFromResponse) {
         const normalized = {
@@ -414,16 +533,29 @@ export default function TableMenu() {
       }
       // Backend publishes realtime events; avoid duplicate client emits
       clearCart();
+      stopEditingLastOrder();
       const legacyResponse = response as OrderResponse & { orderId?: string };
-      const orderId = orderFromResponse?.id || legacyResponse.orderId;
+      const orderId = orderFromResponse?.id || legacyResponse.orderId || activeEditId;
       // pass tableId so the thanks page can subscribe to the ready topic
       const params = new URLSearchParams({ tableId });
       navigate(`/order/${orderId}/thanks?${params.toString()}`);
       return orderFromResponse;
     } catch (error) {
-      console.error("Failed to create order:", error);
+      console.error("Failed to submit order:", error);
+      if (error instanceof ApiError && error.status === 409) {
+        toast({
+          title: t('menu.edit_order_locked_title', { defaultValue: 'Kitchen already accepted' }),
+          description: t('menu.edit_order_locked_desc', {
+            defaultValue: 'Edits are disabled after the kitchen starts preparing.',
+          }),
+        });
+        stopEditingLastOrder();
+        return null;
+      }
       toast({
-        title: t('menu.toast_error_title', { defaultValue: 'Error placing order' }),
+        title: isEditingExisting
+          ? t('menu.toast_error_title', { defaultValue: 'Error updating order' })
+          : t('menu.toast_error_title', { defaultValue: 'Error placing order' }),
         description:
           error instanceof Error
             ? error.message
@@ -440,9 +572,11 @@ export default function TableMenu() {
     if (!tableId) return;
     let mounted = true;
     const callTopic = `${storeSlug}/waiter/call`;
-    const preparingTopic = `${storeSlug}/orders/prepairing`;
+    const preparingTopic = `${storeSlug}/orders/preparing`;
+    const preparingFallbackTopic = `${storeSlug}/orders/prepairing`;
     const readyTopic = `${storeSlug}/orders/ready`;
-    const cancelledTopic = `${storeSlug}/orders/cancelled`;
+    const cancelledTopic = `${storeSlug}/orders/canceled`;
+    const cancelledLegacyTopic = `${storeSlug}/orders/cancelled`;
     const paidTopic = `${storeSlug}/orders/paid`;
     (async () => {
       await realtimeService.connect();
@@ -452,6 +586,12 @@ export default function TableMenu() {
         else if (payload.action === 'cleared') setCalling('idle');
       });
       realtimeService.subscribe(preparingTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status: 'PREPARING' } : prev
+        );
+      });
+      realtimeService.subscribe(preparingFallbackTopic, (payload) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
         setLastOrder((prev) =>
           prev && prev.id === payload.orderId ? { ...prev, status: 'PREPARING' } : prev
@@ -469,6 +609,12 @@ export default function TableMenu() {
           prev && prev.id === payload.orderId ? { ...prev, status: 'CANCELLED' } : prev
         );
       });
+      realtimeService.subscribe(cancelledLegacyTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status: 'CANCELLED' } : prev
+        );
+      });
       realtimeService.subscribe(paidTopic, (payload) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
         setLastOrder((prev) =>
@@ -480,8 +626,10 @@ export default function TableMenu() {
       mounted = false;
       realtimeService.unsubscribe(callTopic);
       realtimeService.unsubscribe(preparingTopic);
+      realtimeService.unsubscribe(preparingFallbackTopic);
       realtimeService.unsubscribe(readyTopic);
       realtimeService.unsubscribe(cancelledTopic);
+      realtimeService.unsubscribe(cancelledLegacyTopic);
       realtimeService.unsubscribe(paidTopic);
     };
   }, [storeSlug, tableId]);
@@ -582,6 +730,29 @@ export default function TableMenu() {
                       €{computeOrderTotal(lastOrder).toFixed(2)}
                     </span>
                   </div>
+                  {canEditLastOrder ? (
+                    <div className="pt-2 space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        {isEditingActive
+                          ? t('menu.edit_order_in_progress', {
+                              defaultValue: 'Editing your order before the kitchen accepts it.',
+                            })
+                          : t('menu.edit_order_hint', {
+                              defaultValue: 'You can still make changes until the kitchen accepts.',
+                            })}
+                      </p>
+                      <Button
+                        variant={isEditingActive ? "secondary" : "default"}
+                        size="sm"
+                        className="w-full justify-center"
+                        onClick={startEditingLastOrder}
+                      >
+                        {isEditingActive
+                          ? t('menu.edit_order_continue', { defaultValue: 'Continue editing order' })
+                          : t('menu.edit_order_action', { defaultValue: 'Edit order' })}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <button
@@ -746,7 +917,13 @@ export default function TableMenu() {
         )}
       </div>
 
-      <Cart onCheckout={handleCheckout} />
+      <Cart
+        onCheckout={handleCheckout}
+        activeOrderId={editingOrderId ?? undefined}
+        activeOrderNote={editingNote}
+        openSignal={cartOpenSignal}
+        onAbandonEdit={stopEditingLastOrder}
+      />
       <ModifierDialog
         open={customizeOpen}
         item={customizeItem}

@@ -101,6 +101,14 @@ export interface SubmittedOrderItem {
   title?: string;
   name?: string;
   item?: MenuItem;
+  itemId?: string;
+  modifiers?: Array<{
+    id?: string;
+    modifierId?: string;
+    modifierOptionId?: string;
+    title?: string;
+    priceDeltaCents?: number;
+  }>;
   quantity?: number;
   qty?: number;
 }
@@ -111,10 +119,13 @@ export interface SubmittedOrderSummary {
   tableLabel?: string;
   table?: string;
   createdAt?: string;
+   updatedAt?: string;
   total?: number;
   totalCents?: number;
   items?: SubmittedOrderItem[];
   status?: OrderStatus;
+  note?: string;
+  ticketNumber?: number;
 }
 
 export interface StoreInfo {

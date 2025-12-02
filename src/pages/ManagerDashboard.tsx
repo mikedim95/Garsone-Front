@@ -259,10 +259,12 @@ export default function ManagerDashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
-        return localStorage.getItem('MANAGER_NAV_COLLAPSED') === '1';
+        const stored = localStorage.getItem('MANAGER_NAV_COLLAPSED');
+        if (stored === '0' || stored === '1') return stored === '1';
       } catch {
         // ignore
       }
+      return window.innerWidth < 640;
     }
     return false;
   });
@@ -277,7 +279,16 @@ export default function ManagerDashboard() {
     }
     return 'week';
   });
-  const [tablesCollapsed, setTablesCollapsed] = useState(false);
+  const [tablesCollapsed, setTablesCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('MANAGER_TABLES_COLLAPSED') === '1';
+      } catch {
+        // ignore
+      }
+    }
+    return false;
+  });
   const [menuCategoryMode, setMenuCategoryMode] = useState<MenuCategoryMode>('units');
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(new Map());
 
@@ -1544,6 +1555,101 @@ export default function ManagerDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
+  const activeTabLabel = useMemo(() => {
+    const labels: Record<ManagerTab, string> = {
+      economics: t('manager.economics', { defaultValue: 'Economics' }),
+      orders: t('waiter.orders', { defaultValue: 'Orders' }),
+      personnel: t('manager.personnel', { defaultValue: 'Personnel' }),
+      menu: t('menu.title', { defaultValue: 'Menu' }),
+    };
+    return labels[activeTab];
+  }, [activeTab, t]);
+
+  const econRangeLabel = useMemo(() => {
+    const map: Record<EconRange, string> = {
+      today: t('date_range.today', { defaultValue: 'Today' }),
+      week: t('date_range.week', { defaultValue: 'Week' }),
+      month: t('date_range.month', { defaultValue: 'Month' }),
+    };
+    return map[econRange];
+  }, [econRange, t]);
+
+  const focusMenuPanel = useCallback(() => {
+    setActiveTab('menu');
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        document.getElementById('manager-menu-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  }, []);
+
+  const NavContent = () => (
+    <>
+      <div className="px-4 py-5 border-b border-border/60 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            {t('manager.nav_title', { defaultValue: 'Dashboard' })}
+          </p>
+          <p className="text-sm font-medium text-foreground">
+            {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="sm:hidden"
+            onClick={() => setSidebarCollapsed(true)}
+            aria-label={t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden sm:flex"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </Button>
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
+        <TabsList className="flex flex-col w-full text-xs sm:text-sm gap-2">
+          <TabsTrigger
+            className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+            value="economics"
+          >
+            <BarChart2 className="h-4 w-4" />
+            <span>{t('manager.economics', { defaultValue: 'Economics' })}</span>
+          </TabsTrigger>
+          <TabsTrigger
+            className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+            value="orders"
+          >
+            <ListChecks className="h-4 w-4" />
+            <span>{t('waiter.orders', { defaultValue: 'Orders' })}</span>
+          </TabsTrigger>
+          <TabsTrigger
+            className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+            value="personnel"
+          >
+            <Users className="h-4 w-4" />
+            <span>{t('manager.personnel', { defaultValue: 'Personnel' })}</span>
+          </TabsTrigger>
+          <TabsTrigger
+            className="w-full justify-start px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors inline-flex items-center gap-2"
+            value="menu"
+          >
+            <UtensilsCrossed className="h-4 w-4" />
+            <span>{t('menu.title')}</span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
+    </>
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -1552,6 +1658,15 @@ export default function ManagerDashboard() {
       // ignore
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('MANAGER_TABLES_COLLAPSED', tablesCollapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [tablesCollapsed]);
 
   return (
     <div className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
@@ -1614,12 +1729,22 @@ export default function ManagerDashboard() {
       />
 
       <div className="flex-1 flex min-h-0 relative">
+        {!sidebarCollapsed && (
+          <button
+            type="button"
+            className="sm:hidden fixed inset-0 z-10 bg-background/70"
+            aria-label={t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
+            onClick={() => setSidebarCollapsed(true)}
+          />
+        )}
         {sidebarCollapsed && (
-          <div className="absolute inset-x-4 top-4 z-20 flex justify-center sm:justify-start pointer-events-none">
+          <div className="fixed top-16 left-4 z-30 pointer-events-none">
             <button
               type="button"
               onClick={() => setSidebarCollapsed(false)}
-              className="pointer-events-auto flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start rounded-full border border-border/70 bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow"
+              title={t('manager.show_navigation', { defaultValue: 'Show menu' })}
+              aria-label={t('manager.show_navigation', { defaultValue: 'Show menu' })}
+              className="pointer-events-auto flex items-center gap-2 rounded-full border border-border/70 bg-card/95 px-4 py-2 text-xs font-medium text-foreground shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
             >
               <PanelLeftOpen className="h-4 w-4" />
               {t('manager.show_navigation', { defaultValue: 'Show menu' })}
@@ -1633,8 +1758,11 @@ export default function ManagerDashboard() {
         >
           <aside
             className={clsx(
-              'hidden sm:flex flex-col bg-card/80 border-r border-border/60 transition-[width,opacity,transform] duration-200 ease-in-out',
-              sidebarCollapsed ? 'w-0 opacity-0 -translate-x-4 pointer-events-none' : 'w-64'
+              'flex flex-col bg-card/80 border-border/60 transition-[transform,opacity,width] duration-200 ease-in-out',
+              'fixed top-[4.5rem] bottom-4 left-4 right-4 w-auto rounded-2xl shadow-2xl border z-20 sm:static sm:top-auto sm:bottom-auto sm:left-auto sm:right-auto sm:w-64 sm:rounded-none sm:shadow-none sm:border-r',
+              sidebarCollapsed
+                ? '-translate-x-full opacity-0 pointer-events-none sm:-translate-x-4 sm:w-0 sm:opacity-0 sm:pointer-events-none'
+                : 'translate-x-0 opacity-100 pointer-events-auto sm:translate-x-0 sm:w-64 sm:opacity-100 sm:pointer-events-auto'
             )}
           >
             <div className="px-4 py-5 border-b border-border/60 flex items-center justify-between gap-2">
@@ -1646,14 +1774,26 @@ export default function ManagerDashboard() {
                   {t('manager.analytics_overview', { defaultValue: 'Analytics' })}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSidebarCollapsed((prev) => !prev)}
-                aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-              >
-                {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="sm:hidden"
+                  onClick={() => setSidebarCollapsed(true)}
+                  aria-label={t('manager.hide_navigation', { defaultValue: 'Hide menu' })}
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden sm:flex"
+                  onClick={() => setSidebarCollapsed((prev) => !prev)}
+                  aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+                >
+                  {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
               <TabsList className="flex flex-col w-full text-xs sm:text-sm gap-2">
@@ -1689,54 +1829,20 @@ export default function ManagerDashboard() {
             </div>
           </aside>
 
-          {/* Mobile tabs fallback */}
-          {!sidebarCollapsed && (
-            <div className="w-full border-b border-border/60 bg-card/80 sm:hidden">
-              <div className="w-full max-w-7xl mx-auto px-3 py-2">
-                <TabsList className="flex flex-col w-full text-xs gap-2">
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="economics"
-                  >
-                    {t('manager.economics', { defaultValue: 'Economics' })}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="orders"
-                  >
-                    {t('waiter.orders', { defaultValue: 'Orders' })}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="personnel"
-                  >
-                    {t('manager.personnel', { defaultValue: 'Personnel' })}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    className="w-full justify-center rounded-lg px-3 py-2 font-medium text-muted-foreground bg-background/60 border border-transparent hover:border-border/70 hover:bg-background hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary/60 shadow-sm transition-colors whitespace-nowrap"
-                    value="menu"
-                  >
-                    {t('menu.title')}
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-          )}
+          {/* Mobile tabs fallback removed as requested */}
 
           <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-8 space-y-6 sm:space-y-8">
 
           <TabsContent value="economics" className="space-y-6">
             <Card className="p-4 sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                <p className="text-sm text-muted-foreground">
-                  {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
-                </p>
-                <div className="inline-flex w-full sm:w-auto rounded-md border bg-background overflow-hidden">
-                  {([
-                    { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
-                    { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
-                    { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
-                  ] as const).map((opt) => (
+              <div className="flex flex-col gap-3 mb-4">
+                <div className="w-full flex justify-center">
+                  <div className="inline-flex rounded-md border bg-background overflow-hidden">
+                    {([
+                      { key: 'today', label: t('date_range.today', { defaultValue: 'Today' }) },
+                      { key: 'week', label: t('date_range.week', { defaultValue: 'Week' }) },
+                      { key: 'month', label: t('date_range.month', { defaultValue: 'Month' }) },
+                    ] as const).map((opt) => (
                     <button
                       key={opt.key}
                       onClick={() => setEconRange(opt.key)}
@@ -1749,8 +1855,12 @@ export default function ManagerDashboard() {
                     >
                       {opt.label}
                     </button>
-                  ))}
+                    ))}
+                  </div>
                 </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  {t('manager.finance_kpis', { defaultValue: 'Finance KPIs' })}
+                </p>
               </div>
               <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                 <div>
@@ -1787,33 +1897,50 @@ export default function ManagerDashboard() {
                   </h3>
                 </div>
               </div>
-              <div className="h-72 flex items-center justify-center">
-                <div className="h-full w-full max-w-4xl px-4 mx-auto">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={revenueTimeline} margin={{ top: 16, right: 24, bottom: 8, left: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={2}
-                        name={t('manager.revenue_eur', { defaultValue: 'Revenue (€)' })}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="prevRevenue"
-                        stroke="hsl(var(--muted-foreground))"
-                        strokeDasharray="4 4"
-                        name={t('manager.prior_period_eur', { defaultValue: 'Prior period (€)' })}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+              {revenueTimeline.length ? (
+                <div className="h-72 flex items-center justify-center">
+                  <div className="h-full w-full md:w-[80%] xl:w-[60%] max-w-4xl px-4 mx-auto">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={revenueTimeline} margin={{ top: 16, right: 24, bottom: 8, left: 24 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis allowDataOverflow />
+                        <Tooltip />
+                        <Legend layout="horizontal" verticalAlign="bottom" height={36} />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="hsl(var(--primary))"
+                          strokeWidth={2}
+                          name={t('manager.revenue_eur', { defaultValue: 'Revenue (€)' })}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="prevRevenue"
+                          stroke="hsl(var(--muted-foreground))"
+                          strokeDasharray="4 4"
+                          name={t('manager.prior_period_eur', { defaultValue: 'Prior period (€)' })}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="h-72 flex flex-col items-center justify-center gap-4 text-center text-muted-foreground">
+                  <FileText className="h-10 w-10" aria-hidden="true" />
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {t('manager.no_revenue_data', { defaultValue: 'No revenue data in this period.' })}
+                    </p>
+                    <p className="text-sm">
+                      {t('manager.try_broader_range', { defaultValue: 'Try a broader range to compare trends.' })}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setEconRange('month')}>
+                    {t('manager.view_month', { defaultValue: 'View month to date' })}
+                  </Button>
+                </div>
+              )}
             </Card>
 
             <Card className="p-4 sm:p-6">
@@ -2993,7 +3120,9 @@ export default function ManagerDashboard() {
               </>
             )}
 
-            <ManagerMenuPanel />
+            <div id="manager-menu-panel">
+              <ManagerMenuPanel />
+            </div>
           </TabsContent>
           </div>
         </Tabs>

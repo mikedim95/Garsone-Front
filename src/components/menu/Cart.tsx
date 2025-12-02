@@ -29,9 +29,13 @@ const getItemName = (item: { name?: string; title?: string }) =>
 
 interface CartProps {
   onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;
+  activeOrderId?: string;
+  activeOrderNote?: string;
+  openSignal?: number;
+  onAbandonEdit?: () => void;
 }
 
-export const Cart = ({ onCheckout }: CartProps) => {
+export const Cart = ({ onCheckout, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
   const { t } = useTranslation();
   const { items, removeItem, getTotal } = useCartStore();
 
@@ -44,6 +48,7 @@ export const Cart = ({ onCheckout }: CartProps) => {
   const [queueAhead, setQueueAhead] = useState<number | null>(null);
   const [queueLoading, setQueueLoading] = useState(false);
   const [submittedAhead, setSubmittedAhead] = useState<number | null>(null);
+  const [lastSubmitWasEdit, setLastSubmitWasEdit] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
 
   const [modifyOpen, setModifyOpen] = useState(false);
@@ -52,6 +57,19 @@ export const Cart = ({ onCheckout }: CartProps) => {
   const [qtyIndex, setQtyIndex] = useState<number | null>(null);
   const [qtyValue, setQtyValue] = useState<number>(1);
   const [cartOpen, setCartOpen] = useState(false);
+  const isEditingExisting = Boolean(activeOrderId);
+
+  useEffect(() => {
+    if (typeof openSignal === 'number' && openSignal > 0) {
+      setCartOpen(true);
+    }
+  }, [openSignal]);
+
+  useEffect(() => {
+    if (activeOrderId) {
+      setNote(activeOrderNote ?? '');
+    }
+  }, [activeOrderId, activeOrderNote]);
 
   useEffect(() => {
     let active = true;
@@ -99,6 +117,25 @@ export const Cart = ({ onCheckout }: CartProps) => {
           <DialogHeader>
             <DialogTitle>{t('menu.cart')}</DialogTitle>
           </DialogHeader>
+          {isEditingExisting && (
+            <div className="mx-1 mt-1 mb-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-primary">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  {t('menu.edit_order_banner', { defaultValue: 'Updating your order before the kitchen accepts it.' })}
+                </span>
+                {onAbandonEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-primary"
+                    onClick={() => onAbandonEdit()}
+                  >
+                    {t('menu.edit_order_cancel', { defaultValue: 'Start new' })}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto px-1 py-2 space-y-2">
             {items.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">Cart is empty</p>
@@ -217,7 +254,9 @@ export const Cart = ({ onCheckout }: CartProps) => {
                     className="w-full py-6 text-base rounded-2xl shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
                     onClick={() => setReviewOpen(true)}
                   >
-                    {t('menu.checkout')}
+                    {isEditingExisting
+                      ? t('menu.checkout_edit', { defaultValue: 'Review changes' })
+                      : t('menu.checkout')}
                   </Button>
                 </div>
               </>
@@ -257,7 +296,11 @@ export const Cart = ({ onCheckout }: CartProps) => {
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Review your order</DialogTitle>
+            <DialogTitle>
+              {isEditingExisting
+                ? t('menu.review_update_title', { defaultValue: 'Review your updates' })
+                : t('menu.review_order_title', { defaultValue: 'Review your order' })}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
             <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center justify-between">
@@ -313,6 +356,7 @@ export const Cart = ({ onCheckout }: CartProps) => {
             <Button
               onClick={async () => {
                 try {
+                  setLastSubmitWasEdit(isEditingExisting);
                   setPlacing(true);
                   const result = await onCheckout(note || undefined);
                   const aheadValue = queueAhead ?? 0;
@@ -332,7 +376,13 @@ export const Cart = ({ onCheckout }: CartProps) => {
               className="inline-flex items-center gap-2"
             >
               {placing && <span className="animate-spin h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full" />}
-              {placing ? 'Placing…' : 'Place order'}
+              {placing
+                ? isEditingExisting
+                  ? t('menu.updating_order', { defaultValue: 'Updating…' })
+                  : t('menu.placing_order', { defaultValue: 'Placing…' })
+                : isEditingExisting
+                  ? t('menu.update_order', { defaultValue: 'Update order' })
+                  : t('menu.place_order', { defaultValue: 'Place order' })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -351,9 +401,16 @@ export const Cart = ({ onCheckout }: CartProps) => {
               <CheckCircle2 className="h-6 w-6" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Order submitted</h2>
+              <h2 className="text-lg font-semibold text-foreground">
+                {lastSubmitWasEdit
+                  ? t('menu.order_updated_title', { defaultValue: 'Order updated' })
+                  : t('menu.order_submitted_title', { defaultValue: 'Order submitted' })}
+              </h2>
               <p className="text-sm text-muted-foreground">
-                Your order is on its way to the kitchen. Priority number: {submittedAhead ?? queueAhead ?? 0}
+                {lastSubmitWasEdit
+                  ? t('menu.order_updated_desc', { defaultValue: 'Your changes were sent to the kitchen.' })
+                  : t('menu.order_submitted_desc', { defaultValue: 'Your order is on its way to the kitchen.' })}{' '}
+                {t('menu.order_priority_label', { defaultValue: 'Priority number:' })} {submittedAhead ?? queueAhead ?? 0}
               </p>
             </div>
           </div>
