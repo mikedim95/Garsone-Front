@@ -544,6 +544,15 @@
     }
   }
 
+  @keyframes wiggle {
+    0%, 100% { 
+      transform: rotate(-15deg); 
+    }
+    50% { 
+      transform: rotate(15deg); 
+    }
+  }
+
   .glass {
     background: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(20px);
@@ -629,4 +638,35 @@
 .markdown-preview ul,
 .markdown-preview ol {
   @apply my-4 ml-6;
+}
+
+body {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Stop Radix scroll lock from adding phantom gutter on desktop (burger menu jump) */
+html body[data-scroll-locked]:not(:root) {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+.with-scroll-bars-hidden:not(:root) {
+  padding-right: 0 !important;
+}
+
+/* Hide stray currency toggle inside revenue-by-category card */
+.revenue-category-card button {
+  display: none !important;
+}
+
+/* Ensure dialogs don't cause layout shifts */
+[data-radix-scroll-area-viewport] {
+  scrollbar-gutter: stable;
 }

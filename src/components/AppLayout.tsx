@@ -1,55 +1,22 @@
-import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
+import { AnimatedMockup } from './landing/AnimatedMockup';
+import { Features } from './landing/Features';
+import { Testimonials } from './landing/Testimonials';
+import { DemoQRGrid } from './landing/DemoQRGrid';
 import { realtimeService } from '@/lib/realtime';
-
-const AnimatedMockupLazy = lazy(() =>
-  import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
-);
-const FeaturesLazy = lazy(() =>
-  import('./landing/Features').then((mod) => ({ default: mod.Features }))
-);
-const TestimonialsLazy = lazy(() =>
-  import('./landing/Testimonials').then((mod) => ({ default: mod.Testimonials }))
-);
-const DemoQRGridLazy = lazy(() =>
-  import('./landing/DemoQRGrid').then((mod) => ({ default: mod.DemoQRGrid }))
-);
+import { api } from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
 
 const DeferredSection: React.FC<{
   children: React.ReactNode;
   rootMargin?: string;
-}> = ({ children, rootMargin = '200px' }) => {
-  const [visible, setVisible] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (visible) return;
-    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
-      setVisible(true);
-      return;
-    }
-
-    const node = ref.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setVisible(true);
-            observer.disconnect();
-          }
-        });
-      },
-      { rootMargin }
-    );
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [visible, rootMargin]);
-
-  return <div ref={ref}>{visible ? children : null}</div>;
+  forceVisible?: boolean;
+  onVisible?: () => void;
+  placeholderHeight?: number;
+}> = ({ children, placeholderHeight }) => {
+  return <div style={placeholderHeight ? { minHeight: placeholderHeight } : undefined}>{children}</div>;
 };
 
 declare global {
@@ -59,6 +26,127 @@ declare global {
 }
 
 const AppLayout: React.FC = () => {
+  const demoRef = useRef<HTMLDivElement | null>(null);
+  const [forceDemoVisible, setForceDemoVisible] = useState(false);
+  const [liveUrl, setLiveUrl] = useState<string | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const setOfflineFlag = (enabled: boolean) => {
+    try {
+      localStorage.setItem('OFFLINE', enabled ? '1' : '0');
+    } catch (error) {
+      console.warn('Failed to toggle OFFLINE flag', error);
+    }
+  };
+
+  const getBaseOrigin = () => {
+    const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN;
+    if (envOrigin && envOrigin.trim().length > 0) {
+      return envOrigin.replace(/\/$/, '');
+    }
+    if (typeof window !== 'undefined') {
+      const { protocol, hostname, port } = window.location;
+      const portPart = port ? `:${port}` : '';
+      return `${protocol}//${hostname}${portPart}`;
+    }
+    return 'http://localhost:8080';
+  };
+
+  const fetchLiveUrl = useCallback(
+    async (opts?: { forceOnline?: boolean }) => {
+      setLiveLoading(true);
+      if (opts?.forceOnline) {
+        setOfflineFlag(false);
+      }
+      try {
+        const data = await api.getTables();
+        const actives = (data?.tables || []).filter((t) => t.active);
+        if (actives.length > 0) {
+          const random = actives[Math.floor(Math.random() * actives.length)];
+          const origin = getBaseOrigin();
+          const url = `${origin}/table/${random.id}`;
+          setLiveUrl(url);
+          return url;
+        }
+      } catch (error) {
+        console.warn('Failed to fetch tables for landing live link', error);
+      } finally {
+        setLiveLoading(false);
+      }
+      return null;
+    },
+    []
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    fetchLiveUrl().finally(() => {
+      if (!mounted) return;
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [fetchLiveUrl]);
+
+  const scrollToDemoQr = () => {
+    setForceDemoVisible(true);
+
+    const performScroll = (attempt = 0, lastRect?: { height: number; top: number }) => {
+      if (typeof window === 'undefined') return;
+      const wrapper = demoRef.current;
+      if (!wrapper) return;
+
+      const targetNode = wrapper.querySelector('[data-section="demo-qr"]') as HTMLElement | null;
+      const liveQrAnchor = wrapper.querySelector('[data-live-qr-anchor]') as HTMLElement | null;
+      const anchor =
+        (liveQrAnchor?.querySelector('svg') as Element | null) ||
+        liveQrAnchor ||
+        (targetNode?.querySelector('img') as Element | null) ||
+        (targetNode?.querySelector('svg') as Element | null) ||
+        targetNode ||
+        wrapper;
+
+      const rect = anchor.getBoundingClientRect();
+      const nav = document.querySelector('nav');
+      const navHeight = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 0;
+      const target = Math.max(0, rect.top + window.scrollY - navHeight - 24);
+
+      window.scrollTo({ top: target, behavior: 'smooth' });
+      // retry while layout is changing (lazy images loading)
+      const heightChanged = !lastRect || Math.abs(rect.height - lastRect.height) > 8;
+      const topChanged = !lastRect || Math.abs(rect.top - lastRect.top) > 8;
+      if (attempt < 8 && (heightChanged || topChanged)) {
+        setTimeout(() => performScroll(attempt + 1, { height: rect.height, top: rect.top }), 140);
+      }
+    };
+
+    requestAnimationFrame(() => performScroll(0));
+  };
+
+  const openLiveStore = async () => {
+    const url = await fetchLiveUrl({ forceOnline: true });
+    const target = url || liveUrl;
+    if (target) {
+      window.open(target, '_blank', 'noopener');
+    }
+  };
+
+  const startOfflineDemo = async () => {
+    setOfflineFlag(true);
+    try {
+      const data = await api.getTables();
+      const first = data?.tables?.[0];
+      if (first?.id) {
+        navigate(`/table/${first.id}`);
+        return;
+      }
+    } catch (error) {
+      console.warn('Failed to get tables for offline demo', error);
+    }
+    navigate('/table/T1');
+  };
+
   // Do not connect to realtime streams from landing; ensure any active connection is closed.
   useEffect(() => {
     try {
@@ -69,18 +157,6 @@ const AppLayout: React.FC = () => {
     if (typeof window !== 'undefined') {
       window.__OF_LANDING__ = true;
     }
-    try {
-      realtimeService.disconnect();
-    } catch (error) {
-      console.warn('Failed to disconnect realtime service', error);
-    }
-    if (typeof window !== 'undefined') {
-      try {
-        window.dispatchEvent(new CustomEvent<{ connected: boolean }>('realtime-status', { detail: { connected: false } }));
-      } catch (error) {
-        console.warn('Failed to dispatch realtime status', error);
-      }
-    }
     return () => {
       if (typeof window !== 'undefined' && window.__OF_LANDING__) {
         delete window.__OF_LANDING__;
@@ -90,27 +166,26 @@ const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
-      <Hero />
-      <DeferredSection>
-        <Suspense fallback={<div className="py-16" />}>
-          <AnimatedMockupLazy />
-        </Suspense>
+      <Hero
+        onScanQr={scrollToDemoQr}
+        onOpenLive={openLiveStore}
+        onOfflineDemo={startOfflineDemo}
+        liveReady={!!liveUrl && !liveLoading}
+      />
+      <DeferredSection placeholderHeight={720}>
+        <AnimatedMockup />
       </DeferredSection>
-      <DeferredSection>
-        <Suspense fallback={<div className="py-24" />}>
-          <FeaturesLazy />
-        </Suspense>
+      <DeferredSection placeholderHeight={640}>
+        <Features />
       </DeferredSection>
-      <DeferredSection>
-        <Suspense fallback={<div className="py-20" />}>
-          <TestimonialsLazy />
-        </Suspense>
+      <DeferredSection placeholderHeight={600}>
+        <Testimonials />
       </DeferredSection>
-      <DeferredSection>
-        <Suspense fallback={<div className="py-24" />}>
-          <DemoQRGridLazy />
-        </Suspense>
-      </DeferredSection>
+      <div id="demo-qr" ref={demoRef} className="scroll-mt-24">
+        <DeferredSection forceVisible={forceDemoVisible} placeholderHeight={1200}>
+          <DemoQRGrid liveUrl={liveUrl ?? undefined} />
+        </DeferredSection>
+      </div>
       <footer className="relative bg-foreground text-background py-20 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-accent opacity-20" />
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full mix-blend-overlay filter blur-3xl" />

@@ -16,6 +16,7 @@ import type {
   ModifierInput,
   ModifierOptionPayload,
   ModifierOptionUpdatePayload,
+  QRTile,
   OkResponse,
   OrderQueueSummary,
   OrderResponse,
@@ -61,6 +62,8 @@ export class ApiError extends Error {
   }
 }
 
+const withVisit = <T extends Record<string, any>>(payload: T): T => payload;
+
 type ManagerTableCreateInput = { label: string; isActive?: boolean };
 type ManagerTableUpdateInput = Partial<ManagerTableCreateInput>;
 type OrderStatusUpdateOptions = { cancelReason?: string; skipMqtt?: boolean };
@@ -69,6 +72,8 @@ type UpdateWaiterPayload = Partial<CreateWaiterPayload>;
 type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
 type ModifierUpdatePayload = Partial<Modifier>;
 type EditOrderPayload = CreateOrderPayload;
+type QRTileUpdatePayload = { tableId?: string | null; isActive?: boolean; label?: string };
+type BulkTilePayload = { count: number; labelPrefix?: string };
 
 async function fetchApi<T>(
   endpoint: string,
@@ -172,37 +177,48 @@ export const api = {
   // Menu & orders (public device endpoints for create + call waiter)
   getMenu: (): Promise<MenuData> =>
     isOffline() ? devMocks.getMenu() : fetchApi<MenuData>("/menu"),
-  createOrder: (data: CreateOrderPayload): Promise<OrderResponse> =>
-    isOffline()
+  createOrder: (data: CreateOrderPayload): Promise<OrderResponse> => {
+    const visitHeaders = data.visit ? { "x-table-visit": data.visit } : undefined;
+    return isOffline()
       ? devMocks.createOrder(data)
       : fetchApi<OrderResponse>("/orders", {
           method: "POST",
-          body: JSON.stringify(data),
-        }),
-  editOrder: (orderId: string, data: EditOrderPayload): Promise<OrderResponse> =>
-    isOffline()
+          body: JSON.stringify(withVisit(data)),
+          ...(visitHeaders ? { headers: visitHeaders } : {}),
+        });
+  },
+  editOrder: (orderId: string, data: EditOrderPayload): Promise<OrderResponse> => {
+    const visitHeaders = (data as any)?.visit ? { "x-table-visit": (data as any).visit } : undefined;
+    return isOffline()
       ? devMocks.createOrder(data)
       : fetchApi<OrderResponse>(`/orders/${orderId}`, {
           method: "PATCH",
-          body: JSON.stringify(data),
-        }),
+          body: JSON.stringify(withVisit(data)),
+          ...(visitHeaders ? { headers: visitHeaders } : {}),
+        });
+  },
   printOrder: (orderId: string) => fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
-  callWaiter: (tableId: string): Promise<OkResponse> =>
+  callWaiter: (tableId: string, visit?: string): Promise<OkResponse> =>
     isOffline()
       ? devMocks.callWaiter(tableId)
       : fetchApi<OkResponse>("/call-waiter", {
           method: "POST",
-          body: JSON.stringify({ tableId }),
+          body: JSON.stringify(withVisit({ tableId, ...(visit ? { visit } : {}) })),
+          ...(visit ? { headers: { "x-table-visit": visit } } : {}),
         }),
   getOrderQueueSummary: (): Promise<OrderQueueSummary> =>
     isOffline()
       ? devMocks.getOrderQueueSummary()
       : fetchApi<OrderQueueSummary>("/orders/queue"),
   // Authenticated orders API
-  getOrders: (params?: { status?: string; take?: number }): Promise<OrdersResponse> => {
+  getOrders: (params?: { status?: string; take?: number; tableIds?: string[] }): Promise<OrdersResponse> => {
     const q: string[] = [];
     if (params?.status) q.push(`status=${encodeURIComponent(params.status)}`);
     if (params?.take) q.push(`take=${params.take}`);
+    if (params?.tableIds?.length) {
+      const ids = params.tableIds.map((id) => encodeURIComponent(id)).join(',');
+      q.push(`tableIds=${ids}`);
+    }
     const query = q.length ? `?${q.join('&')}` : "";
     if (isOffline()) return devMocks.getOrders(params);
     return fetchApi<OrdersResponse>(`/orders${query}`);
@@ -278,6 +294,8 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
+  getItemDetail: (id: string): Promise<{ item?: ManagerItemSummary; modifiers: Modifier[]; links: Array<{ modifierId: string; isRequired: boolean }> }> =>
+    fetchApi(`/manager/items/${id}/detail`),
   updateItem: (id: string, data: ManagerItemUpdatePayload): Promise<{ item: ManagerItemSummary | undefined }> =>
     isOffline()
       ? devMocks.updateItem(id, data)
@@ -304,7 +322,7 @@ export const api = {
         }),
   updateModifier: (id: string, data: ModifierUpdatePayload): Promise<{ modifier?: Modifier }> =>
     isOffline()
-      ? devMocks.updateModifier(id, data)
+      ? devMocks.updateModifier(id, data as any)
       : fetchApi<{ modifier?: Modifier }>(`/manager/modifiers/${id}`, {
           method: "PATCH",
           body: JSON.stringify(data),
@@ -361,12 +379,12 @@ export const api = {
     isOffline()
       ? devMocks.listCategories()
       : fetchApi<{ categories: MenuCategory[] }>('/manager/categories'),
-  createCategory: (title: string, sortOrder?: number): Promise<{ category: MenuCategory }> =>
+  createCategory: (titleEn: string, titleEl: string, sortOrder?: number): Promise<{ category: MenuCategory }> =>
     isOffline()
-      ? devMocks.createCategory(title, sortOrder)
+      ? devMocks.createCategory(titleEn, sortOrder)
       : fetchApi<{ category: MenuCategory }>('/manager/categories', {
           method: 'POST',
-          body: JSON.stringify({ title, sortOrder }),
+          body: JSON.stringify({ titleEn, titleEl, sortOrder }),
         }),
   updateCategory: (id: string, data: Partial<CategoryPayload>): Promise<{ category?: MenuCategory }> =>
     isOffline()
@@ -379,4 +397,53 @@ export const api = {
     isOffline()
       ? devMocks.deleteCategory(id)
       : fetchApi<OkResponse>(`/manager/categories/${id}`, { method: 'DELETE' }),
+
+  // Architect / admin: QR tiles + stores
+  adminListStores: (): Promise<{ stores: StoreInfo[] }> =>
+    isOffline()
+      ? devMocks.adminListStores()
+      : fetchApi<{ stores: StoreInfo[] }>('/admin/stores'),
+  adminListStoreTables: (storeId: string): Promise<{ tables: ManagerTableSummary[] }> =>
+    isOffline()
+      ? devMocks.adminListStoreTables(storeId)
+      : fetchApi<{ tables: ManagerTableSummary[] }>(`/admin/stores/${storeId}/tables`),
+  adminListQrTiles: (storeId: string): Promise<{ store?: StoreInfo; tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminListQrTiles(storeId)
+      : fetchApi<{ store?: StoreInfo; tiles: QRTile[] }>(`/admin/stores/${storeId}/qr-tiles`),
+  adminBulkCreateQrTiles: (storeId: string, data: BulkTilePayload): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminBulkCreateQrTiles(storeId, data)
+      : fetchApi<{ tiles: QRTile[] }>(`/admin/stores/${storeId}/qr-tiles/bulk`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+  adminUpdateQrTile: (id: string, data: QRTileUpdatePayload): Promise<{ tile: QRTile }> =>
+    isOffline()
+      ? devMocks.adminUpdateQrTile(id, data)
+      : fetchApi<{ tile: QRTile }>(`/admin/qr-tiles/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+  adminDeleteQrTile: (id: string): Promise<OkResponse> =>
+    isOffline()
+      ? devMocks.adminDeleteQrTile(id)
+      : fetchApi<OkResponse>(`/admin/qr-tiles/${id}`, { method: 'DELETE' }),
+  resolveQrTile: (publicCode: string): Promise<any> =>
+    isOffline()
+      ? devMocks.resolveQrTile(publicCode)
+      : fetchApi(`/q/${encodeURIComponent(publicCode)}`),
+
+  // Manager: QR tiles binding for own store (uses admin endpoints with storeId)
+  managerListQrTiles: (storeId: string): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminListQrTiles(storeId)
+      : fetchApi<{ tiles: QRTile[] }>(`/admin/stores/${storeId}/qr-tiles`),
+  managerUpdateQrTile: (id: string, data: QRTileUpdatePayload): Promise<{ tile: QRTile }> =>
+    isOffline()
+      ? devMocks.adminUpdateQrTile(id, data)
+      : fetchApi<{ tile: QRTile }>(`/admin/qr-tiles/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
 };

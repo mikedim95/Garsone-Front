@@ -5,19 +5,30 @@ import type { CreateOrderPayload, CreateOrderPayloadItem } from "@/types";
 
 type Id = string;
 
-type Category = { id: Id; title: string; sortOrder: number };
-type Item = { id: Id; title: string; description?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
-type ModifierOption = { id: Id; title: string; priceDeltaCents: number; sortOrder: number };
-type Modifier = { id: Id; title: string; minSelect: number; maxSelect: number | null; options: ModifierOption[] };
+type Category = { id: Id; title: string; titleEn?: string; titleEl?: string; sortOrder: number };
+type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
+type ModifierOption = { id: Id; title: string; titleEn?: string; titleEl?: string; label: string; priceDeltaCents: number; sortOrder: number };
+type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; name: string; minSelect: number; maxSelect: number | null; isAvailable?: boolean; options: ModifierOption[] };
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
 type Table = { id: Id; label: string; isActive: boolean };
 type Waiter = { id: Id; email: string; displayName: string; password?: string };
 type WaiterAssignment = { waiterId: Id; tableId: Id };
 type OrderItem = { itemId: Id; qty: number; modifiers?: Array<{ modifierId: Id; optionIds: Id[] }> };
-type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'READY'|'SERVED'|'CANCELLED'; createdAt: number; items: OrderItem[]; note?: string };
+type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'READY'|'SERVED'|'PAID'|'CANCELLED'; createdAt: number; items: OrderItem[]; note?: string };
+
+type QRTileRecord = {
+  id: Id;
+  storeId: Id;
+  publicCode: string;
+  label?: string | null;
+  tableId?: Id | null;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
 
 type Db = {
-  store: { id: string; name: string };
+  store: { id: string; name: string; slug?: string };
   categories: Category[];
   items: Item[];
   modifiers: Modifier[];
@@ -26,6 +37,7 @@ type Db = {
   orders: Order[];
   waiters: Waiter[];
   waiterAssignments: WaiterAssignment[];
+  qrTiles: QRTileRecord[];
 };
 
 const LS_KEY = 'devMocks';
@@ -114,6 +126,44 @@ const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
     };
   });
 
+const normalizeQrTileRecord = (tile: unknown, storeId: string): QRTileRecord => {
+  if (!isRecord(tile)) {
+    const now = Date.now();
+    return {
+      id: uid('qr'),
+      storeId,
+      publicCode: uid('qr').replace(/[^a-zA-Z0-9]/g, '').slice(-10).toUpperCase(),
+      label: null,
+      tableId: null,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  const id = typeof tile.id === 'string' ? tile.id : uid('qr');
+  const publicCode =
+    typeof (tile as any).publicCode === 'string' && (tile as any).publicCode.trim().length > 0
+      ? (tile as any).publicCode
+      : id.slice(-8).toUpperCase();
+  const label = typeof (tile as any).label === 'string' ? (tile as any).label : null;
+  const tableId = typeof (tile as any).tableId === 'string' ? (tile as any).tableId : null;
+  const isActive = typeof (tile as any).isActive === 'boolean' ? (tile as any).isActive : true;
+  const createdAt =
+    typeof (tile as any).createdAt === 'number' ? (tile as any).createdAt : Date.now();
+  const updatedAt =
+    typeof (tile as any).updatedAt === 'number' ? (tile as any).updatedAt : createdAt;
+  return {
+    id,
+    storeId: typeof (tile as any).storeId === 'string' ? (tile as any).storeId : storeId,
+    publicCode,
+    label,
+    tableId,
+    isActive,
+    createdAt,
+    updatedAt,
+  };
+};
+
 function uid(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -126,6 +176,7 @@ type StoredDb = Partial<Db> & {
   tables?: unknown;
   waiters?: unknown;
   waiterAssignments?: unknown;
+  qrTiles?: unknown;
 };
 
 function load(): Db {
@@ -138,8 +189,16 @@ function load(): Db {
       const assignments = Array.isArray(parsed.waiterAssignments)
         ? parsed.waiterAssignments.filter(isWaiterAssignment)
         : [];
-      return {
-        store: parsed.store ?? { id: 'store_1', name: 'Demo Cafe' },
+      const storeId = (parsed.store as any)?.id || 'store_1';
+      const qrTiles = Array.isArray(parsed.qrTiles)
+        ? parsed.qrTiles.map((tile) => normalizeQrTileRecord(tile, storeId))
+        : [];
+      const store =
+        parsed.store && isRecord(parsed.store)
+        ? { id: storeId, name: (parsed.store as any).name || 'Garsone Offline Demo', slug: (parsed.store as any).slug || 'demo-cafe' }
+        : { id: storeId, name: 'Garsone Offline Demo', slug: 'demo-cafe' };
+      const db: Db = {
+        store,
         categories: parsed.categories ?? [],
         items: parsed.items ?? [],
         modifiers: parsed.modifiers ?? [],
@@ -148,7 +207,10 @@ function load(): Db {
         orders: parsed.orders ?? [],
         waiters,
         waiterAssignments: assignments,
+        qrTiles,
       };
+      seedQrTilesIfEmpty(db);
+      return db;
     } catch (error) {
       console.warn('Failed to parse devMocks snapshot', error);
     }
@@ -156,21 +218,29 @@ function load(): Db {
   // Seed with demo data
   const catCoffee: Category = { id: uid('cat'), title: 'Coffee', sortOrder: 0 };
   const catPastry: Category = { id: uid('cat'), title: 'Pastries', sortOrder: 1 };
-  const modMilk: Modifier = { id: uid('mod'), title: 'Milk', minSelect: 0, maxSelect: 1, options: [
-    { id: uid('opt'), title: 'Whole', priceDeltaCents: 0, sortOrder: 0 },
-    { id: uid('opt'), title: 'Oat', priceDeltaCents: 50, sortOrder: 1 },
-    { id: uid('opt'), title: 'Almond', priceDeltaCents: 70, sortOrder: 2 },
+  const modMilk: Modifier = { id: uid('mod'), title: 'Milk', name: 'Milk', minSelect: 0, maxSelect: 1, options: [
+    { id: uid('opt'), title: 'Whole', label: 'Whole', priceDeltaCents: 0, sortOrder: 0 },
+    { id: uid('opt'), title: 'Oat', label: 'Oat', priceDeltaCents: 50, sortOrder: 1 },
+    { id: uid('opt'), title: 'Almond', label: 'Almond', priceDeltaCents: 70, sortOrder: 2 },
   ]};
-  const modSugar: Modifier = { id: uid('mod'), title: 'Sugar', minSelect: 0, maxSelect: 1, options: [
-    { id: uid('opt'), title: 'No sugar', priceDeltaCents: 0, sortOrder: 0 },
-    { id: uid('opt'), title: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
-    { id: uid('opt'), title: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
+  const modSugar: Modifier = { id: uid('mod'), title: 'Sugar', name: 'Sugar', minSelect: 0, maxSelect: 1, options: [
+    { id: uid('opt'), title: 'No sugar', label: 'No sugar', priceDeltaCents: 0, sortOrder: 0 },
+    { id: uid('opt'), title: '1 tsp', label: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
+    { id: uid('opt'), title: '2 tsp', label: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
   ]};
   const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true };
-  const itemCap: Item = { id: uid('item'), title: 'Cappuccino', description: 'Classic foam', priceCents: 350, categoryId: catCoffee.id, isAvailable: true };
+  const itemCap: Item = {
+    id: uid('item'),
+    title: 'Cappuccino',
+    description: 'Classic foam',
+    priceCents: 350,
+    categoryId: catCoffee.id,
+    isAvailable: true,
+    imageUrl: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/demo-cafe/Cup-Of-Creamy-Coffee.png',
+  };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
-    store: { id: 'store_1', name: 'Demo Cafe' },
+    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'demo-cafe' },
     categories: [catCoffee, catPastry],
     items: [itemEsp, itemCap, itemCro],
     modifiers: [modMilk, modSugar],
@@ -187,7 +257,9 @@ function load(): Db {
     orders: [],
     waiters: [ { id: 'w1', email: 'waiter1@demo.local', displayName: 'Waiter 1', password: 'password' } ],
     waiterAssignments: [{ waiterId: 'w1', tableId: 'T1' }],
+    qrTiles: [],
   };
+  seedQrTilesIfEmpty(db);
   save(db);
   return db;
 }
@@ -199,8 +271,33 @@ function summarizeTable(db: Db, table: Table) {
     id: table.id,
     label: table.label,
     isActive: table.isActive,
+    active: table.isActive,
     waiterCount: db.waiterAssignments.filter((a) => a.tableId === table.id).length,
     orderCount: db.orders.filter((o) => o.tableId === table.id).length,
+    openOrders: db.orders.filter((o) => o.tableId === table.id && o.status !== 'SERVED' && o.status !== 'CANCELLED').length,
+  };
+}
+
+// Enrich order with required fields
+function enrichOrder(db: Db, order: Order): any {
+  const table = db.tables.find(t => t.id === order.tableId);
+  const items = db.items;
+  let totalCents = 0;
+  
+  // Calculate total from items
+  order.items.forEach((orderItem: any) => {
+    const item = items.find(i => i.id === orderItem.itemId);
+    if (item) {
+      totalCents += (item.priceCents || 0) * (orderItem.qty || 1);
+    }
+  });
+  
+  return {
+    ...order,
+    tableLabel: table?.label || 'Unknown Table',
+    total: totalCents / 100,
+    totalCents,
+    createdAt: new Date(order.createdAt).toISOString(),
   };
 }
 
@@ -213,7 +310,7 @@ function composeMenu() {
       .filter(im => im.itemId === it.id)
       .map(im => {
         const m = db.modifiers.find(mm => mm.id === im.modifierId)!;
-        return { id: m.id, title: m.title, minSelect: m.minSelect, maxSelect: m.maxSelect, required: im.isRequired, options: m.options };
+        return { id: m.id, name: m.title, title: m.title, minSelect: m.minSelect, maxSelect: m.maxSelect, required: im.isRequired, options: m.options.map(opt => ({ ...opt, label: opt.title })) };
       })
   }));
   return { categories: db.categories, items };
@@ -251,6 +348,42 @@ function seedOrdersIfEmpty(db: Db) {
   save(db);
 }
 
+function seedQrTilesIfEmpty(db: Db) {
+  if (db.qrTiles.length > 0) return;
+  const now = Date.now();
+  const tables = db.tables.length ? db.tables : [{ id: 'T1', label: 'Table 1', isActive: true }];
+  for (let i = 0; i < 6; i += 1) {
+    const table = tables[i % tables.length];
+    db.qrTiles.push({
+      id: uid('qr'),
+      storeId: db.store.id,
+      publicCode: `QR${String(i + 1).padStart(2, '0')}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      label: `Tile ${String(i + 1).padStart(2, '0')}`,
+      tableId: table?.id ?? null,
+      isActive: true,
+      createdAt: now - i * 120_000,
+      updatedAt: now - i * 120_000,
+    });
+  }
+  save(db);
+}
+
+function serializeQrTile(db: Db, tile: QRTileRecord) {
+  const table = tile.tableId ? db.tables.find((t) => t.id === tile.tableId) : null;
+  return {
+    id: tile.id,
+    storeId: tile.storeId,
+    storeSlug: db.store.slug || undefined,
+    publicCode: tile.publicCode,
+    label: tile.label ?? null,
+    isActive: tile.isActive,
+    tableId: tile.tableId ?? null,
+    tableLabel: table?.label ?? null,
+    createdAt: new Date(tile.createdAt).toISOString(),
+    updatedAt: new Date(tile.updatedAt).toISOString(),
+  };
+}
+
 export const devMocks = {
   // Store & tables & menu
   getStore() { const db = snapshot(); return Promise.resolve({ store: db.store }); },
@@ -262,28 +395,134 @@ export const devMocks = {
     return Promise.resolve({ tables });
   },
   getMenu() { return Promise.resolve(composeMenu()); },
+  adminListStores() {
+    const db = snapshot();
+    return Promise.resolve({
+      stores: [
+        {
+          id: db.store.id,
+          name: db.store.name,
+          slug: db.store.slug || 'demo-cafe',
+        },
+      ],
+    });
+  },
+  adminListStoreTables(_storeId: string) {
+    const db = snapshot();
+    return Promise.resolve({
+      tables: db.tables.map((t) => ({
+        id: t.id,
+        label: t.label,
+        isActive: t.isActive,
+        waiterCount: db.waiterAssignments.filter((a) => a.tableId === t.id).length,
+        orderCount: db.orders.filter((o) => o.tableId === t.id).length,
+      })),
+    });
+  },
+  adminListQrTiles(storeId: string) {
+    const db = snapshot();
+    seedQrTilesIfEmpty(db);
+    const tiles = db.qrTiles
+      .filter((tile) => tile.storeId === storeId || tile.storeId === db.store.id)
+      .map((tile) => serializeQrTile(db, tile));
+    return Promise.resolve({
+      store: { id: db.store.id, name: db.store.name, slug: db.store.slug },
+      tiles,
+    });
+  },
+  adminBulkCreateQrTiles(storeId: string, data: { count: number; labelPrefix?: string }) {
+    const db = snapshot();
+    const count = Math.max(1, Math.min(500, Number(data.count) || 0));
+    const prefix = (data.labelPrefix || '').trim();
+    const pad = Math.max(String(count).length, 2);
+    const created: QRTileRecord[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const publicCode = `QR${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+      const label = prefix ? `${prefix}${String(i + 1).padStart(pad, '0')}` : null;
+      const tile: QRTileRecord = {
+        id: uid('qr'),
+        storeId: storeId || db.store.id,
+        publicCode,
+        label,
+        tableId: null,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      db.qrTiles.unshift(tile);
+      created.push(tile);
+    }
+    save(db);
+    return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
+  },
+  adminUpdateQrTile(id: string, data: { tableId?: string | null; isActive?: boolean; label?: string }) {
+    const db = snapshot();
+    const tile = db.qrTiles.find((t) => t.id === id);
+    if (!tile) return Promise.reject(new Error('QR tile not found'));
+    if (typeof data.isActive === 'boolean') tile.isActive = data.isActive;
+    if (typeof data.label !== 'undefined') tile.label = null;
+    if (typeof data.tableId !== 'undefined') tile.tableId = data.tableId || null;
+    tile.updatedAt = Date.now();
+    save(db);
+    return Promise.resolve({ tile: serializeQrTile(db, tile) });
+  },
+  adminDeleteQrTile(id: Id) {
+    const db = snapshot();
+    db.qrTiles = db.qrTiles.filter((t) => t.id !== id);
+    save(db);
+    return Promise.resolve({ ok: true });
+  },
+  resolveQrTile(publicCode: string) {
+    const db = snapshot();
+    const tile = db.qrTiles.find((t) => t.publicCode === publicCode && t.isActive);
+    if (!tile) return Promise.reject(new Error('QR_TILE_NOT_FOUND_OR_INACTIVE'));
+    const table = tile.tableId ? db.tables.find((t) => t.id === tile.tableId) : null;
+    if (!tile.tableId || !table) {
+      return Promise.resolve({
+        status: 'UNASSIGNED_TILE',
+        storeSlug: db.store.slug || 'demo-cafe',
+        publicCode,
+      });
+    }
+    return Promise.resolve({
+      status: 'OK',
+      storeSlug: db.store.slug || 'demo-cafe',
+      tableId: tile.tableId,
+      tableLabel: table?.label ?? '',
+      publicCode,
+    });
+  },
   
   // Auth (offline)
   signIn(email: string, _password: string) {
     const e = email.toLowerCase();
-    const role = e.startsWith('manager') ? 'manager' : e.startsWith('cook') ? 'cook' : 'waiter';
+    const role: 'waiter' | 'manager' | 'cook' | 'architect' = e.startsWith('manager')
+      ? 'manager'
+      : e.startsWith('cook')
+        ? 'cook'
+        : e.startsWith('architect')
+          ? 'architect'
+          : 'waiter';
     const user = { id: uid('user'), email, role, displayName: role.charAt(0).toUpperCase() + role.slice(1) };
     return Promise.resolve({ accessToken: 'offline-token', user });
   },
 
   // Orders
-  getOrders(params?: { status?: string; take?: number }) {
+  getOrders(params?: { status?: string; take?: number; tableIds?: string[] }) {
     const db = snapshot();
     seedOrdersIfEmpty(db);
     let orders = [...db.orders].sort((a,b)=> b.createdAt - a.createdAt);
     if (params?.status) orders = orders.filter(o => o.status === params.status);
+    if (params?.tableIds && params.tableIds.length > 0) {
+      orders = orders.filter((o) => params.tableIds!.includes(o.tableId));
+    }
     if (params?.take) orders = orders.slice(0, params.take);
-    return Promise.resolve({ orders });
+    return Promise.resolve({ orders: orders.map(o => enrichOrder(db, o)) });
   },
   getOrder(orderId: Id) {
     const db = snapshot();
     const order = db.orders.find(o=>o.id===orderId);
-    return Promise.resolve({ order });
+    return Promise.resolve({ order: order ? enrichOrder(db, order) : order });
   },
   getOrderQueueSummary() {
     const db = snapshot();
@@ -305,13 +544,13 @@ export const devMocks = {
     };
     db.orders.unshift(order);
     save(db);
-    return Promise.resolve({ order });
+    return Promise.resolve({ order: enrichOrder(db, order) });
   },
   updateOrderStatus(orderId: Id, status: Order['status']) {
     const db = snapshot();
     const o = db.orders.find(x=>x.id===orderId); if (o) o.status = status;
     save(db);
-    return Promise.resolve({ order: o });
+    return Promise.resolve({ order: o ? enrichOrder(db, o) : o });
   },
   managerDeleteOrder(orderId: Id) {
     const db = snapshot();
@@ -323,7 +562,7 @@ export const devMocks = {
     const db = snapshot();
     const o = db.orders.find(x=>x.id===orderId); if (o) o.status = 'CANCELLED';
     save(db);
-    return Promise.resolve({ order: o });
+    return Promise.resolve({ order: o ? enrichOrder(db, o) : o });
   },
 
   callWaiter(_tableId: Id) { return Promise.resolve({ ok: true }); },
@@ -488,8 +727,8 @@ export const devMocks = {
 
   // Manager: categories
   listCategories() { const db = snapshot(); return Promise.resolve({ categories: db.categories }); },
-  createCategory(title: string, sortOrder?: number) {
-    const db = snapshot(); const c: Category = { id: uid('cat'), title, sortOrder: sortOrder ?? db.categories.length };
+  createCategory(titleEn: string, sortOrder?: number, titleEl?: string) {
+    const db = snapshot(); const c: Category = { id: uid('cat'), title: titleEn, titleEn, titleEl: titleEl ?? titleEn, sortOrder: sortOrder ?? db.categories.length };
     db.categories.push(c); save(db); return Promise.resolve({ category: c });
   },
   updateCategory(id: Id, data: Partial<Category>) {
@@ -502,7 +741,7 @@ export const devMocks = {
   // Manager: items
   listItems() { const db = snapshot(); return Promise.resolve({ items: db.items }); },
   createItem(data: Partial<Item>) {
-    const db = snapshot(); const it: Item = { id: uid('item'), title: data.title || 'Item', description: data.description, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl };
+    const db = snapshot(); const it: Item = { id: uid('item'), title: data.titleEn || data.title || 'Item', titleEn: data.titleEn || data.title || 'Item', titleEl: (data as any).titleEl || data.title || 'Item', description: (data as any).descriptionEn || data.description, descriptionEn: (data as any).descriptionEn, descriptionEl: (data as any).descriptionEl, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl };
     db.items.push(it); save(db); return Promise.resolve({ item: it });
   },
   updateItem(id: Id, data: Partial<Item>) {
@@ -511,14 +750,30 @@ export const devMocks = {
   deleteItem(id: Id) { const db = snapshot(); db.items = db.items.filter(i=>i.id!==id); save(db); return Promise.resolve({ ok: true }); },
 
   // Manager: modifiers per item
-  listModifiers() { const db = snapshot(); return Promise.resolve({ modifiers: db.modifiers }); },
-  createModifier(data: { title: string; minSelect: number; maxSelect: number|null }) {
-    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.title, minSelect: data.minSelect, maxSelect: data.maxSelect, options: [] };
-    db.modifiers.push(m); save(db); return Promise.resolve({ modifier: m });
+  listModifiers() { 
+    const db = snapshot(); 
+    return Promise.resolve({ 
+      modifiers: db.modifiers.map(m => ({ 
+        ...m, 
+        name: m.title,
+        options: m.options.map(opt => ({ ...opt, label: opt.title }))
+      })) 
+    }); 
   },
-  updateModifier(id: Id, data: Partial<Modifier>) { const db = snapshot(); const m = db.modifiers.find(x=>x.id===id); if (m) Object.assign(m, data); save(db); return Promise.resolve({ modifier: m }); },
+  createModifier(data: { titleEn: string; titleEl: string; minSelect: number; maxSelect: number|null; isAvailable?: boolean }) {
+    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.titleEn, titleEn: data.titleEn, titleEl: data.titleEl, name: data.titleEn, minSelect: data.minSelect, maxSelect: data.maxSelect, isAvailable: data.isAvailable ?? true, options: [] };
+    db.modifiers.push(m); save(db); 
+    return Promise.resolve({ modifier: { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } });
+  },
+  updateModifier(id: Id, data: Partial<Modifier>) { 
+    const db = snapshot(); const m = db.modifiers.find(x=>x.id===id); if (m) Object.assign(m, data); save(db); 
+    return Promise.resolve({ modifier: m ? { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } : m }); 
+  },
   deleteModifier(id: Id) { const db = snapshot(); db.modifiers = db.modifiers.filter(m=>m.id!==id); db.itemModifiers = db.itemModifiers.filter(im=>im.modifierId!==id); save(db); return Promise.resolve({ ok: true }); },
-  createModifierOption(data: { modifierId: Id; title: string; priceDeltaCents: number; sortOrder: number }) { const db = snapshot(); const m = db.modifiers.find(x=>x.id===data.modifierId); const opt: ModifierOption = { id: uid('opt'), title: data.title, priceDeltaCents: data.priceDeltaCents, sortOrder: data.sortOrder }; if (m) m.options.push(opt); save(db); return Promise.resolve({ option: opt }); },
+  createModifierOption(data: { modifierId: Id; titleEn: string; titleEl: string; priceDeltaCents: number; sortOrder: number }) { 
+    const db = snapshot(); const m = db.modifiers.find(x=>x.id===data.modifierId); const opt: ModifierOption = { id: uid('opt'), title: data.titleEn, label: data.titleEn, titleEn: data.titleEn, titleEl: data.titleEl, priceDeltaCents: data.priceDeltaCents, sortOrder: data.sortOrder }; if (m) m.options.push(opt); save(db); 
+    return Promise.resolve({ option: { ...opt, label: opt.title } }); 
+  },
   updateModifierOption(id: Id, data: Partial<ModifierOption>) { const db = snapshot(); for (const m of db.modifiers) { const o = m.options.find(x=>x.id===id); if (o) { Object.assign(o, data); break; } } save(db); return Promise.resolve({ ok: true }); },
   deleteModifierOption(id: Id) { const db = snapshot(); for (const m of db.modifiers) { m.options = m.options.filter(o=>o.id!==id); } save(db); return Promise.resolve({ ok: true }); },
   linkItemModifier(itemId: Id, modifierId: Id, isRequired: boolean) { const db = snapshot(); db.itemModifiers.push({ itemId, modifierId, isRequired }); save(db); return Promise.resolve({ ok: true }); },

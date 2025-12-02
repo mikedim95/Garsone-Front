@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/store/authStore";
 import { api, ApiError } from "@/lib/api";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { HomeLink } from "@/components/HomeLink";
 
 type RealtimeStatusDetail = { connected?: boolean };
@@ -59,7 +58,8 @@ export default function Login() {
       setLoading(true);
       const { accessToken, user } = await api.signIn(email, password);
       login(user, accessToken);
-      if (user.role === "manager") navigate("/manager");
+      if (user.role === "architect") navigate("/GarsoneAdmin");
+      else if (user.role === "manager") navigate("/manager");
       else if (user.role === "cook") navigate("/cook");
       else navigate("/waiter");
     } catch (err) {
@@ -77,32 +77,8 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-primary flex items-center justify-center p-4">
-      <div className="absolute top-4 right-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            const next = !offline;
-            try { localStorage.setItem('OFFLINE', next ? '1' : '0'); } catch (error) {
-              console.warn("Failed to toggle OFFLINE flag", error);
-            }
-            setOffline(next);
-            try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: !next } })); } catch (error) {
-              console.warn("Failed to dispatch realtime status", error);
-            }
-          }}
-          title={(offline ? 'Offline' : 'Connected') + ' — click to ' + (offline ? 'go online' : 'go offline')}
-          className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-background px-3 py-2 text-xs font-medium text-foreground/80 hover:bg-accent/50 transition-colors"
-        >
-          <span className={`inline-block h-2.5 w-2.5 rounded-full ${offline ? 'bg-destructive' : 'bg-primary'}`} />
-          {offline ? 'Offline' : 'Connected'}
-        </button>
-        <LanguageSwitcher />
-        <HomeLink />
-      </div>
-      <Card className="w-full max-w-md p-8">
-        <h1 className="text-3xl font-bold mb-6 text-center">
-          {t("auth.login")}
-        </h1>
+      <Card className="w-full max-w-md p-8 space-y-6">
+        <h1 className="text-3xl font-bold text-center">{t("auth.login")}</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div role="alert" aria-live="polite" className="text-sm text-destructive bg-destructive/10 border border-destructive/40 rounded-md px-3 py-2">
@@ -137,16 +113,19 @@ export default function Login() {
             {loading ? "Signing in…" : t("auth.sign_in")}
           </Button>
         </form>
-        <p className="mt-4 text-sm text-muted-foreground text-center">
-          Demo: waiter1@demo.local / manager@demo.local
-        </p>
+        <div className="text-sm text-muted-foreground text-center space-y-1">
+          <p>Demo waiters: waiter1@demo.local / waiter2@demo.local</p>
+          <p>Manager dashboard: manager@demo.local (password: changeme)</p>
+          <p>GarsoneAdmin (architect): architect@demo.local (password: changeme)</p>
+          <p className="text-xs text-muted-foreground/80">If the architect user isn&apos;t seeded, use the Architect debug button below or create an architect profile on the backend.</p>
+        </div>
 
         {debugEnabled && (
           <div className="mt-6 pt-6 border-t border-border">
             <p className="text-xs text-muted-foreground mb-3 text-center">
               Debug login (no backend)
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -201,6 +180,24 @@ export default function Login() {
               >
                 Manager
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  login(
+                    {
+                      id: "debug-architect",
+                      email: "architect@debug",
+                      role: "architect",
+                      displayName: "Debug Architect",
+                    },
+                    "debug-token"
+                  );
+                  navigate("/GarsoneAdmin");
+                }}
+              >
+                Architect
+              </Button>
             </div>
             <p className="mt-2 text-[11px] text-center text-muted-foreground">
               This bypasses API auth and may show empty data if backend is
@@ -208,6 +205,28 @@ export default function Login() {
             </p>
           </div>
         )}
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-t border-border pt-4">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !offline;
+              try { localStorage.setItem('OFFLINE', next ? '1' : '0'); } catch (error) {
+                console.warn("Failed to toggle OFFLINE flag", error);
+              }
+              setOffline(next);
+              try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: !next } })); } catch (error) {
+                console.warn("Failed to dispatch realtime status", error);
+              }
+            }}
+            title={(offline ? 'Offline' : 'Connected') + ' — click to ' + (offline ? 'go online' : 'go offline')}
+            className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-accent/40 px-3 py-1.5 text-xs font-medium text-foreground/80 hover:bg-accent/70 transition-colors shadow-sm"
+          >
+            <span className={`inline-block h-2.5 w-2.5 rounded-full ${offline ? 'bg-destructive' : 'bg-primary'}`} />
+            {offline ? 'Offline' : 'Connected'}
+          </button>
+          <HomeLink className="rounded-full border border-border/60 bg-accent/30 hover:bg-accent/60 px-3 py-1.5 text-xs font-semibold shadow-sm self-center sm:self-auto" />
+        </div>
       </Card>
     </div>
   );

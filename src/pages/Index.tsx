@@ -2,11 +2,14 @@
 import React from 'react';
 import AppLayout from '@/components/AppLayout';
 import { AppProvider } from '@/contexts/AppContext';
+import { PageTransition } from '@/components/ui/page-transition';
 
 const Index: React.FC = () => {
   return (
     <AppProvider>
-      <AppLayout />
+      <PageTransition>
+        <AppLayout />
+      </PageTransition>
     </AppProvider>
   );
 };

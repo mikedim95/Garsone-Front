@@ -1,5 +1,4 @@
 ﻿import { useTranslation } from 'react-i18next';
-import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -24,19 +23,57 @@ export const LanguageSwitcher = ({ className = '' }: Props) => {
 
   const isEnglish = (i18n.language || 'en').startsWith('en');
 
+  const nextLabel = isEnglish ? 'Switch to Greek' : 'Switch to English';
+  const FlagIcon = isEnglish ? UkFlag : GreekFlag;
+
   return (
-    <div className={cn('flex items-center justify-between gap-3 text-xs', className)}>
-      <span className="text-muted-foreground">
-        Language:{' '}
-        <span className="font-semibold text-foreground">
-          {isEnglish ? 'EN' : 'EL'}
-        </span>
-      </span>
-      <Switch
-        checked={!isEnglish}
-        onCheckedChange={toggleLanguage}
-        aria-label="Toggle language"
-      />
-    </div>
+    <button
+      type="button"
+      onClick={toggleLanguage}
+      aria-label={nextLabel}
+      title={nextLabel}
+      className={cn(
+        'inline-flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded',
+        className
+      )}
+    >
+      <FlagIcon />
+    </button>
   );
 };
+
+const GreekFlag = () => (
+  <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8">
+    <rect width="60" height="40" fill="#0d5eaf" />
+    <g fill="#ffffff">
+      {/* Horizontal stripes */}
+      <rect y="4" width="60" height="4" />
+      <rect y="12" width="60" height="4" />
+      <rect y="20" width="60" height="4" />
+      <rect y="28" width="60" height="4" />
+      <rect y="36" width="60" height="4" />
+      {/* Canton cross */}
+      <rect width="24" height="16" />
+      <rect x="8" width="8" height="16" fill="#0d5eaf" />
+      <rect y="4" width="24" height="4" fill="#0d5eaf" />
+    </g>
+  </svg>
+);
+
+const UkFlag = () => (
+  <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8">
+    <rect width="60" height="40" fill="#012169" />
+    {/* White diagonals */}
+    <polygon fill="#fff" points="0,0 7,0 60,30 60,40 53,40 0,10" />
+    <polygon fill="#fff" points="60,0 53,0 0,30 0,40 7,40 60,10" />
+    {/* Red diagonals */}
+    <polygon fill="#C8102E" points="0,0 3,0 60,33 60,40 57,40 0,7" />
+    <polygon fill="#C8102E" points="60,0 57,0 0,33 0,40 3,40 60,7" />
+    {/* White cross */}
+    <rect x="24" width="12" height="40" fill="#fff" />
+    <rect y="14" width="60" height="12" fill="#fff" />
+    {/* Red cross */}
+    <rect x="26" width="8" height="40" fill="#C8102E" />
+    <rect y="16" width="60" height="8" fill="#C8102E" />
+  </svg>
+);

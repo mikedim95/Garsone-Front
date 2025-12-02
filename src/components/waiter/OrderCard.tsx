@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Order, OrderStatus } from '@/types';
+import { formatTableLabel } from '@/lib/formatTableLabel';
 import { Loader2 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -10,27 +11,28 @@ interface Props {
   onUpdateStatus: (orderId: string, status: OrderStatus) => void;
   mode?: 'full' | 'waiter'; // waiter: only READY -> SERVED
   busy?: boolean; // show spinner when true (e.g., serving)
+  highlighted?: boolean;
 }
 
 const statusColors = {
-  PLACED: 'bg-secondary text-secondary-foreground',
-  PREPARING: 'bg-accent text-accent-foreground',
-  READY: 'bg-primary/15 text-primary',
-  SERVED: 'bg-muted text-muted-foreground',
-  PAID: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-destructive/10 text-destructive',
+  PLACED: 'bg-blue-50 text-blue-700 border border-blue-200',
+  PREPARING: 'bg-amber-50 text-amber-700 border border-amber-200',
+  READY: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  SERVED: 'bg-slate-100 text-slate-700 border border-slate-200',
+  PAID: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+  CANCELLED: 'bg-rose-50 text-rose-700 border border-rose-200',
 } as const;
 
 const borderColors = {
-  PLACED: 'border-l-4 border-secondary',
-  PREPARING: 'border-l-4 border-accent',
-  READY: 'border-l-4 border-primary',
-  SERVED: 'border-l-4 border-muted',
+  PLACED: 'border-l-4 border-blue-200',
+  PREPARING: 'border-l-4 border-amber-300',
+  READY: 'border-l-4 border-emerald-300',
+  SERVED: 'border-l-4 border-slate-200',
   PAID: 'border-l-4 border-emerald-400',
-  CANCELLED: 'border-l-4 border-destructive',
+  CANCELLED: 'border-l-4 border-rose-300',
 } as const;
 
-export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false }: Props) => {
+export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false, highlighted = false }: Props) => {
   const [localBusy, setLocalBusy] = useState(false);
   const isBusy = busy || localBusy;
   const startPreparingLabel = 'Start preparing';
@@ -38,14 +40,18 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false }
   const markServedLabel = 'Mark served';
   const markPaidLabel = 'Mark paid';
   const border = borderColors[order.status] || '';
+  const statusClass = statusColors[order.status] || 'bg-muted text-foreground';
+  const statusLabel = order.status === 'CANCELLED' ? 'CANCELED' : order.status;
   return (
-    <Card className={`p-4 ${border}`}>
+    <Card
+      className={`p-4 transition-all duration-200 ${border} hover:shadow-lg hover:-translate-y-0.5 ${highlighted ? 'animate-pulse ring-2 ring-primary/50 ring-offset-2' : ''}`}
+    >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="font-semibold text-lg">Table {order.tableLabel}</h3>
+          <h3 className="font-semibold text-lg">{formatTableLabel(order.tableLabel)}</h3>
           <p className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleTimeString()}</p>
         </div>
-        <Badge className={statusColors[order.status]}>{order.status}</Badge>
+        <Badge className={`${statusClass} animate-in fade-in zoom-in-90 duration-200`}>{statusLabel}</Badge>
       </div>
       
       <div className="space-y-2 mb-4">
@@ -143,12 +149,23 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false }
             {order.status === 'READY' && (
               <Button
                 size="sm"
-                onClick={() => onUpdateStatus(order.id, 'SERVED')}
-                className="flex-1 inline-flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                onClick={() => {
+                  setLocalBusy(true);
+                  Promise.resolve(onUpdateStatus(order.id, 'SERVED'))
+                    .catch(() => {})
+                    .finally(() => setLocalBusy(false));
+                }}
+                className="relative flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                aria-busy={isBusy}
+                data-busy={isBusy ? 'true' : 'false'}
+                disabled={isBusy}
                 aria-label={markServedLabel}
                 title={markServedLabel}
               >
-                <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                <span className={`absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${isBusy ? 'opacity-100' : 'opacity-0'}`}>
+                  <Loader2 className="h-5 w-5 animate-spin text-primary-foreground" />
+                </span>
+                <span className={`transition-opacity ${isBusy ? 'opacity-0' : 'opacity-100'}`} role="img" aria-hidden="true">
                   🥂
                 </span>
               </Button>

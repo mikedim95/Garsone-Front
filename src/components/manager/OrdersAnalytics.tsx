@@ -304,9 +304,11 @@ export function OrdersAnalytics({ orders }: OrdersAnalyticsProps) {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ status, count }) =>
-                      count > 0 ? `${status}: ${count}` : ''
-                    }
+                    label={(props: { payload?: { status?: string; count?: number } }) => {
+                      const status = props.payload?.status ?? '';
+                      const count = props.payload?.count ?? 0;
+                      return count > 0 ? `${status}: ${count}` : '';
+                    }}
                     outerRadius={80}
                     fill="hsl(var(--primary))"
                     dataKey="count"

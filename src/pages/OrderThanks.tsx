@@ -4,19 +4,12 @@ import { Button } from '@/components/ui/button';
 import { HomeLink } from '@/components/HomeLink';
 import { AppBurger } from './AppBurger';
 import { CheckCircle } from 'lucide-react';
-import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
 
 type OrderReadyPayload = {
   orderId?: string;
   tableId?: string;
 };
-
-const isOrderReadyPayload = (payload: unknown): payload is OrderReadyPayload =>
-  typeof payload === 'object' &&
-  payload !== null &&
-  (typeof (payload as { orderId?: unknown }).orderId === 'string' ||
-    typeof (payload as { tableId?: unknown }).tableId === 'string');
 
 export default function OrderThanks() {
   const { orderId } = useParams();
@@ -60,16 +53,7 @@ export default function OrderThanks() {
   }, []);
 
   useEffect(() => {
-    if (!storeSlug) return;
-    const topic = `${storeSlug}/orders/ready`;
-    realtimeService.connect().then(() => {
-      realtimeService.subscribe(topic, (payload) => {
-        if (!isOrderReadyPayload(payload)) return;
-        if (orderId && payload.orderId === orderId) setReady(true);
-        else if (!orderId && tableId && payload.tableId === tableId) setReady(true);
-      });
-    });
-    return () => { realtimeService.unsubscribe(topic); };
+    return () => {};
   }, [storeSlug, orderId, tableId]);
 
   return (

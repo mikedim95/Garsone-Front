@@ -261,41 +261,120 @@ class WebSocketRealtimeService {
   }
 }
 
-let realtimeServiceImpl: MockRealtimeService | WebSocketRealtimeService =
-  new MockRealtimeService();
+// Lightweight WebSocket client for backend WSS (no MQTT on frontend)
+type MessageHandler = (payload: any) => void;
+
+let socket: WebSocket | null = null;
+let connecting = false;
+let connected = false;
+const subscriptions = new Map<string, Set<MessageHandler>>();
+let reconnectTimer: number | undefined;
+
+function notifyStatus(isConnected: boolean) {
+  connected = isConnected;
+  try {
+    window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: isConnected } }));
+  } catch (error) {
+    console.warn('Realtime status dispatch failed', error);
+  }
+}
+
+function handleMessage(event: MessageEvent) {
+  try {
+    const parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    const topic = parsed?.topic as string;
+    const payload = parsed?.payload;
+    if (!topic || !subscriptions.has(topic)) return;
+    const handlers = subscriptions.get(topic)!;
+    handlers.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.error('Realtime handler failed', err);
+      }
+    });
+  } catch (error) {
+    console.error('Realtime message parse error', error);
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  if (appOffline()) return;
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = undefined;
+    realtimeService.connect().catch(() => {});
+  }, 5000);
+}
 
 export const realtimeService = {
   async connect() {
     if (appOffline()) {
-      realtimeServiceImpl = new MockRealtimeService();
-      try {
-        window.dispatchEvent(
-          new CustomEvent("realtime-status", { detail: { connected: false } })
-        );
-      } catch (error) {
-        console.warn("Realtime offline status dispatch failed", error);
-      }
+      this.disconnect();
       return;
     }
-    if (!(realtimeServiceImpl instanceof WebSocketRealtimeService)) {
-      realtimeServiceImpl = new WebSocketRealtimeService();
+    if (connected || connecting) return;
+    const wsUrl = buildWebSocketUrl();
+    if (!wsUrl) return;
+    connecting = true;
+    try {
+      socket = new WebSocket(wsUrl);
+      socket.addEventListener('open', () => {
+        connecting = false;
+        notifyStatus(true);
+      });
+      socket.addEventListener('close', () => {
+        connecting = false;
+        socket = null;
+        notifyStatus(false);
+        scheduleReconnect();
+      });
+      socket.addEventListener('error', () => {
+        connecting = false;
+        socket = null;
+        notifyStatus(false);
+        scheduleReconnect();
+      });
+      socket.addEventListener('message', handleMessage);
+    } catch (error) {
+      connecting = false;
+      socket = null;
+      notifyStatus(false);
+      scheduleReconnect();
     }
-    await realtimeServiceImpl.connect();
   },
-  subscribe(topic: string, cb: RealtimeCallback) {
-    realtimeServiceImpl.subscribe(topic, cb);
+  subscribe(topic: string, cb: MessageHandler) {
+    if (!subscriptions.has(topic)) {
+      subscriptions.set(topic, new Set());
+    }
+    subscriptions.get(topic)!.add(cb);
   },
   publish(topic: string, message: RealtimeMessage) {
-    return realtimeServiceImpl.publish(topic, message);
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify({ topic, payload: message }));
+    } catch (error) {
+      console.error('Realtime publish failed', error);
+    }
   },
-  unsubscribe(topic: string) {
-    realtimeServiceImpl.unsubscribe(topic);
+  unsubscribe(topic: string, cb?: MessageHandler) {
+    if (!subscriptions.has(topic)) return;
+    if (cb) {
+      subscriptions.get(topic)!.delete(cb);
+    } else {
+      subscriptions.delete(topic);
+    }
   },
   disconnect() {
-    realtimeServiceImpl.disconnect();
+    try {
+      socket?.close();
+    } catch {}
+    socket = null;
+    connecting = false;
+    notifyStatus(false);
   },
   isConnected() {
-    return realtimeServiceImpl.isConnected();
+    return connected;
   },
 };
 
