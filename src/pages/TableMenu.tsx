@@ -210,7 +210,7 @@ export default function TableMenu() {
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
   const { theme, setTheme } = useTheme();
-  const { addItem, clearCart } = useCartStore();
+  const { addItem, clearCart, setItems } = useCartStore();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
@@ -219,6 +219,10 @@ export default function TableMenu() {
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
+  const [cartOpenSignal, setCartOpenSignal] = useState(0);
+  const [editingNote, setEditingNote] = useState<string | undefined>(
+    undefined
+  );
   const [calling, setCalling] = useState<"idle" | "pending" | "accepted">(
     "idle"
   );
@@ -245,6 +249,7 @@ export default function TableMenu() {
   );
   const activeTableId =
     tableId || (tableParam && isUuid(tableParam) ? tableParam : null);
+  const isEditingExisting = Boolean(editingOrderId);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
@@ -718,8 +723,9 @@ export default function TableMenu() {
     try {
       setCheckoutBusy(true);
       const cartItems = useCartStore.getState().items;
+      // When editing an existing order, prevent checkout if the kitchen already accepted it
       if (
-        isEditingExisting &&
+        editingOrderId &&
         lastOrder?.status &&
         lastOrder.status !== "PLACED"
       ) {
