@@ -11,12 +11,13 @@ import { api } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Clock } from 'lucide-react';
+import { Calendar, Clock, LayoutGrid, List } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
+import { TableCardView } from '@/components/waiter/TableCardView';
 
 const ORDER_FETCH_LIMIT = 50;
 const DEBUG_LOG = true;
@@ -27,6 +28,10 @@ const dbg = (...args: unknown[]) => {
 // LocalStorage keys for caching
 const LS_DATE_FILTER_KEY = 'waiter_date_filter';
 const LS_VIEW_FILTER_KEY = 'waiter_view_filter';
+const LS_VIEW_MODE_KEY = 'waiter_view_mode';
+const LS_SHOW_INACTIVE_KEY = 'waiter_show_inactive';
+
+type ViewMode = 'orders' | 'tables';
 
 type StatusKey = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED' | 'ALL';
 type DateFilterKey = 'today' | 'last24h' | 'week' | 'custom';
@@ -242,6 +247,16 @@ export default function WaiterDashboard() {
   
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
   const seenIdsRef = useRef<Set<string>>(new Set());
+  
+  // View mode (orders list vs tables grid)
+  const [viewMode, setViewMode] = useState<ViewMode>(() => 
+    getSavedFilter(LS_VIEW_MODE_KEY, 'orders') as ViewMode
+  );
+  
+  // Show inactive tables toggle
+  const [showInactiveTables, setShowInactiveTables] = useState<boolean>(() => 
+    getSavedFilter(LS_SHOW_INACTIVE_KEY, false)
+  );
 
   // Save filters to localStorage when they change
   useEffect(() => {
@@ -251,6 +266,14 @@ export default function WaiterDashboard() {
   useEffect(() => {
     saveFilter(LS_DATE_FILTER_KEY, dateFilter);
   }, [dateFilter]);
+
+  useEffect(() => {
+    saveFilter(LS_VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    saveFilter(LS_SHOW_INACTIVE_KEY, showInactiveTables);
+  }, [showInactiveTables]);
 
   useEffect(() => {
     ordersRef.current = ordersAll;
@@ -632,6 +655,15 @@ export default function WaiterDashboard() {
     return list;
   }, [ordersAll, shouldShowTable, statusFilter, withinShift, viewFilter, assignedTableIds, withinDateFilter]);
 
+  // All orders for table view (no status filter applied)
+  const allTableOrders = useMemo(() => {
+    let list = ordersAll.filter((o) => shouldShowTable(o.tableId) && withinShift(o) && withinDateFilter(o));
+    if (viewFilter === 'MY') {
+      list = list.filter((o) => (o.tableId ? assignedTableIds.has(o.tableId) : false));
+    }
+    return list;
+  }, [ordersAll, shouldShowTable, withinShift, viewFilter, assignedTableIds, withinDateFilter]);
+
   useEffect(() => {
     const tableStats = orders.reduce<Record<string, number>>((acc, order) => {
       const key = `${order.tableLabel || '??'} (${order.tableId})`;
@@ -722,6 +754,34 @@ export default function WaiterDashboard() {
               <div className="flex items-center gap-3">
                 <div className="h-1 w-10 bg-gradient-primary rounded-full" />
                 <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
+                
+                {/* View Mode Toggle */}
+                <div className="flex items-center gap-0.5 bg-card border border-border rounded-full p-0.5 shadow-sm ml-2">
+                  <button
+                    onClick={() => setViewMode('orders')}
+                    className={clsx(
+                      'p-2 rounded-full transition-all duration-200',
+                      viewMode === 'orders'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    )}
+                    title="Orders List"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('tables')}
+                    className={clsx(
+                      'p-2 rounded-full transition-all duration-200',
+                      viewMode === 'tables'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    )}
+                    title="Tables Grid"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               
               {/* Date/Time Selector */}
@@ -780,28 +840,37 @@ export default function WaiterDashboard() {
               </div>
             </div>
 
-            {/* Status filter tabs - inline, modern pill design */}
-            <div className="flex flex-wrap gap-2">
-              {statusButtons.map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setStatusFilter(statusFilter === key ? null : key)}
-                  className={clsx(
-                    'px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border',
-                    statusFilter === key
-                      ? 'bg-primary text-primary-foreground border-primary shadow-md scale-105'
-                      : 'bg-card/80 text-foreground border-border hover:bg-muted hover:border-muted-foreground/20'
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* Status filter tabs - only show for orders view */}
+            {viewMode === 'orders' && (
+              <div className="flex flex-wrap gap-2">
+                {statusButtons.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setStatusFilter(statusFilter === key ? null : key)}
+                    className={clsx(
+                      'px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border',
+                      statusFilter === key
+                        ? 'bg-primary text-primary-foreground border-primary shadow-md scale-105'
+                        : 'bg-card/80 text-foreground border-border hover:bg-muted hover:border-muted-foreground/20'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Orders grid */}
+          {/* Content based on view mode */}
           {loadingOrders ? (
             <DashboardGridSkeleton count={6} />
+          ) : viewMode === 'tables' ? (
+            <TableCardView
+              orders={allTableOrders}
+              onUpdateStatus={handleUpdateStatus}
+              showInactiveTables={showInactiveTables}
+              onToggleInactive={() => setShowInactiveTables(prev => !prev)}
+            />
           ) : orders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">

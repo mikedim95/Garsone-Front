@@ -262,6 +262,10 @@ export default function TableMenu() {
   const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
+  const [cartOpenSignal, setCartOpenSignal] = useState(0);
+  const isEditingExisting = Boolean(editingOrderId);
+  const { setItems } = useCartStore();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -888,7 +892,6 @@ export default function TableMenu() {
       realtimeService.unsubscribe(callTopic);
       realtimeService.unsubscribe(preparingTopicLegacy);
       realtimeService.unsubscribe(preparingTopic);
-      realtimeService.unsubscribe(preparingFallbackTopic);
       realtimeService.unsubscribe(readyTopic);
       realtimeService.unsubscribe(cancelledTopic);
       realtimeService.unsubscribe(cancelledLegacyTopic);

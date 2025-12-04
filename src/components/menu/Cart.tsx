@@ -49,9 +49,13 @@ const getItemName = (item: { name?: string; title?: string }) =>
 interface CartProps {
   onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;
   editing?: boolean;
+  activeOrderId?: string | null;
+  activeOrderNote?: string;
+  openSignal?: number;
+  onAbandonEdit?: () => void;
 }
 
-export const Cart = ({ onCheckout, editing }: CartProps) => {
+export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
   const { t } = useTranslation();
   const { items, removeItem, getTotal } = useCartStore();
 
