@@ -47,6 +47,12 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
   const { t } = useTranslation();
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
+  const [showLessImportant, setShowLessImportant] = useState(false);
+
+  // Reset toggle when closing the modal or switching tables
+  useEffect(() => {
+    if (!selectedTable) setShowLessImportant(false);
+  }, [selectedTable]);
 
   // Group orders by table
   const tableGroups = useMemo(() => {
@@ -146,7 +152,8 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
             'bg-muted/50 border-border/50 cursor-not-allowed opacity-50',
           ] : [
             'bg-card/80 backdrop-blur-sm cursor-pointer hover:shadow-md',
-            hasReady && 'border-emerald-500 ring-2 ring-emerald-500/30 animate-pulse',
+            // Stop infinite flashing: keep static highlight without pulse
+            hasReady && 'border-emerald-500 ring-2 ring-emerald-500/30',
             hasPlaced && !hasReady && 'border-amber-500 ring-2 ring-amber-500/20',
             !hasReady && !hasPlaced && 'border-border hover:border-primary/50',
           ]
@@ -254,13 +261,25 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
               </Badge>
             </DialogTitle>
           </DialogHeader>
+          {/* Table orders filter toolbar */}
+          <div className="px-4 py-2 flex items-center justify-between border-b border-border/60">
+            <div className="text-xs text-muted-foreground">
+              Important: {(selectedTableData?.orders?.filter(o => ['READY','PREPARING','SERVED'].includes(o.status)).length) ?? 0}
+            </div>
+            {((selectedTableData?.orders?.filter(o => !['READY','PREPARING','SERVED'].includes(o.status)).length) ?? 0) > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Show less important</span>
+                <Switch checked={showLessImportant} onCheckedChange={setShowLessImportant} />
+              </div>
+            )}
+          </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <AnimatePresence mode="popLayout">
               {selectedTableData?.orders
+                .filter((o) => ['READY','PREPARING','SERVED'].includes(o.status))
                 .sort((a, b) => {
-                  // Sort by status priority, then by time
-                  const statusOrder: OrderStatus[] = ['READY', 'PLACED', 'PREPARING', 'SERVED', 'PAID', 'CANCELLED'];
+                  const statusOrder: OrderStatus[] = ['READY', 'PREPARING', 'SERVED'];
                   const aIdx = statusOrder.indexOf(a.status);
                   const bIdx = statusOrder.indexOf(b.status);
                   if (aIdx !== bIdx) return aIdx - bIdx;
@@ -363,6 +382,75 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
                   );
                 })}
             </AnimatePresence>
+            {showLessImportant && (
+              <div className="mt-4 pt-3 border-t border-border/60">
+                <div className="text-xs font-semibold text-muted-foreground mb-2">Other orders</div>
+                <AnimatePresence mode="popLayout">
+                  {selectedTableData?.orders
+                    .filter((o) => !['READY','PREPARING','SERVED'].includes(o.status))
+                    .sort((a, b) => {
+                      const statusOrder: OrderStatus[] = ['PLACED', 'PAID', 'CANCELLED'];
+                      const aIdx = statusOrder.indexOf(a.status);
+                      const bIdx = statusOrder.indexOf(b.status);
+                      if (aIdx !== bIdx) return aIdx - bIdx;
+                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                    })
+                    .map((order) => {
+                      const isActing = actingIds.has(order.id);
+                      return (
+                        <motion.div
+                          key={order.id}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className={clsx('rounded-xl border p-3 space-y-2', STATUS_COLORS[order.status])}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={getStatusBadgeVariant(order.status)} className="text-xs">
+                                {t(`status.${order.status}`)}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">{formatTime(order.createdAt)}</span>
+                            </div>
+                            {order.total !== undefined && (
+                              <span className="text-sm font-semibold">ƒ,ª{order.total.toFixed(2)}</span>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            {order.items?.slice(0, 4).map((item, idx) => (
+                              <div key={idx} className="text-xs flex items-center gap-1">
+                                <span className="font-medium">{item.quantity}A-</span>
+                                <span className="truncate">{item.item?.name || 'Item'}</span>
+                              </div>
+                            ))}
+                            {(order.items?.length || 0) > 4 && (
+                              <div className="text-xs text-muted-foreground">+{(order.items?.length || 0) - 4} more items</div>
+                            )}
+                          </div>
+                          {order.note && (
+                            <div className="text-xs italic text-muted-foreground bg-background/50 rounded px-2 py-1">"{order.note}"</div>
+                          )}
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {!['PAID', 'CANCELLED'].includes(order.status) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="gap-1 h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleStatusChange(order.id, 'CANCELLED')}
+                                disabled={isActing}
+                              >
+                                <XCircle className="w-3 h-3" />
+                                Cancel
+                              </Button>
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

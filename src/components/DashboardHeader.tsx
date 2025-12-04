@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AppBurger } from '@/pages/AppBurger';
+import { AppBurger } from '@/components/AppBurger';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useTheme } from '@/components/theme-provider-context';
 import { Sun, Moon } from 'lucide-react';
