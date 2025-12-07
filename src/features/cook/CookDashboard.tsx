@@ -15,6 +15,8 @@ import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
+import { CookProView } from "@/components/cook/CookProView";
+import { LayoutGrid, List } from "lucide-react";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -127,7 +129,21 @@ export default function CookDashboard() {
   const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [viewMode, setViewMode] = useState<"classic" | "pro">(() => {
+    try {
+      const saved = localStorage.getItem("COOK_VIEW_MODE");
+      if (saved === "classic" || saved === "pro") return saved;
+    } catch {}
+    return "classic";
+  });
 
+  const toggleViewMode = () => {
+    const next = viewMode === "classic" ? "pro" : "classic";
+    setViewMode(next);
+    try {
+      localStorage.setItem("COOK_VIEW_MODE", next);
+    } catch {}
+  };
   useEffect(() => {
     if (
       !isAuthenticated() ||
@@ -310,209 +326,241 @@ export default function CookDashboard() {
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
-        title={t('cook.dashboard') || 'Cook Dashboard'}
-        subtitle={user?.displayName}
-        rightContent={user ? (
-          <div className="text-sm">
-            <a href={user.email ? `mailto:${user.email}` : undefined} className="font-medium underline underline-offset-2 hover:text-foreground">
-              {user.displayName}
-            </a>
-            {user.email ? (
-              <>
-                <span className="mx-2 text-muted-foreground">•</span>
-                <a href={`mailto:${user.email}`} className="text-muted-foreground hover:text-foreground">{user.email}</a>
-              </>
-            ) : null}
-          </div>
-        ) : undefined}
-        icon="👨‍🍳"
-        tone="primary"
-        burgerActions={null}
-      />
-
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1 w-full">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground">
-            {t('cook.incoming_orders')}
-          </h2>
-          <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
-            {incoming.length}
-          </div>
-        </div>
-        {loadingOrders ? (
-          <DashboardGridSkeleton count={4} />
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-            {incoming.map((o, idx) => (
-              <Card
-                key={o.id}
-                className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-slide-in"
+          title={t('cook.dashboard') || 'Cook Dashboard'}
+          subtitle={user?.displayName}
+          rightContent={
+            <div className="flex items-center gap-3">
+              {/* View Toggle */}
+              <button
+                type="button"
+                onClick={toggleViewMode}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card/80 hover:bg-accent transition-colors text-sm font-medium"
+                aria-label={viewMode === "classic" ? "Switch to Pro view" : "Switch to Classic view"}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
-                      {o.tableLabel}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
-                        <span>{formatTableLabel(o.tableLabel)}</span>
-                        <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
-                          Priority #{idx + 1}
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(o.createdAt).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
+                {viewMode === "classic" ? (
+                  <>
+                    <LayoutGrid className="h-4 w-4" />
+                    <span className="hidden sm:inline">Pro</span>
+                  </>
+                ) : (
+                  <>
+                    <List className="h-4 w-4" />
+                    <span className="hidden sm:inline">Classic</span>
+                  </>
+                )}
+              </button>
+              {user && (
+                <div className="hidden sm:flex items-center text-sm">
+                  <span className="font-medium">{user.displayName}</span>
                 </div>
-                <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                  {(o.items ?? []).map((line, idx: number) => {
-                    const qty = line.quantity;
-                    const name = line.item?.name ?? line.item?.title ?? 'Item';
-                    return (
-                      <div key={idx} className="flex items-center gap-2">
-                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
-                          {qty}
-                        </div>
-                        <span className="text-foreground font-medium">
-                          {name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-                    onClick={() => accept(o.id)}
-                    disabled={accepting.has(o.id)}
-                    aria-label={acceptLabel}
-                    title={acceptLabel}
-                  >
-                    {accepting.has(o.id) && (
-                      <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
-                    )}
-                    {!accepting.has(o.id) && (
-                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                        ✅
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    className="w-full inline-flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-md"
-                    onClick={() => acceptWithPrint(o)}
-                    disabled={printing.has(o.id)}
-                    aria-label={acceptWithPrintLabel}
-                    title={acceptWithPrintLabel}
-                  >
-                    {printing.has(o.id) && (
-                      <span className="h-4 w-4 border-2 border-secondary-foreground/60 border-t-transparent rounded-full animate-spin" />
-                    )}
-                    {!printing.has(o.id) && (
-                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                        🖨️
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    className="w-full inline-flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md transition-shadow"
-                    onClick={() => cancelOrder(o.id)}
-                    disabled={actingIds.has(`cancel:${o.id}`)}
-                    aria-label={cancelLabel}
-                    title={cancelLabel}
-                  >
-                    {actingIds.has(`cancel:${o.id}`) && (
-                      <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
-                    )}
-                    {!actingIds.has(`cancel:${o.id}`) && (
-                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                        ❌
-                      </span>
-                    )}
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
+              )}
+            </div>
+          }
+          icon="👨‍🍳"
+          tone="primary"
+          burgerActions={null}
+        />
 
-        <div className="flex items-center gap-2 sm:gap-3 mt-10">
-          <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('cook.in_preparation')}</h2>
-          <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
-            {preparing.length}
-          </div>
-        </div>
-        {loadingOrders ? (
-          <DashboardGridSkeleton count={3} />
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-            {preparing.map((o) => (
-              <Card
-                key={o.id}
-                className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
-                      {o.tableLabel}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-foreground text-sm sm:text-base">
-                        {formatTableLabel(o.tableLabel)}
-                        {typeof o.priority === 'number' && (
-                          <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
-                            Priority #{o.priority}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(o.createdAt).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">
+          {viewMode === "pro" ? (
+            <CookProView
+              incoming={incoming}
+              preparing={preparing}
+              loadingOrders={loadingOrders}
+              accepting={accepting}
+              printing={printing}
+              actingIds={actingIds}
+              onAccept={accept}
+              onAcceptWithPrint={acceptWithPrint}
+              onCancel={cancelOrder}
+              onMarkReady={markReady}
+            />
+          ) : (
+            <>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                  {t('cook.incoming_orders')}
+                </h2>
+                <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
+                  {incoming.length}
                 </div>
-                <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                  {(o.items ?? []).map((line, idx: number) => {
-                    const qty = line.quantity;
-                    const name = line.item?.name ?? line.item?.title ?? 'Item';
-                    return (
-                      <div key={idx} className="flex items-center gap-2">
-                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
-                          {qty}
+              </div>
+              {loadingOrders ? (
+                <DashboardGridSkeleton count={4} />
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+                  {incoming.map((o, idx) => (
+                    <Card
+                      key={o.id}
+                      className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-slide-in"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
+                            {o.tableLabel}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
+                              <span>{formatTableLabel(o.tableLabel)}</span>
+                              <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
+                                Priority #{idx + 1}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(o.createdAt).toLocaleTimeString()}
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-foreground font-medium">
-                          {name}
-                        </span>
                       </div>
-                    );
-                  })}
+                      <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
+                        {(o.items ?? []).map((line, idx: number) => {
+                          const qty = line.quantity;
+                          const name = line.item?.name ?? line.item?.title ?? 'Item';
+                          return (
+                            <div key={idx} className="flex items-center gap-2">
+                              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
+                                {qty}
+                              </div>
+                              <span className="text-foreground font-medium">
+                                {name}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                          onClick={() => accept(o.id)}
+                          disabled={accepting.has(o.id)}
+                          aria-label={acceptLabel}
+                          title={acceptLabel}
+                        >
+                          {accepting.has(o.id) && (
+                            <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
+                          )}
+                          {!accepting.has(o.id) && (
+                            <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                              ✅
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          className="w-full inline-flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-md"
+                          onClick={() => acceptWithPrint(o)}
+                          disabled={printing.has(o.id)}
+                          aria-label={acceptWithPrintLabel}
+                          title={acceptWithPrintLabel}
+                        >
+                          {printing.has(o.id) && (
+                            <span className="h-4 w-4 border-2 border-secondary-foreground/60 border-t-transparent rounded-full animate-spin" />
+                          )}
+                          {!printing.has(o.id) && (
+                            <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                              🖨️
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          className="w-full inline-flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md transition-shadow"
+                          onClick={() => cancelOrder(o.id)}
+                          disabled={actingIds.has(`cancel:${o.id}`)}
+                          aria-label={cancelLabel}
+                          title={cancelLabel}
+                        >
+                          {actingIds.has(`cancel:${o.id}`) && (
+                            <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                          )}
+                          {!actingIds.has(`cancel:${o.id}`) && (
+                            <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                              ❌
+                            </span>
+                          )}
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-                    onClick={() => markReady(o.id)}
-                    disabled={actingIds.has(`ready:${o.id}`)}
-                    aria-label={markReadyLabel}
-                    title={markReadyLabel}
-                  >
-                    {actingIds.has(`ready:${o.id}`) && (
-                      <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
-                    )}
-                    {!actingIds.has(`ready:${o.id}`) && (
-                      <span role="img" aria-hidden="true" className="text-2xl leading-none">
-                        🍽️
-                      </span>
-                    )}
-                  </Button>
+              )}
+
+              <div className="flex items-center gap-2 sm:gap-3 mt-10">
+                <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('cook.in_preparation')}</h2>
+                <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
+                  {preparing.length}
                 </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+              </div>
+              {loadingOrders ? (
+                <DashboardGridSkeleton count={3} />
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+                  {preparing.map((o) => (
+                    <Card
+                      key={o.id}
+                      className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
+                            {o.tableLabel}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-foreground text-sm sm:text-base">
+                              {formatTableLabel(o.tableLabel)}
+                              {typeof o.priority === 'number' && (
+                                <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
+                                  Priority #{o.priority}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(o.createdAt).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
+                        {(o.items ?? []).map((line, idx: number) => {
+                          const qty = line.quantity;
+                          const name = line.item?.name ?? line.item?.title ?? 'Item';
+                          return (
+                            <div key={idx} className="flex items-center gap-2">
+                              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
+                                {qty}
+                              </div>
+                              <span className="text-foreground font-medium">
+                                {name}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                          onClick={() => markReady(o.id)}
+                          disabled={actingIds.has(`ready:${o.id}`)}
+                          aria-label={markReadyLabel}
+                          title={markReadyLabel}
+                        >
+                          {actingIds.has(`ready:${o.id}`) && (
+                            <span className="h-4 w-4 border-2 border-primary-foreground/60 border-t-transparent rounded-full animate-spin" />
+                          )}
+                          {!actingIds.has(`ready:${o.id}`) && (
+                            <span role="img" aria-hidden="true" className="text-2xl leading-none">
+                              🍽️
+                            </span>
+                          )}
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </PageTransition>
   );

@@ -19,6 +19,26 @@ const readOfflineFlag = () => {
   }
 };
 
+const readStoreSlug = () => {
+  try {
+    if (typeof window === "undefined") return "";
+    return (window.localStorage?.getItem("STORE_SLUG") || "").trim();
+  } catch {
+    return "";
+  }
+};
+
+const resolveEmailDomain = () => {
+  const envDomain = String(import.meta.env.VITE_DEFAULT_EMAIL_DOMAIN ?? "").trim();
+  if (envDomain) return envDomain.toLowerCase();
+
+  const slug = readStoreSlug() || "demo-cafe";
+  const normalized = slug.toLowerCase();
+  return normalized && normalized !== "demo-cafe"
+    ? `${normalized}.local`
+    : "demo.local";
+};
+
 export default function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -50,6 +70,15 @@ export default function Login() {
     };
   }, []);
   const debugEnabled = offline || envDebug;
+  const [emailDomain, setEmailDomain] = useState<string>(() => resolveEmailDomain());
+  useEffect(() => {
+    setEmailDomain(resolveEmailDomain());
+  }, []);
+
+  const demoWaiter1 = `waiter1@${emailDomain}`;
+  const demoWaiter2 = `waiter2@${emailDomain}`;
+  const demoManager = `manager@${emailDomain}`;
+  const demoArchitect = `architect@${emailDomain}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +122,7 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(e) => { setEmail(e.target.value); if (error) setError(""); }}
-              placeholder="waiter1@demo.local"
+              placeholder={demoWaiter1}
               required
             />
           </div>
@@ -114,9 +143,9 @@ export default function Login() {
           </Button>
         </form>
         <div className="text-sm text-muted-foreground text-center space-y-1">
-          <p>Demo waiters: waiter1@demo.local / waiter2@demo.local</p>
-          <p>Manager dashboard: manager@demo.local (password: changeme)</p>
-          <p>GarsoneAdmin (architect): architect@demo.local (password: changeme)</p>
+          <p>Demo waiters: {demoWaiter1} / {demoWaiter2}</p>
+          <p>Manager dashboard: {demoManager} (password: changeme)</p>
+          <p>GarsoneAdmin (architect): {demoArchitect} (password: changeme)</p>
           <p className="text-xs text-muted-foreground/80">If the architect user isn&apos;t seeded, use the Architect debug button below or create an architect profile on the backend.</p>
         </div>
 

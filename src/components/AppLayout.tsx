@@ -137,7 +137,7 @@ const AppLayout: React.FC = () => {
           const base = window.location.origin.replace(/\/$/, "");
           target = `${base}/publiccode/${first.publicCode}`;
         } else if (first?.tableId) {
-          const base = getBaseOrigin(first.slug);
+          const base = getBaseOrigin();
           target = `${base}/table/${first.tableId}`;
         }
       } catch (error) {

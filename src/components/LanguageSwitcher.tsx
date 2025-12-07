@@ -43,25 +43,27 @@ export const LanguageSwitcher = ({ className = '' }: Props) => {
 };
 
 const GreekFlag = () => (
-  <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8">
-    <rect width="60" height="40" fill="#0d5eaf" />
-    <g fill="#ffffff">
-      {/* Horizontal stripes */}
-      <rect y="4" width="60" height="4" />
-      <rect y="12" width="60" height="4" />
-      <rect y="20" width="60" height="4" />
-      <rect y="28" width="60" height="4" />
-      <rect y="36" width="60" height="4" />
-      {/* Canton cross */}
-      <rect width="24" height="16" />
-      <rect x="8" width="8" height="16" fill="#0d5eaf" />
-      <rect y="4" width="24" height="4" fill="#0d5eaf" />
-    </g>
+  <svg viewBox="0 0 27 18" role="img" aria-hidden="true" className="h-6 w-8 rounded-sm shadow-sm">
+    {/* 9 horizontal stripes - alternating blue/white, starting with blue */}
+    <rect width="27" height="2" y="0" fill="#0d5eaf" />
+    <rect width="27" height="2" y="2" fill="#ffffff" />
+    <rect width="27" height="2" y="4" fill="#0d5eaf" />
+    <rect width="27" height="2" y="6" fill="#ffffff" />
+    <rect width="27" height="2" y="8" fill="#0d5eaf" />
+    <rect width="27" height="2" y="10" fill="#ffffff" />
+    <rect width="27" height="2" y="12" fill="#0d5eaf" />
+    <rect width="27" height="2" y="14" fill="#ffffff" />
+    <rect width="27" height="2" y="16" fill="#0d5eaf" />
+    {/* Canton - blue square with white cross */}
+    <rect width="10" height="10" fill="#0d5eaf" />
+    {/* White cross in canton */}
+    <rect x="4" y="0" width="2" height="10" fill="#ffffff" />
+    <rect x="0" y="4" width="10" height="2" fill="#ffffff" />
   </svg>
 );
 
 const UkFlag = () => (
-  <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8">
+  <svg viewBox="0 0 60 40" role="img" aria-hidden="true" className="h-6 w-8 rounded-sm shadow-sm">
     <rect width="60" height="40" fill="#012169" />
     {/* White diagonals */}
     <polygon fill="#fff" points="0,0 7,0 60,30 60,40 53,40 0,10" />
