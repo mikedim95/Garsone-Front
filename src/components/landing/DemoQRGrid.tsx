@@ -1,34 +1,84 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { QR_MOCKUP } from '@/lib/mockData';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
-import { api } from '@/lib/api';
+import { api, API_BASE } from '@/lib/api';
+import type { LandingStoreLink } from '@/types';
 
 type DemoQRGridProps = {
   liveUrl?: string | null;
 };
 
 export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
-  const getBaseOrigin = () => {
-    const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN;
+  const [liveUrl, setLiveUrl] = useState<string | null>(providedLiveUrl ?? null);
+  const [stores, setStores] = useState<LandingStoreLink[]>([]);
+  const [loadingStores, setLoadingStores] = useState(false);
+
+  const publicCodeBase = useMemo(() => {
+    const envBase = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
+    if (envBase && envBase.length > 0) {
+      return envBase.replace(/\/$/, '');
+    }
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin.replace(/\/$/, '')}/publiccode`;
+    }
+    return `${API_BASE.replace(/\/$/, '')}/publiccode`;
+  }, []);
+
+  const getBaseOrigin = (storeSlug?: string | null) => {
+    const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined;
     if (envOrigin && envOrigin.trim().length > 0) {
-      return envOrigin.replace(/\/$/, "");
+      const normalized = envOrigin.replace(/\/$/, '');
+      return normalized.replace('{storeSlug}', storeSlug || '');
     }
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       const { protocol, hostname, port } = window.location;
-      const portPart = port ? `:${port}` : "";
-      return `${protocol}//${hostname}${portPart}`;
+      let host = hostname;
+      if (storeSlug && hostname.includes('.')) {
+        const parts = hostname.split('.');
+        parts[0] = storeSlug;
+        host = parts.join('.');
+      }
+      const portPart = port ? `:${port}` : '';
+      return `${protocol}//${host}${portPart}`;
     }
-    return "http://localhost:8080";
+    return 'http://localhost:8080';
   };
 
-  const BASE_ORIGIN = getBaseOrigin();
-  const [liveUrl, setLiveUrl] = useState<string | null>(providedLiveUrl ?? null);
+  const buildStoreUrl = (store: LandingStoreLink) => {
+    if (store.publicCode) {
+      return `${publicCodeBase}/${store.publicCode}`;
+    }
+    if (store.tableId) {
+      const origin = getBaseOrigin(store.slug);
+      return `${origin}/table/${store.tableId}`;
+    }
+    return null;
+  };
 
   useEffect(() => {
     setLiveUrl(providedLiveUrl ?? null);
   }, [providedLiveUrl]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingStores(true);
+        const res = await api.getLandingStores();
+        if (!mounted) return;
+        setStores(res?.stores ?? []);
+      } catch (error) {
+        console.warn('Failed to fetch landing stores', error);
+      } finally {
+        if (mounted) setLoadingStores(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -43,14 +93,18 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
         const actives = (data?.tables || []).filter((t) => t.active);
         if (actives.length > 0) {
           const random = actives[Math.floor(Math.random() * actives.length)];
-          if (mounted) setLiveUrl(`${BASE_ORIGIN}/table/${random.id}`);
+          if (mounted) setLiveUrl(`${getBaseOrigin()}/table/${random.id}`);
         }
       } catch (error) {
         console.warn('Failed to fetch tables for DemoQRGrid', error);
       }
     })();
-    return () => { mounted = false; };
-  }, [BASE_ORIGIN, providedLiveUrl]);
+    return () => {
+      mounted = false;
+    };
+  }, [providedLiveUrl]);
+
+  const storeCards = (stores || []).slice(0, 3);
 
   return (
     <div className="py-32 bg-gradient-card" data-section="demo-qr">
@@ -60,53 +114,105 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
             Experience It Live
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto font-light">
-            Scan the live QR to open a real table directly from the production backend. No mock data, no scripts, just the live experience.
+            Scan any of the live stores below to jump straight into their real menu. Each code maps to an active table from the seeded locations.
           </p>
         </div>
-        
-        <div className="max-w-lg mx-auto mb-20" data-live-qr-anchor>
-          <div 
-            className="group p-10 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
-          >
-            <h3 className="text-2xl font-bold mb-2 text-foreground">Live Store</h3>
-            <p className="text-primary font-medium mb-8">Random active table from the real Garsone backend</p>
-            <div className="flex-1 flex items-center justify-center mb-8">
-              <div className="glass p-6 rounded-3xl border-2 border-border w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-                {liveUrl ? (
-                  <QRCodeSVG key={liveUrl} value={liveUrl} size={220} level="H" includeMargin={false} />
-                ) : (
-                  <div className="text-sm text-primary text-center">Fetching a table…</div>
-                )}
+
+        <div className="mb-20" data-live-qr-anchor>
+          {storeCards.length > 0 ? (
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {storeCards.map((store) => {
+                const qrUrl = buildStoreUrl(store);
+                const label = store.tableLabel ? `Table ${store.tableLabel}` : 'Live table';
+                return (
+                  <div
+                    key={store.id}
+                    className="group p-8 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <h3 className="text-2xl font-bold text-foreground text-left">{store.name}</h3>
+                      <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                        {store.slug}
+                      </span>
+                    </div>
+                    <p className="text-primary font-medium mb-6 text-left">{label}</p>
+                    <div className="flex-1 flex items-center justify-center mb-6">
+                      <div className="glass p-6 rounded-3xl border-2 border-border w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                        {qrUrl ? (
+                          <QRCodeSVG key={qrUrl} value={qrUrl} size={220} level="H" includeMargin={false} />
+                        ) : (
+                          <div className="text-sm text-primary text-center">No active table found</div>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      asChild={!!qrUrl}
+                      variant="outline"
+                      className="w-full gap-2 mt-auto rounded-2xl py-5 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
+                      disabled={!qrUrl}
+                    >
+                      {qrUrl ? (
+                        <a href={qrUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                          Open menu
+                        </a>
+                      ) : (
+                        <span className="inline-flex items-center gap-2 opacity-70">
+                          <ExternalLink className="h-4 w-4" />
+                          Preparing link
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="max-w-lg mx-auto">
+              <div className="group p-10 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2">
+                <h3 className="text-2xl font-bold mb-2 text-foreground">Live Store</h3>
+                <p className="text-primary font-medium mb-8">Random active table from the real Garsone backend</p>
+                <div className="flex-1 flex items-center justify-center mb-8">
+                  <div className="glass p-6 rounded-3xl border-2 border-border w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                    {liveUrl ? (
+                      <QRCodeSVG key={liveUrl} value={liveUrl} size={220} level="H" includeMargin={false} />
+                    ) : (
+                      <div className="text-sm text-primary text-center">
+                        {loadingStores ? 'Loading stores...' : 'Fetching a table...'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  asChild={!!liveUrl}
+                  variant="outline"
+                  className="w-full gap-2 mt-auto rounded-2xl py-6 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
+                  disabled={!liveUrl}
+                >
+                  {liveUrl ? (
+                    <a href={liveUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                      Open Live Table
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 opacity-70">
+                      <ExternalLink className="h-4 w-4" />
+                      Preparing link...
+                    </span>
+                  )}
+                </Button>
               </div>
             </div>
-            <Button
-              asChild={!!liveUrl}
-              variant="outline"
-              className="w-full gap-2 mt-auto rounded-2xl py-6 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
-              disabled={!liveUrl}
-            >
-              {liveUrl ? (
-                <a href={liveUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Open Live Table
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-2 opacity-70">
-                  <ExternalLink className="h-4 w-4" />
-                  Preparing link…
-                </span>
-              )}
-            </Button>
-          </div>
+          )}
         </div>
 
         <div className="relative max-w-5xl mx-auto">
           <div className="absolute -inset-8 bg-gradient-primary rounded-[2.5rem] blur-3xl opacity-30 animate-glow" />
-          <img 
-            src={QR_MOCKUP} 
+          <img
+            src={QR_MOCKUP}
             alt="QR in cafe"
             loading="lazy"
-            className="relative rounded-3xl shadow-2xl ring-1 ring-gray-200 hover:scale-[1.02] transition-transform duration-500" 
+            className="relative rounded-3xl shadow-2xl ring-1 ring-gray-200 hover:scale-[1.02] transition-transform duration-500"
           />
         </div>
       </div>

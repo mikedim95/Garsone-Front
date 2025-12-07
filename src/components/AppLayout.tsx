@@ -128,7 +128,8 @@ const AppLayout: React.FC = () => {
     const url = await fetchLiveUrl({ forceOnline: true });
     const target = url || liveUrl;
     if (target) {
-      window.open(target, '_blank', 'noopener');
+      // Navigate in the same tab to avoid popup blockers.
+      window.location.assign(target);
     }
   };
 

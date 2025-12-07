@@ -163,6 +163,15 @@ export interface StoreInfo {
   timezone?: string;
 }
 
+export interface LandingStoreLink {
+  id: string;
+  name: string;
+  slug?: string;
+  tableId?: string | null;
+  tableLabel?: string | null;
+  publicCode?: string | null;
+}
+
 export interface ManagerTableSummary {
   id: string;
   label: string;

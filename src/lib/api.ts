@@ -22,6 +22,7 @@ import type {
   OrderResponse,
   OrdersResponse,
   OrderStatus,
+  LandingStoreLink,
   StoreInfo,
   Table,
   WaiterSummary,
@@ -110,6 +111,27 @@ async function fetchApi<T>(
 }
 
 export const api = {
+  getLandingStores: async (): Promise<{ stores: LandingStoreLink[] }> => {
+    if (isOffline()) {
+      const [storeRes, tablesRes] = await Promise.all([devMocks.getStore(), devMocks.getTables()]);
+      const table = tablesRes?.tables?.[0];
+      const store = (storeRes as any)?.store || (storeRes as any)?.meta || {};
+      return Promise.resolve({
+        stores: [
+          {
+            id: store.id || "offline-store",
+            name: store.name || "Offline Demo Store",
+            slug: store.slug || "demo-cafe",
+            tableId: table?.id ?? null,
+            tableLabel: table?.label ?? null,
+            publicCode: null,
+          },
+        ],
+      });
+    }
+    return fetchApi<{ stores: LandingStoreLink[] }>("/landing/stores");
+  },
+
   // Store & tables
   getStore: (): Promise<{ store: StoreInfo }> =>
     isOffline() ? devMocks.getStore() : fetchApi<{ store: StoreInfo }>("/store"),
