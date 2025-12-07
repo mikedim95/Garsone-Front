@@ -83,6 +83,8 @@ export interface User {
   email: string;
   role: UserRole;
   displayName: string;
+  storeId?: string;
+  storeSlug?: string;
 }
 
 export interface Table {
@@ -266,6 +268,11 @@ export interface OkResponse {
 export interface AuthResponse {
   accessToken: string;
   user: User;
+  store?: {
+    id: string;
+    slug: string;
+    name?: string;
+  };
 }
 
 export interface CreateOrderPayloadItem {

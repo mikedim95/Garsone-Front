@@ -32,11 +32,9 @@ const resolveEmailDomain = () => {
   const envDomain = String(import.meta.env.VITE_DEFAULT_EMAIL_DOMAIN ?? "").trim();
   if (envDomain) return envDomain.toLowerCase();
 
-  const slug = readStoreSlug() || "demo-cafe";
+  const slug = readStoreSlug() || "local-store";
   const normalized = slug.toLowerCase();
-  return normalized && normalized !== "demo-cafe"
-    ? `${normalized}.local`
-    : "demo.local";
+  return normalized ? `${normalized}.local` : "local-store.local";
 };
 
 export default function Login() {
@@ -164,6 +162,8 @@ export default function Login() {
                       id: "debug-waiter",
                       email: "waiter@debug",
                       role: "waiter",
+                      storeId: "debug-store",
+                      storeSlug: "debug-store",
                       displayName: "Debug Waiter",
                     },
                     "debug-token"
@@ -182,6 +182,8 @@ export default function Login() {
                       id: "debug-cook",
                       email: "cook@debug",
                       role: "cook",
+                      storeId: "debug-store",
+                      storeSlug: "debug-store",
                       displayName: "Debug Cook",
                     },
                     "debug-token"
@@ -200,6 +202,8 @@ export default function Login() {
                       id: "debug-manager",
                       email: "manager@debug",
                       role: "manager",
+                      storeId: "debug-store",
+                      storeSlug: "debug-store",
                       displayName: "Debug Manager",
                     },
                     "debug-token"
@@ -218,6 +222,8 @@ export default function Login() {
                       id: "debug-architect",
                       email: "architect@debug",
                       role: "architect",
+                      storeId: "debug-store",
+                      storeSlug: "debug-store",
                       displayName: "Debug Architect",
                     },
                     "debug-token"

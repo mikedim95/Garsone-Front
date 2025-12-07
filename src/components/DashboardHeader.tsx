@@ -7,6 +7,7 @@ import { Sun, Moon } from 'lucide-react';
 interface DashboardHeaderProps {
   title: string;
   subtitle?: ReactNode;
+  supertitle?: ReactNode;
   icon?: string;
   tone?: 'primary' | 'secondary' | 'accent';
   burgerActions?: ReactNode;
@@ -16,7 +17,8 @@ interface DashboardHeaderProps {
 export const DashboardHeader = ({
   title,
   subtitle,
-  icon = '📊',
+  supertitle,
+  icon = 'dY"S',
   tone = 'primary',
   burgerActions,
   rightContent,
@@ -36,7 +38,11 @@ export const DashboardHeader = ({
         : 'text-primary';
 
   const { theme, setTheme } = useTheme();
-  const isDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'system' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches);
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
   return (
@@ -47,6 +53,11 @@ export const DashboardHeader = ({
             <span className="text-xl sm:text-2xl md:text-3xl">{icon}</span>
           </div>
           <div className="min-w-0">
+            {supertitle ? (
+              <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-0.5 truncate">
+                {supertitle}
+              </p>
+            ) : null}
             <h1 className={`text-lg sm:text-xl md:text-2xl font-bold ${titleColorClass} truncate`}>
               {title}
             </h1>

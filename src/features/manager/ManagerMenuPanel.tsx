@@ -29,7 +29,7 @@ export const ManagerMenuPanel = () => {
   const [items, setItems] = useState<ManagerItemSummary[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
 
-  const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
+  const [storeSlug, setStoreSlug] = useState<string>('');
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);

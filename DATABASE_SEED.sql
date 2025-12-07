@@ -17,7 +17,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uix_profiles_email ON profiles (email);
 WITH
 store AS (
   INSERT INTO store_meta (id, slug, name, currency, default_language)
-  VALUES (gen_random_uuid(), 'demo-cafe', 'Demo Café', 'EUR', 'en')
+  VALUES (gen_random_uuid(), 'local-store', 'Local Demo Store', 'EUR', 'en')
   ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
   RETURNING id
 ),

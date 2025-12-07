@@ -20,7 +20,7 @@ export default function OrderThanks() {
     const qs = new URLSearchParams(location.search);
     return qs.get('tableId') || undefined;
   }, [location.search]);
-  const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
+  const [storeSlug, setStoreSlug] = useState<string>('');
 
   useEffect(() => {
     let mounted = true;

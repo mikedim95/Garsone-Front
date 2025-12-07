@@ -220,7 +220,13 @@ export default function WaiterDashboard() {
   const [shiftWindow, setShiftWindow] = useState<{ start?: string; end?: string } | null>(null);
   const [shiftLoaded, setShiftLoaded] = useState(false);
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
-  const [storeSlug, setStoreSlug] = useState<string>('demo-cafe');
+  const [storeSlug, setStoreSlug] = useState<string>(() => {
+    try {
+      return localStorage.getItem('STORE_SLUG') || '';
+    } catch {
+      return '';
+    }
+  });
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
   
   // No preselected status tab
@@ -437,8 +443,7 @@ export default function WaiterDashboard() {
       }
     };
     fetchAssignments();
-    const int = setInterval(fetchAssignments, 30000);
-    return () => clearInterval(int);
+    return () => {};
   }, [user?.id]);
 
   // Initial hydrate from backend
@@ -494,7 +499,22 @@ export default function WaiterDashboard() {
 
   // Realtime updates → mutate local cache
   useEffect(() => {
-    if (!assignmentsLoaded || !shiftLoaded) return;
+    // ensure socket is opened early; subscriptions happen when storeSlug is ready
+    realtimeService.connect().catch(() => {});
+    return () => {
+      realtimeService.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user?.storeSlug && !storeSlug) {
+      setStoreSlug(user.storeSlug);
+    }
+  }, [user?.storeSlug, storeSlug]);
+
+  useEffect(() => {
+    if (!assignmentsLoaded || !shiftLoaded || !storeSlug) return;
+    realtimeService.connect().catch(() => {});
     let unsubscribed = false;
     const placedTopic = `${storeSlug}/orders/placed`;
     const preparingTopic = `${storeSlug}/orders/preparing`;
@@ -503,8 +523,8 @@ export default function WaiterDashboard() {
     const paidTopic = `${storeSlug}/orders/paid`;
     const waiterCallTopic = `${storeSlug}/waiter/call`;
 
-    const hydrateOrder = async (orderId: string) => {
-      if (ordersRef.current.some((o) => o.id === orderId)) return;
+    const hydrateOrder = async (orderId: string, force = false) => {
+      if (!force && ordersRef.current.some((o) => o.id === orderId)) return;
       try {
         const res = await api.getOrder(orderId);
         const normalized = normalizeOrder(res.order, Date.now());
@@ -552,7 +572,7 @@ export default function WaiterDashboard() {
         return;
       }
       updateLocalStatus(payload.orderId!, 'PREPARING');
-      await hydrateOrder(payload.orderId!);
+      await hydrateOrder(payload.orderId!, true);
       dbg("realtime preparing", payload.orderId, "table", payload.tableId);
     };
     const handleReady = async (payload: unknown) => {
@@ -567,7 +587,7 @@ export default function WaiterDashboard() {
         return;
       }
       updateLocalStatus(payload.orderId!, 'READY');
-      await hydrateOrder(payload.orderId!);
+      await hydrateOrder(payload.orderId!, true);
       toast({ title: t('toasts.order_ready'), description: t('toasts.table', { table: payload.tableId ?? '' }) });
       dbg("realtime ready", payload.orderId, "table", payload.tableId);
     };
@@ -715,6 +735,14 @@ export default function WaiterDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const loadingOrders = !assignmentsLoaded || !shiftLoaded;
+  const storeTitle =
+    (() => {
+      try {
+        return localStorage.getItem('STORE_NAME');
+      } catch {
+        return null;
+      }
+    })() || user?.storeSlug || t('waiter.dashboard');
 
   const dateFilterOptions: Array<{ key: DateFilterKey; label: string }> = [
     { key: 'today', label: 'Today' },
@@ -727,8 +755,9 @@ export default function WaiterDashboard() {
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
-          title={t('waiter.dashboard')}
-          subtitle={user?.displayName}
+          supertitle={t('waiter.dashboard')}
+          title={storeTitle}
+          subtitle={undefined}
           icon="🍽️"
           tone="accent"
           rightContent={user ? (

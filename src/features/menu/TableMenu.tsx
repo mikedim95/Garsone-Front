@@ -214,7 +214,7 @@ export default function TableMenu() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
-  const [storeSlug, setStoreSlug] = useState<string>("demo-cafe");
+  const [storeSlug, setStoreSlug] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);

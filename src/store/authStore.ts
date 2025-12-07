@@ -17,8 +17,12 @@ export const useAuthStore = create<AuthStore>()(
       token: null,
       login: (user, token) => {
         const role = user.role ?? 'guest';
+        const storeSlug = typeof user.storeSlug === 'string' ? user.storeSlug : undefined;
         try {
           localStorage.setItem('ROLE', role);
+          if (storeSlug) {
+            localStorage.setItem('STORE_SLUG', storeSlug);
+          }
         } catch (error) {
           console.warn('Failed to persist role', error);
         }
@@ -34,6 +38,7 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         try {
           localStorage.setItem('ROLE', 'guest');
+          localStorage.removeItem('STORE_SLUG');
         } catch (error) {
           console.warn('Failed to reset stored role', error);
         }

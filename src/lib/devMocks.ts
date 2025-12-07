@@ -195,8 +195,8 @@ function load(): Db {
         : [];
       const store =
         parsed.store && isRecord(parsed.store)
-        ? { id: storeId, name: (parsed.store as any).name || 'Garsone Offline Demo', slug: (parsed.store as any).slug || 'demo-cafe' }
-        : { id: storeId, name: 'Garsone Offline Demo', slug: 'demo-cafe' };
+        ? { id: storeId, name: (parsed.store as any).name || 'Garsone Offline Demo', slug: (parsed.store as any).slug || 'local-store' }
+        : { id: storeId, name: 'Garsone Offline Demo', slug: 'local-store' };
       const db: Db = {
         store,
         categories: parsed.categories ?? [],
@@ -236,11 +236,11 @@ function load(): Db {
     priceCents: 350,
     categoryId: catCoffee.id,
     isAvailable: true,
-    imageUrl: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/demo-cafe/Cup-Of-Creamy-Coffee.png',
+    imageUrl: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/local-store/Cup-Of-Creamy-Coffee.png',
   };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
-    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'demo-cafe' },
+    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'local-store' },
     categories: [catCoffee, catPastry],
     items: [itemEsp, itemCap, itemCro],
     modifiers: [modMilk, modSugar],
@@ -402,7 +402,7 @@ export const devMocks = {
         {
           id: db.store.id,
           name: db.store.name,
-          slug: db.store.slug || 'demo-cafe',
+          slug: db.store.slug || 'local-store',
         },
       ],
     });
@@ -480,13 +480,13 @@ export const devMocks = {
     if (!tile.tableId || !table) {
       return Promise.resolve({
         status: 'UNASSIGNED_TILE',
-        storeSlug: db.store.slug || 'demo-cafe',
+        storeSlug: db.store.slug || 'local-store',
         publicCode,
       });
     }
     return Promise.resolve({
       status: 'OK',
-      storeSlug: db.store.slug || 'demo-cafe',
+      storeSlug: db.store.slug || 'local-store',
       tableId: tile.tableId,
       tableLabel: table?.label ?? '',
       publicCode,
@@ -779,3 +779,4 @@ export const devMocks = {
   linkItemModifier(itemId: Id, modifierId: Id, isRequired: boolean) { const db = snapshot(); db.itemModifiers.push({ itemId, modifierId, isRequired }); save(db); return Promise.resolve({ ok: true }); },
   unlinkItemModifier(itemId: Id, modifierId: Id) { const db = snapshot(); db.itemModifiers = db.itemModifiers.filter(im=> !(im.itemId===itemId && im.modifierId===modifierId)); save(db); return Promise.resolve({ ok: true }); },
 };
+

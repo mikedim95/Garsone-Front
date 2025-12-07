@@ -345,6 +345,13 @@ export default function ManagerDashboard() {
   const [loadingTables, setLoadingTables] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [storeId, setStoreId] = useState<string | null>(null);
+  const [storeName, setStoreName] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("STORE_NAME");
+    } catch {
+      return null;
+    }
+  });
   const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
   const [loadingQrTiles, setLoadingQrTiles] = useState(false);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
@@ -452,6 +459,7 @@ export default function ManagerDashboard() {
           } catch {}
         }
         if (res?.store?.name) {
+          setStoreName(res.store.name);
           try {
             localStorage.setItem("STORE_NAME", res.store.name);
           } catch {}
@@ -2251,8 +2259,9 @@ export default function ManagerDashboard() {
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <DashboardHeader
-          title={t("manager.dashboard")}
-          subtitle={user?.displayName}
+          supertitle={t("manager.dashboard")}
+          title={storeName || user?.storeSlug || t("manager.dashboard")}
+          subtitle={undefined}
           rightContent={
             user ? (
               <div className="text-sm flex flex-col items-end gap-1">

@@ -16,7 +16,7 @@ export const MENU_ITEMS: MenuItem[] = [
     name: 'Cappuccino',
     description: 'Espresso with steamed milk foam',
     price: 3.5,
-    image: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/demo-cafe/Cup-Of-Creamy-Coffee.png',
+    image: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/sample-menu/Cup-Of-Creamy-Coffee.png',
     category: 'Coffee',
     available: true,
     modifiers: [MOCK_MODIFIERS.milk, MOCK_MODIFIERS.size],

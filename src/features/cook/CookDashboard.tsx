@@ -124,7 +124,7 @@ export default function CookDashboard() {
   const upsertOrder = useOrdersStore((s) => s.upsert);
   const updateLocalStatus = useOrdersStore((s) => s.updateStatus);
 
-  const [storeSlug, setStoreSlug] = useState("demo-cafe");
+  const [storeSlug, setStoreSlug] = useState("");
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
@@ -321,13 +321,22 @@ export default function CookDashboard() {
   const markReadyLabel = t('actions.mark_ready');
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+  const storeTitle =
+    (() => {
+      try {
+        return localStorage.getItem('STORE_NAME');
+      } catch {
+        return null;
+      }
+    })() || user?.storeSlug || t('cook.dashboard') || 'Cook Dashboard';
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
-          title={t('cook.dashboard') || 'Cook Dashboard'}
-          subtitle={user?.displayName}
+          supertitle={t('cook.dashboard') || 'Cook Dashboard'}
+          title={storeTitle}
+          subtitle={undefined}
           rightContent={
             <div className="flex items-center gap-3">
               {/* View Toggle */}

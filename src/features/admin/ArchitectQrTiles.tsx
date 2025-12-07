@@ -272,10 +272,22 @@ export default function ArchitectQrTiles() {
     return tiles.filter((tile) => tile.publicCode.toLowerCase().includes(term));
   }, [tiles, codeSearch]);
 
+  const headerStoreTitle =
+    storeName ||
+    (() => {
+      try {
+        return localStorage.getItem('STORE_NAME');
+      } catch {
+        return null;
+      }
+    })() ||
+    'QR Tile Architect';
+
   return (
     <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
-        title="QR Tile Architect"
+        supertitle="QR Tile Architect"
+        title={headerStoreTitle}
         subtitle={storeName ? `Managing ${storeName}` : 'Generate & assign QR tiles'}
         icon="🎛️"
         tone="secondary"

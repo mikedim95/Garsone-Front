@@ -132,7 +132,7 @@ export const api = {
           {
             id: store.id || "offline-store",
             name: store.name || "Offline Demo Store",
-            slug: store.slug || "demo-cafe",
+            slug: store.slug || "local-store",
             tableId: table?.id ?? null,
             tableLabel: table?.label ?? null,
             publicCode: null,
