@@ -80,13 +80,24 @@ async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
+  const getStoreSlug = () => {
+    try {
+      return typeof window !== 'undefined'
+        ? window.localStorage?.getItem('STORE_SLUG') || undefined
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   try {
     const token = useAuthStore.getState().token;
+    const storeSlug = getStoreSlug();
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
         ...(options?.body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(storeSlug ? { "x-store-slug": storeSlug } : {}),
         ...options?.headers,
       },
     });

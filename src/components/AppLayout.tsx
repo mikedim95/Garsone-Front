@@ -126,11 +126,32 @@ const AppLayout: React.FC = () => {
 
   const openLiveStore = async () => {
     const url = await fetchLiveUrl({ forceOnline: true });
-    const target = url || liveUrl;
-    if (target) {
-      // Navigate in the same tab to avoid popup blockers.
-      window.location.assign(target);
+    let target = url || liveUrl;
+
+    // Fallback: try the landing stores list (first active table)
+    if (!target) {
+      try {
+        const res = await api.getLandingStores();
+        const first = res?.stores?.[0];
+        if (first?.publicCode) {
+          const base = window.location.origin.replace(/\/$/, "");
+          target = `${base}/publiccode/${first.publicCode}`;
+        } else if (first?.tableId) {
+          const base = getBaseOrigin(first.slug);
+          target = `${base}/table/${first.tableId}`;
+        }
+      } catch (error) {
+        console.warn("Fallback to landing stores failed", error);
+      }
     }
+
+    // Last-resort offline demo
+    if (!target) {
+      target = "/table/T1";
+    }
+
+    // Navigate in the same tab to avoid popup blockers.
+    window.location.assign(target);
   };
 
   const startOfflineDemo = async () => {

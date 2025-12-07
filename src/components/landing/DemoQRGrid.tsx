@@ -34,8 +34,10 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
     }
     if (typeof window !== 'undefined') {
       const { protocol, hostname, port } = window.location;
+      const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+      const isLocal = hostname === 'localhost';
       let host = hostname;
-      if (storeSlug && hostname.includes('.')) {
+      if (storeSlug && !isIp && !isLocal && hostname.includes('.')) {
         const parts = hostname.split('.');
         parts[0] = storeSlug;
         host = parts.join('.');
@@ -145,27 +147,41 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
                         )}
                       </div>
                     </div>
-                    <Button
-                      asChild={!!qrUrl}
-                      variant="outline"
-                      className="w-full gap-2 mt-auto rounded-2xl py-5 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
-                      disabled={!qrUrl}
-                    >
-                      {qrUrl ? (
-                        <a href={qrUrl} target="_blank" rel="noreferrer">
-                          <ExternalLink className="h-4 w-4" />
-                          Open menu
-                        </a>
-                      ) : (
-                        <span className="inline-flex items-center gap-2 opacity-70">
-                          <ExternalLink className="h-4 w-4" />
-                          Preparing link
-                        </span>
-                      )}
-                    </Button>
-                  </div>
-                );
-              })}
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 mt-auto rounded-2xl py-5 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
+                  disabled={!qrUrl}
+                  onClick={() => {
+                    try {
+                      localStorage.setItem("STORE_SLUG", store.slug || "");
+                    } catch (error) {
+                      console.warn("Failed to persist STORE_SLUG from landing", error);
+                    }
+                    console.log("[DemoQRGrid] card click", {
+                      store: store.slug,
+                      tableId: store.tableId,
+                      publicCode: store.publicCode,
+                      qrUrl,
+                      host: typeof window !== "undefined" ? window.location.origin : "ssr",
+                    });
+                    if (qrUrl) window.location.assign(qrUrl);
+                  }}
+                >
+                  {qrUrl ? (
+                    <>
+                      <ExternalLink className="h-4 w-4" />
+                      Open menu
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 opacity-70">
+                      <ExternalLink className="h-4 w-4" />
+                      Preparing link
+                    </span>
+                  )}
+                </Button>
+              </div>
+            );
+          })}
             </div>
           ) : (
             <div className="max-w-lg mx-auto">
@@ -184,16 +200,22 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
                   </div>
                 </div>
                 <Button
-                  asChild={!!liveUrl}
                   variant="outline"
                   className="w-full gap-2 mt-auto rounded-2xl py-6 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
                   disabled={!liveUrl}
+                  onClick={() => {
+                    console.log("[DemoQRGrid] fallback live click", {
+                      liveUrl,
+                      host: typeof window !== "undefined" ? window.location.origin : "ssr",
+                    });
+                    if (liveUrl) window.location.assign(liveUrl);
+                  }}
                 >
                   {liveUrl ? (
-                    <a href={liveUrl} target="_blank" rel="noreferrer">
+                    <>
                       <ExternalLink className="h-4 w-4" />
                       Open Live Table
-                    </a>
+                    </>
                   ) : (
                     <span className="inline-flex items-center gap-2 opacity-70">
                       <ExternalLink className="h-4 w-4" />

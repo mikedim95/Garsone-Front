@@ -451,6 +451,16 @@ export default function TableMenu() {
           setMenuCache(data);
         }
 
+        console.log("[TableMenu] hydrate", {
+          tableParam,
+          activeTableId,
+          storeSlug: store?.slug,
+          storeName: store?.name,
+          items: data?.items?.length ?? 0,
+          categories: data?.categories?.length ?? 0,
+          cached: fresh,
+        });
+
         setMenuData(
           buildMenuState(
             {
@@ -489,6 +499,11 @@ export default function TableMenu() {
           )
         );
       } finally {
+        console.log("[TableMenu] hydrate done", {
+          tableParam,
+          activeTableId,
+          loading: false,
+        });
         setLoading(false);
       }
     };
