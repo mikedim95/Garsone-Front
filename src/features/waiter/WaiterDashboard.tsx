@@ -7,7 +7,7 @@ import { useOrdersStore } from '@/store/ordersStore';
 import { Order, OrderStatus, Table } from '@/types';
 import { OrderCard } from '@/components/waiter/OrderCard';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
@@ -216,7 +216,6 @@ export default function WaiterDashboard() {
   const ordersRef = useRef<Order[]>(ordersAll);
 
   const [assignedTableIds, setAssignedTableIds] = useState<Set<string>>(new Set());
-  const [unassignedTableIds, setUnassignedTableIds] = useState<Set<string>>(new Set());
   const tableLabelByIdRef = useRef<Map<string, string>>(new Map());
   const [shiftWindow, setShiftWindow] = useState<{ start?: string; end?: string } | null>(null);
   const [shiftLoaded, setShiftLoaded] = useState(false);
@@ -254,6 +253,7 @@ export default function WaiterDashboard() {
   
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const assignmentsFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // View mode (orders list vs tables grid)
   const [viewMode, setViewMode] = useState<ViewMode>(() => 
@@ -317,11 +317,12 @@ export default function WaiterDashboard() {
 
   const shouldShowTable = useCallback(
     (tableId?: string | null) => {
-      if (assignedTableIds.size === 0) return true;
-      if (!tableId) return unassignedTableIds.size > 0;
-      return assignedTableIds.has(tableId) || unassignedTableIds.has(tableId);
+      if (!assignmentsLoaded) return true; // before we know, don't hide
+      if (assignedTableIds.size === 0) return false;
+      if (!tableId) return false;
+      return assignedTableIds.has(tableId);
     },
-    [assignedTableIds, unassignedTableIds]
+    [assignedTableIds, assignmentsLoaded]
   );
 
   const withinShift = useCallback(
@@ -381,83 +382,96 @@ export default function WaiterDashboard() {
   }, [isAuthenticated, user, navigate]);
 
   // Load assignments + store slug
-  useEffect(() => {
-    const fetchAssignments = async () => {
-      try {
-        const store = await api.getStore();
-        const slug = store?.store?.slug;
-        const name = store?.store?.name;
-        if (name) {
-          try {
-            localStorage.setItem('STORE_NAME', name);
-          } catch (error) {
-            console.warn('Failed to persist STORE_NAME', error);
-          }
+  const fetchAssignments = useCallback(async () => {
+    if (!user || !isAuthenticated()) {
+      setAssignmentsLoaded(true);
+      return;
+    }
+    try {
+      const store = await api.getStore();
+      const slug = store?.store?.slug;
+      const name = store?.store?.name;
+      if (name) {
+        try {
+          localStorage.setItem('STORE_NAME', name);
+        } catch (error) {
+          console.warn('Failed to persist STORE_NAME', error);
         }
-        if (slug) {
-          setStoreSlug(slug);
-          try {
-            setStoredStoreSlug(slug);
-            window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug } }));
-          } catch (error) {
-            console.warn('Failed to persist STORE_SLUG', error);
-          }
+      }
+      if (slug) {
+        setStoreSlug(slug);
+        try {
+          setStoredStoreSlug(slug);
+          window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug } }));
+        } catch (error) {
+          console.warn('Failed to persist STORE_SLUG', error);
         }
-        const tablesRes = await api.getTables();
-        const myId = user?.id;
-        const tables = (tablesRes.tables ?? []) as TableWithWaiters[];
-        tableLabelByIdRef.current = new Map();
-        tables.forEach((t) => {
-          if (t.id && t.label) tableLabelByIdRef.current.set(t.id, t.label);
-        });
-        const hasWaiterData = tables.some((table) => Array.isArray(table.waiters));
-        if (!hasWaiterData) {
-          setAssignmentsLoaded(true);
-          return;
-        }
-        const next = new Set<string>();
-        const unassigned = new Set<string>();
-        tables.forEach((table) => {
-          if (!table.id) return;
-          const waiters = Array.isArray(table.waiters) ? table.waiters : [];
-          if (waiters.length === 0) {
-            unassigned.add(table.id);
-          }
-          if (waiters.some((waiter) => waiter?.id === myId)) {
-            next.add(table.id);
-          }
-        });
-        setAssignedTableIds(next);
-        setUnassignedTableIds(unassigned);
-        dbg("assignments loaded", {
-          assignedCount: next.size,
-          unassignedCount: unassigned.size,
-          assigned: Array.from(next),
-          unassigned: Array.from(unassigned),
-          tableLabels: Array.from(next).map((id) => `${id}:${tableLabelByIdRef.current.get(id) ?? 'unknown'}`),
-          myId,
-        });
-      } catch (error) {
+      }
+      const tablesRes = await api.waiterMyTables();
+      const myId = user?.id;
+      const tables = (tablesRes.tables ?? []) as TableWithWaiters[];
+      const assignments = tablesRes.assignments ?? [];
+      dbg("assignments raw", {
+        assignmentsCount: assignments.length,
+        tablesCount: tables.length,
+        waiterId: myId,
+        sampleAssignments: assignments.slice(0, 3),
+        sampleTables: tables.slice(0, 3),
+      });
+      tableLabelByIdRef.current = new Map();
+      tables.forEach((t) => {
+        if (t.id && t.label) tableLabelByIdRef.current.set(t.id, t.label);
+      });
+      const next = new Set<string>();
+      assignments.forEach((a) => {
+        if (a.tableId) next.add(a.tableId);
+      });
+      setAssignedTableIds(next);
+      dbg("assignments loaded", {
+        assignedCount: next.size,
+        assigned: Array.from(next),
+        tableLabels: Array.from(next).map((id) => `${id}:${tableLabelByIdRef.current.get(id) ?? 'unknown'}`),
+        myId,
+        waiterDataPresent: assignments.length > 0,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        console.error('Failed to load waiter assignments (unauthorized), logging out');
+        logout();
+        navigate('/login');
+      } else {
         console.error('Failed to load waiter assignments', error);
-      } finally {
-        setAssignmentsLoaded(true);
+      }
+    } finally {
+      setAssignmentsLoaded(true);
+    }
+  }, [user, isAuthenticated, logout, navigate]);
+
+  useEffect(() => {
+    fetchAssignments();
+    return () => {
+      if (assignmentsFetchRef.current) {
+        clearTimeout(assignmentsFetchRef.current);
       }
     };
-    fetchAssignments();
-    return () => {};
-  }, [user?.id]);
+  }, [fetchAssignments]);
 
   // Initial hydrate from backend
   useEffect(() => {
     if (!assignmentsLoaded || !user) return;
     (async () => {
       try {
+        if (assignedTableIds.size === 0) {
+          setOrdersLocal([]);
+          setShiftLoaded(true);
+          return;
+        }
+        const tableIdsParam =
+          assignedTableIds.size > 0 ? Array.from(new Set([...assignedTableIds])) : [];
+        dbg("fetch orders params", { take: ORDER_FETCH_LIMIT, tableIds: tableIdsParam });
         const data = await api.getOrders({
           take: ORDER_FETCH_LIMIT,
-          tableIds:
-            assignedTableIds.size > 0
-              ? Array.from(new Set([...assignedTableIds, ...unassignedTableIds]))
-              : undefined,
+          tableIds: tableIdsParam,
         });
         if (data.shift) {
           setShiftWindow({
@@ -483,11 +497,7 @@ export default function WaiterDashboard() {
           fetched: (data.orders ?? []).length,
           mapped: mapped.length,
           assignedCount: assignedTableIds.size,
-          unassignedCount: unassignedTableIds.size,
-          tableIdsParam:
-            assignedTableIds.size > 0
-              ? Array.from(new Set([...assignedTableIds, ...unassignedTableIds]))
-              : null,
+          tableIdsParam,
           tableStats,
         });
       } catch (error) {
@@ -496,7 +506,7 @@ export default function WaiterDashboard() {
         setShiftLoaded(true);
       }
     })();
-  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds, unassignedTableIds, shouldShowTable, withinShift]);
+  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds, shouldShowTable, withinShift]);
 
   // Realtime updates → mutate local cache
   useEffect(() => {
@@ -526,6 +536,7 @@ export default function WaiterDashboard() {
     const cancelledTopic = `${storeSlug}/orders/canceled`;
     const paidTopic = `${storeSlug}/orders/paid`;
     const waiterCallTopic = `${storeSlug}/waiter/call`;
+    const assignmentsTopic = `${storeSlug}/waiter/assignments`;
 
     const hydrateOrder = async (orderId: string, force = false) => {
       if (!force && ordersRef.current.some((o) => o.id === orderId)) return;
@@ -650,6 +661,15 @@ export default function WaiterDashboard() {
       realtimeService.subscribe(cancelledTopic, handleCancelled);
       realtimeService.subscribe(paidTopic, handlePaid);
       realtimeService.subscribe(waiterCallTopic, handleWaiterCall);
+      realtimeService.subscribe(assignmentsTopic, () => {
+        // Debounce assignment refetch to avoid rapid bursts
+        if (assignmentsFetchRef.current) {
+          clearTimeout(assignmentsFetchRef.current);
+        }
+        assignmentsFetchRef.current = window.setTimeout(() => {
+          fetchAssignments();
+        }, 300);
+      });
     })();
 
     return () => {
@@ -660,8 +680,9 @@ export default function WaiterDashboard() {
       realtimeService.unsubscribe(cancelledTopic, handleCancelled);
       realtimeService.unsubscribe(paidTopic, handlePaid);
       realtimeService.unsubscribe(waiterCallTopic, handleWaiterCall);
+      realtimeService.unsubscribe(assignmentsTopic);
     };
-  }, [assignmentsLoaded, shiftLoaded, storeSlug, assignedTableIds, shouldShowTable, upsertOrder, updateLocalStatus, toast, t, withinShift]);
+  }, [assignmentsLoaded, shiftLoaded, storeSlug, assignedTableIds, shouldShowTable, upsertOrder, updateLocalStatus, toast, t, withinShift, fetchAssignments]);
 
   // Derived list from local cache with date filter
   const orders = useMemo(() => {
@@ -909,10 +930,21 @@ export default function WaiterDashboard() {
               <div className="w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">
                 <Clock className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">No orders found</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                {statusFilter ? `No ${statusFilter.toLowerCase()} orders for the selected time period.` : 'Select a status filter to view orders.'}
-              </p>
+              {assignedTableIds.size === 0 && assignmentsLoaded ? (
+                <>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">No tables assigned</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    Ask a manager to assign you to tables to start receiving orders.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">No orders found</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    {statusFilter ? `No ${statusFilter.toLowerCase()} orders for the selected time period.` : 'Select a status filter to view orders.'}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">

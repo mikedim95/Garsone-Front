@@ -286,6 +286,11 @@ export const api = {
           method: "DELETE",
           body: JSON.stringify({ waiterId, tableId }),
         }),
+  // Waiter-scoped: get my assigned tables
+  waiterMyTables: (): Promise<WaiterTableOverview> =>
+    isOffline()
+      ? devMocks.getWaiterTables()
+      : fetchApi<WaiterTableOverview>("/waiter/my-tables"),
 
   // Manager: waiters CRUD
   listWaiters: (): Promise<{ waiters: WaiterSummary[] }> =>

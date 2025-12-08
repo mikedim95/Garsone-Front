@@ -61,6 +61,16 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
             {user?.role === 'architect' && (
               <NavLink to="/GarsoneAdmin" label="Garsone Admin" icon={<QrCode className="h-4 w-4" />} />
             )}
+            {user ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-destructive/10 hover:bg-destructive/20 text-destructive px-3 py-2 text-sm transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                {t('logout', { defaultValue: 'Logout' })}
+              </button>
+            ) : null}
           </section>
 
           <section className="space-y-2">
@@ -70,16 +80,6 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
             <div className="flex flex-col gap-2">
               {children}
               <DashboardThemeToggle />
-              {user ? (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 rounded-lg border border-border/60 bg-destructive/10 hover:bg-destructive/20 text-destructive px-3 py-2 text-sm transition-colors"
-                >
-                  <LogOut className="h-4 w-4" />
-                  {t('logout', { defaultValue: 'Logout' })}
-                </button>
-              ) : null}
             </div>
           </section>
         </div>
