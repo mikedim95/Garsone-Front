@@ -18,6 +18,7 @@ import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
 import { TableCardView } from '@/components/waiter/TableCardView';
+import { getStoredStoreSlug, setStoredStoreSlug } from '@/lib/storeSlug';
 
 const ORDER_FETCH_LIMIT = 50;
 const DEBUG_LOG = true;
@@ -222,7 +223,7 @@ export default function WaiterDashboard() {
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
   const [storeSlug, setStoreSlug] = useState<string>(() => {
     try {
-      return localStorage.getItem('STORE_SLUG') || '';
+      return getStoredStoreSlug() || '';
     } catch {
       return '';
     }
@@ -396,7 +397,7 @@ export default function WaiterDashboard() {
         if (slug) {
           setStoreSlug(slug);
           try {
-            localStorage.setItem('STORE_SLUG', slug);
+            setStoredStoreSlug(slug);
             window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug } }));
           } catch (error) {
             console.warn('Failed to persist STORE_SLUG', error);
@@ -509,6 +510,9 @@ export default function WaiterDashboard() {
   useEffect(() => {
     if (user?.storeSlug && !storeSlug) {
       setStoreSlug(user.storeSlug);
+      try {
+        setStoredStoreSlug(user.storeSlug);
+      } catch {}
     }
   }, [user?.storeSlug, storeSlug]);
 

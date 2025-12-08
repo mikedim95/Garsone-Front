@@ -29,6 +29,7 @@ import type {
   WaiterTableOverview,
 } from "@/types";
 import { devMocks } from "./devMocks";
+import { getStoredStoreSlug } from "./storeSlug";
 
 const ENV_API: string | undefined = import.meta.env.VITE_API_URL;
 export const API_BASE = (() => {
@@ -81,13 +82,7 @@ async function fetchApi<T>(
   options?: RequestInit
 ): Promise<T> {
   const getStoreSlug = () => {
-    try {
-      return typeof window !== 'undefined'
-        ? window.localStorage?.getItem('STORE_SLUG') || undefined
-        : undefined;
-    } catch {
-      return undefined;
-    }
+    return getStoredStoreSlug() || undefined;
   };
   try {
     const token = useAuthStore.getState().token;

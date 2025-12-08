@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { User } from '../types';
+import { setStoredStoreSlug, clearStoredStoreSlug } from '@/lib/storeSlug';
 
 interface AuthStore {
   user: User | null;
@@ -21,7 +22,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           localStorage.setItem('ROLE', role);
           if (storeSlug) {
-            localStorage.setItem('STORE_SLUG', storeSlug);
+            setStoredStoreSlug(storeSlug);
           }
         } catch (error) {
           console.warn('Failed to persist role', error);
@@ -38,7 +39,7 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         try {
           localStorage.setItem('ROLE', 'guest');
-          localStorage.removeItem('STORE_SLUG');
+          clearStoredStoreSlug();
         } catch (error) {
           console.warn('Failed to reset stored role', error);
         }
@@ -53,6 +54,11 @@ export const useAuthStore = create<AuthStore>()(
       },
       isAuthenticated: () => !!get().token,
     }),
-    { name: 'auth-storage' }
+    {
+      name: 'auth-storage',
+      // Use per-tab session storage so running multiple roles (cook/waiter/manager) in different tabs
+      // doesn't clobber each other's tokens and force surprise logouts.
+      storage: createJSONStorage(() => sessionStorage),
+    }
   )
 );

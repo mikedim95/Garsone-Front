@@ -5,6 +5,7 @@ import { ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
 import { api, API_BASE } from '@/lib/api';
 import type { LandingStoreLink } from '@/types';
+import { setStoredStoreSlug } from '@/lib/storeSlug';
 
 type DemoQRGridProps = {
   liveUrl?: string | null;
@@ -153,7 +154,7 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
                   disabled={!qrUrl}
                   onClick={() => {
                     try {
-                      localStorage.setItem("STORE_SLUG", store.slug || "");
+                      setStoredStoreSlug(store.slug || "");
                     } catch (error) {
                       console.warn("Failed to persist STORE_SLUG from landing", error);
                     }

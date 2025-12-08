@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Home, LogIn, QrCode } from 'lucide-react';
+import { Home, LogIn, LogOut, QrCode } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { useAuthStore } from '@/store/authStore';
@@ -18,8 +18,15 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
   const { dashboardDark, themeClass } = useDashboardTheme();
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
   const themedSheet = clsx(themeClass, { dark: dashboardDark });
+
+  const handleLogout = () => {
+    logout();
+    setOpen(false);
+    navigate("/login");
+  };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -63,6 +70,16 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
             <div className="flex flex-col gap-2">
               {children}
               <DashboardThemeToggle />
+              {user ? (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 rounded-lg border border-border/60 bg-destructive/10 hover:bg-destructive/20 text-destructive px-3 py-2 text-sm transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {t('logout', { defaultValue: 'Logout' })}
+                </button>
+              ) : null}
             </div>
           </section>
         </div>

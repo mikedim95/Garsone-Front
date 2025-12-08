@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
+import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 type CategorySummary = Pick<
   MenuCategory,
@@ -432,7 +433,7 @@ export default function TableMenu() {
         if (store?.slug) {
           setStoreSlug(store.slug);
           try {
-            localStorage.setItem("STORE_SLUG", store.slug);
+            setStoredStoreSlug(store.slug);
             window.dispatchEvent(
               new CustomEvent("store-slug-changed", {
                 detail: { slug: store.slug },

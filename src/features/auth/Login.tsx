@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/store/authStore";
 import { api, ApiError } from "@/lib/api";
 import { HomeLink } from "@/components/HomeLink";
+import { getStoredStoreSlug } from "@/lib/storeSlug";
 
 type RealtimeStatusDetail = { connected?: boolean };
 
@@ -20,12 +21,7 @@ const readOfflineFlag = () => {
 };
 
 const readStoreSlug = () => {
-  try {
-    if (typeof window === "undefined") return "";
-    return (window.localStorage?.getItem("STORE_SLUG") || "").trim();
-  } catch {
-    return "";
-  }
+  return getStoredStoreSlug() || "";
 };
 
 const resolveEmailDomain = () => {

@@ -17,6 +17,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
 import { LayoutGrid, List } from "lucide-react";
+import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -124,7 +125,7 @@ export default function CookDashboard() {
   const upsertOrder = useOrdersStore((s) => s.upsert);
   const updateLocalStatus = useOrdersStore((s) => s.updateStatus);
 
-  const [storeSlug, setStoreSlug] = useState("");
+  const [storeSlug, setStoreSlug] = useState(() => getStoredStoreSlug() || "");
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
@@ -168,7 +169,7 @@ export default function CookDashboard() {
         if (store?.store?.slug) {
           setStoreSlug(store.store.slug);
           try {
-            localStorage.setItem('STORE_SLUG', store.store.slug);
+            setStoredStoreSlug(store.store.slug);
             window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: store.store.slug } }));
           } catch (error) {
             console.warn('Failed to persist STORE_SLUG', error);

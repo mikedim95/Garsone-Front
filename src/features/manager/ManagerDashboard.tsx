@@ -105,6 +105,7 @@ import {
 } from "@/components/ui/select";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { PageTransition } from "@/components/ui/page-transition";
+import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 type ManagerMode = "basic" | "pro";
 type ManagerTab = "economics" | "orders" | "personnel" | "menu";
@@ -455,7 +456,7 @@ export default function ManagerDashboard() {
         if (res?.store?.id) setStoreId(res.store.id);
         if (res?.store?.slug) {
           try {
-            localStorage.setItem("STORE_SLUG", res.store.slug);
+            setStoredStoreSlug(res.store.slug);
           } catch {}
         }
         if (res?.store?.name) {

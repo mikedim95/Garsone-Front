@@ -12,6 +12,7 @@ import {
   useDashboardTheme,
 } from "@/hooks/useDashboardDark";
 import { API_BASE } from "@/lib/api";
+import { getStoredStoreSlug } from "@/lib/storeSlug";
 
 import "./i18n/config";
 
@@ -74,7 +75,7 @@ const BrandedLoadingScreen = () => {
   if (!isLanding && typeof window !== "undefined") {
     try {
       const storedName = window.localStorage.getItem("STORE_NAME");
-      const storedSlug = window.localStorage.getItem("STORE_SLUG");
+      const storedSlug = getStoredStoreSlug();
       label = storedName || storedSlug || "Garsone";
     } catch {
       label = "Garsone";

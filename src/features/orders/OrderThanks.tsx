@@ -5,6 +5,7 @@ import { HomeLink } from '@/components/HomeLink';
 import { AppBurger } from '@/components/AppBurger';
 import { CheckCircle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { setStoredStoreSlug } from '@/lib/storeSlug';
 
 type OrderReadyPayload = {
   orderId?: string;
@@ -39,7 +40,7 @@ export default function OrderThanks() {
         }
         if (store?.store?.slug) {
           try {
-            localStorage.setItem('STORE_SLUG', store.store.slug);
+            setStoredStoreSlug(store.store.slug);
             window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: store.store.slug } }));
           } catch (error) {
             console.warn('Failed to persist STORE_SLUG', error);
