@@ -107,7 +107,7 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
     };
   }, [providedLiveUrl]);
 
-  const storeCards = (stores || []).slice(0, 3);
+  const storeCards = stores || [];
 
   return (
     <div className="py-32 bg-gradient-card" data-section="demo-qr">
