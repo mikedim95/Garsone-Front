@@ -736,26 +736,31 @@ export default function TableMenu() {
     try {
       setCheckoutBusy(true);
       const cartItems = useCartStore.getState().items;
-      // When editing an existing order, prevent checkout if the kitchen already accepted it
-      if (
-        editingOrderId &&
-        lastOrder?.status &&
-        lastOrder.status !== "PLACED"
-      ) {
-        toast({
-          title: t("menu.edit_order_locked_title", {
-            defaultValue: "Kitchen already accepted",
-          }),
-          description: t("menu.edit_order_locked_desc", {
-            defaultValue:
-              "Edits are disabled once the kitchen starts preparing.",
-          }),
-        });
-        stopEditingLastOrder();
-        return null;
-      }
+      
+      // Calculate total amount
+      const totalCents = cartItems.reduce((sum, item) => {
+        const basePrice = item.item.priceCents;
+        const modifiersPrice = Object.keys(item.selectedModifiers).reduce((modSum, modId) => {
+          const optionId = item.selectedModifiers[modId];
+          const option = item.item.modifiers
+            ?.find((m) => m.id === modId)
+            ?.options.find((o) => o.id === optionId);
+          return modSum + (option?.priceDeltaCents ?? 0);
+        }, 0);
+        return sum + (basePrice + modifiersPrice) * item.quantity;
+      }, 0);
 
-      const orderData: CreateOrderPayload = {
+      const totalAmount = totalCents / 100;
+
+      // Step 1: Get Viva payment checkout URL
+      const paymentResponse = await api.getVivaCheckoutUrl(
+        activeTableId,
+        totalAmount,
+        `Order for Table ${tableLabel || activeTableId}`
+      );
+
+      // Step 2: Store order data temporarily in sessionStorage
+      const pendingOrder = {
         tableId: activeTableId,
         items: cartItems.map((item) => ({
           itemId: item.item.id,
@@ -763,40 +768,25 @@ export default function TableMenu() {
           modifiers: JSON.stringify(item.selectedModifiers),
         })),
         note: note ?? "",
+        paymentSessionId: paymentResponse.sessionId,
+        totalCents: totalCents,
       };
 
-      const response = editingOrderId
-        ? await api.editOrder(editingOrderId, orderData)
-        : await api.createOrder(orderData);
-      const orderFromResponse = response?.order ?? null;
-      if (orderFromResponse) {
-        const normalized = {
-          ...orderFromResponse,
-          tableId: orderFromResponse.tableId ?? activeTableId,
-          tableLabel:
-            orderFromResponse.tableLabel ??
-            tableLabel ??
-            tableParam ??
-            activeTableId,
-        };
-        setLastOrder(normalized);
-        if (normalized.tableLabel) setTableLabel(normalized.tableLabel);
+      try {
+        window.sessionStorage.setItem(
+          "pending-order",
+          JSON.stringify(pendingOrder)
+        );
+      } catch (e) {
+        console.warn("Failed to store pending order", e);
       }
-      // Backend publishes realtime events; avoid duplicate client emits
-      clearCart();
-      stopEditingLastOrder();
-      const legacyResponse = response as OrderResponse & { orderId?: string };
-      const orderId =
-        orderFromResponse?.id || legacyResponse.orderId || editingOrderId || "";
-      setEditingOrderId(null);
-      // pass tableId so the thanks page can subscribe to the ready topic
-      const params = new URLSearchParams({ tableId: activeTableId });
-      if (orderId) {
-        navigate(`/order/${orderId}/thanks?${params.toString()}`);
-      }
-      return orderFromResponse;
+
+      // Step 3: Redirect to Viva payment
+      window.location.href = paymentResponse.checkoutUrl;
+      
+      return null;
     } catch (error) {
-      console.error("Failed to submit order:", error);
+      console.error("Failed to initiate payment:", error);
       if (error instanceof ApiError && error.status === 403) {
         toast({
           title: t("menu.toast_error_title", {
@@ -806,31 +796,16 @@ export default function TableMenu() {
             defaultValue: "Scan the table QR again to start a new order.",
           }),
         });
-      } else if (
-        error instanceof ApiError &&
-        error.status === 409 &&
-        editingOrderId
-      ) {
-        setEditingOrderId(null);
-        toast({
-          title: t("menu.toast_edit_unavailable_title", {
-            defaultValue: "Order cannot be edited",
-          }),
-          description: t("menu.toast_edit_unavailable_desc", {
-            defaultValue:
-              "The kitchen has already started preparing your order. Please place a new order if needed.",
-          }),
-        });
       } else {
         toast({
           title: t("menu.toast_error_title", {
-            defaultValue: "Error placing order",
+            defaultValue: "Error initiating payment",
           }),
           description:
             error instanceof Error
               ? error.message
               : t("menu.toast_error_description", {
-                  defaultValue: "Failed to place order. Please try again.",
+                  defaultValue: "Failed to initiate payment. Please try again.",
                 }),
         });
       }

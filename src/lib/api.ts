@@ -479,4 +479,23 @@ export const api = {
           method: 'PATCH',
           body: JSON.stringify(data),
         }),
+
+  // Payment: Viva payment
+  getVivaCheckoutUrl: (tableId: string, amount: number, description?: string): Promise<{
+    checkoutUrl: string;
+    sessionId: string;
+    amount: number;
+    tableId: string;
+  }> =>
+    isOffline()
+      ? Promise.resolve({
+          checkoutUrl: "https://demo.vivapayments.com/web/checkout?demo=true",
+          sessionId: `demo_${tableId}_${Date.now()}`,
+          amount,
+          tableId,
+        })
+      : fetchApi(`/payment/viva/checkout-url`, {
+          method: "POST",
+          body: JSON.stringify({ tableId, amount, description }),
+        }),
 };

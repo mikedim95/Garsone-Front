@@ -23,6 +23,7 @@ const TableMenu = lazy(() => import("./pages/TableMenu"));
 const WaiterDashboard = lazy(() => import("./pages/WaiterDashboard"));
 const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
 const OrderThanks = lazy(() => import("./pages/OrderThanks"));
+const PaymentComplete = lazy(() => import("./features/payment/PaymentCompletePage"));
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const PublicCodeRedirect = () => {
@@ -154,6 +155,7 @@ const AppShell = () => {
                   path="/order/:orderId/thanks"
                   element={<OrderThanks />}
                 />
+                <Route path="/payment-complete" element={<PaymentComplete />} />
                 <Route path="/publiccode/:publicCode/*" element={<PublicCodeRedirect />} />
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
