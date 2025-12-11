@@ -84,7 +84,9 @@ export default function PaymentCompletePage() {
 
           // Step 3: Show success message
           toast({
-            title: t("payment.success_title", { defaultValue: "Payment Successful" }),
+            title: t("payment.success_title", {
+              defaultValue: "Payment Successful",
+            }),
             description: t("payment.success_description", {
               defaultValue: "Your order has been placed!",
             }),
@@ -106,7 +108,9 @@ export default function PaymentCompletePage() {
       } catch (err) {
         console.error("Payment completion error:", err);
         const message =
-          err instanceof Error ? err.message : "An error occurred during payment";
+          err instanceof Error
+            ? err.message
+            : "An error occurred during payment";
         setError(message);
         setIsProcessing(false);
       }
@@ -124,7 +128,9 @@ export default function PaymentCompletePage() {
             {t("payment.processing", { defaultValue: "Processing Payment..." })}
           </h1>
           <p className="text-muted-foreground">
-            {t("payment.please_wait", { defaultValue: "Please wait while we confirm your payment." })}
+            {t("payment.please_wait", {
+              defaultValue: "Please wait while we confirm your payment.",
+            })}
           </p>
         </div>
       </div>

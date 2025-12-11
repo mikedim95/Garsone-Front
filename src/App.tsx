@@ -4,7 +4,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  useLocation,
+  Navigate,
+  useParams,
+} from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useTheme } from "@/components/theme-provider-context";
 import {
@@ -23,7 +30,9 @@ const TableMenu = lazy(() => import("./pages/TableMenu"));
 const WaiterDashboard = lazy(() => import("./pages/WaiterDashboard"));
 const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
 const OrderThanks = lazy(() => import("./pages/OrderThanks"));
-const PaymentComplete = lazy(() => import("./features/payment/PaymentCompletePage"));
+const PaymentComplete = lazy(
+  () => import("./features/payment/PaymentCompletePage")
+);
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const PublicCodeRedirect = () => {
@@ -52,7 +61,9 @@ const PublicCodeRedirect = () => {
         // Fall back to server-side redirect (might include visit token)
       }
       if (!aborted) {
-        const dest = `${API_BASE.replace(/\/$/, "")}${location.pathname}${location.search}${location.hash}`;
+        const dest = `${API_BASE.replace(/\/$/, "")}${location.pathname}${
+          location.search
+        }${location.hash}`;
         window.location.replace(dest);
       }
     };
@@ -156,12 +167,18 @@ const AppShell = () => {
                   element={<OrderThanks />}
                 />
                 <Route path="/payment-complete" element={<PaymentComplete />} />
-                <Route path="/publiccode/:publicCode/*" element={<PublicCodeRedirect />} />
+                <Route
+                  path="/publiccode/:publicCode/*"
+                  element={<PublicCodeRedirect />}
+                />
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/cook" element={<CookDashboard />} />
                 <Route path="/GarsoneAdmin" element={<ArchitectQrTiles />} />
-                <Route path="/architect" element={<Navigate to="/GarsoneAdmin" replace />} />
+                <Route
+                  path="/architect"
+                  element={<Navigate to="/GarsoneAdmin" replace />}
+                />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

@@ -221,9 +221,7 @@ export default function TableMenu() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [cartOpenSignal, setCartOpenSignal] = useState(0);
-  const [editingNote, setEditingNote] = useState<string | undefined>(
-    undefined
-  );
+  const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
   const [calling, setCalling] = useState<"idle" | "pending" | "accepted">(
     "idle"
   );
@@ -268,7 +266,6 @@ export default function TableMenu() {
   const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
-  
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -736,17 +733,20 @@ export default function TableMenu() {
     try {
       setCheckoutBusy(true);
       const cartItems = useCartStore.getState().items;
-      
+
       // Calculate total amount
       const totalCents = cartItems.reduce((sum, item) => {
         const basePrice = item.item.priceCents;
-        const modifiersPrice = Object.keys(item.selectedModifiers).reduce((modSum, modId) => {
-          const optionId = item.selectedModifiers[modId];
-          const option = item.item.modifiers
-            ?.find((m) => m.id === modId)
-            ?.options.find((o) => o.id === optionId);
-          return modSum + (option?.priceDeltaCents ?? 0);
-        }, 0);
+        const modifiersPrice = Object.keys(item.selectedModifiers).reduce(
+          (modSum, modId) => {
+            const optionId = item.selectedModifiers[modId];
+            const option = item.item.modifiers
+              ?.find((m) => m.id === modId)
+              ?.options.find((o) => o.id === optionId);
+            return modSum + (option?.priceDeltaCents ?? 0);
+          },
+          0
+        );
         return sum + (basePrice + modifiersPrice) * item.quantity;
       }, 0);
 
@@ -783,7 +783,7 @@ export default function TableMenu() {
 
       // Step 3: Redirect to Viva payment
       window.location.href = paymentResponse.checkoutUrl;
-      
+
       return null;
     } catch (error) {
       console.error("Failed to initiate payment:", error);
