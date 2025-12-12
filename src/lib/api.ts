@@ -31,6 +31,19 @@ import type {
 import { devMocks } from "./devMocks";
 import { getStoredStoreSlug } from "./storeSlug";
 
+type MenuBootstrapResponse = {
+  store: StoreInfo;
+  table: { id: string; label: string } | null;
+  menu: MenuData & {
+    modifiers?: Modifier[];
+    itemModifiers?: Array<{
+      itemId: string;
+      modifierId: string;
+      isRequired?: boolean;
+    }>;
+  };
+};
+
 const ENV_API: string | undefined = import.meta.env.VITE_API_URL;
 export const API_BASE = (() => {
   // Use env only if it isn't pointing to localhost (which breaks on phones)
@@ -236,6 +249,38 @@ export const api = {
   // Menu & orders (public device endpoints for create + call waiter)
   getMenu: (): Promise<MenuData> =>
     isOffline() ? devMocks.getMenu() : fetchApi<MenuData>("/menu"),
+  getMenuBootstrap: (
+    tableCode: string,
+    opts?: { storeSlug?: string }
+  ): Promise<MenuBootstrapResponse> => {
+    if (!tableCode) {
+      return Promise.reject(new Error("tableCode is required"));
+    }
+    if (isOffline()) {
+      return Promise.all([
+        devMocks.getStore(),
+        devMocks.getTables(),
+        devMocks.getMenu(),
+      ]).then(([storeRes, tablesRes, menu]) => {
+        const table =
+          (tablesRes?.tables || []).find(
+            (t) =>
+              t.id === tableCode ||
+              t.label?.toLowerCase() === tableCode.toLowerCase()
+          ) || (tablesRes?.tables || [])[0];
+        return {
+          store: storeRes?.store || { id: "offline", name: "Offline Demo", slug: "local-store" },
+          table: table ? { id: table.id, label: table.label } : null,
+          menu,
+        };
+      });
+    }
+    const params = new URLSearchParams();
+    params.set("tableCode", tableCode);
+    if (opts?.storeSlug) params.set("storeSlug", opts.storeSlug);
+    const qs = params.toString();
+    return fetchApi<MenuBootstrapResponse>(`/public/menu-bootstrap?${qs}`);
+  },
   createOrder: (data: CreateOrderPayload): Promise<OrderResponse> => {
     const visitHeaders = data.visit
       ? { "x-table-visit": data.visit }

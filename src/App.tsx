@@ -64,7 +64,7 @@ const PublicCodeRedirect = () => {
           const qs = data.storeSlug
             ? `?storeSlug=${encodeURIComponent(data.storeSlug)}`
             : "";
-          window.location.replace(`/table/${data.tableId}${qs}`);
+          window.location.replace(`/${data.tableId}${qs}`);
           return;
         }
       } catch {
@@ -89,8 +89,24 @@ const queryClient = new QueryClient();
 
 const BrandedLoadingScreen = () => {
   const location = useLocation();
+  const segments = location.pathname.split("/").filter(Boolean);
+  const firstSegment = (segments[0] || "").toLowerCase();
+  const reservedTopLevels = new Set([
+    "login",
+    "order",
+    "payment-complete",
+    "payment-success",
+    "payment-failed",
+    "publiccode",
+    "waiter",
+    "manager",
+    "cook",
+    "garsoneadmin",
+    "architect",
+  ]);
   const isLanding = location.pathname === "/";
-  const isCustomerMenu = location.pathname.startsWith("/table/");
+  const isCustomerMenu =
+    segments.length === 1 && firstSegment && !reservedTopLevels.has(firstSegment);
 
   let label = isLanding ? "Garsone" : "Garsone";
   let roleLabel: string | null = null;
@@ -171,7 +187,7 @@ const AppShell = () => {
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/table/:tableId" element={<TableMenu />} />
+                <Route path="/:tableId" element={<TableMenu />} />
                 <Route
                   path="/order/:orderId/thanks"
                   element={<OrderThanks />}

@@ -85,7 +85,7 @@ export default function OrderThanks() {
           onClick={() => {
             // Go directly to the menu for this table (or home if unknown) instead of history.back()
             if (tableId) {
-              navigate(`/table/${tableId}`);
+              navigate(`/${tableId}`);
             } else {
               navigate("/");
             }
@@ -98,4 +98,3 @@ export default function OrderThanks() {
     </div>
   );
 }
-

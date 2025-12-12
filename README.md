@@ -46,7 +46,7 @@ npm run dev
 
 - `/` - Landing page with demo QR codes
 - `/login` - Staff authentication
-- `/table/:tableId` - Customer menu (production)
+- `/:tableId` - Customer menu (production)
 - `/waiter` - Waiter dashboard
 - `/manager` - Manager dashboard
 - `/order/:orderId/thanks` - Order confirmation

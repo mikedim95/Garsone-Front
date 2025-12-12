@@ -55,7 +55,7 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
     }
     if (store.tableId) {
       const origin = getBaseOrigin(store.slug);
-      return `${origin}/table/${store.tableId}`;
+      return `${origin}/${store.tableId}`;
     }
     return null;
   };
@@ -96,7 +96,7 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
         const actives = (data?.tables || []).filter((t) => t.active);
         if (actives.length > 0) {
           const random = actives[Math.floor(Math.random() * actives.length)];
-          if (mounted) setLiveUrl(`${getBaseOrigin()}/table/${random.id}`);
+          if (mounted) setLiveUrl(`${getBaseOrigin()}/${random.id}`);
         }
       } catch (error) {
         console.warn('Failed to fetch tables for DemoQRGrid', error);

@@ -1,13 +1,22 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
-import { AnimatedMockup } from './landing/AnimatedMockup';
-import { Features } from './landing/Features';
-import { Testimonials } from './landing/Testimonials';
-import { DemoQRGrid } from './landing/DemoQRGrid';
 import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
+
+const AnimatedMockup = lazy(() =>
+  import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
+);
+const Features = lazy(() =>
+  import('./landing/Features').then((mod) => ({ default: mod.Features }))
+);
+const Testimonials = lazy(() =>
+  import('./landing/Testimonials').then((mod) => ({ default: mod.Testimonials }))
+);
+const DemoQRGrid = lazy(() =>
+  import('./landing/DemoQRGrid').then((mod) => ({ default: mod.DemoQRGrid }))
+);
 
 const DeferredSection: React.FC<{
   children: React.ReactNode;
@@ -31,6 +40,22 @@ const AppLayout: React.FC = () => {
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
   const navigate = useNavigate();
+
+  const renderLazy = (
+    node: React.ReactNode,
+    placeholderHeight?: number
+  ) => (
+    <Suspense
+      fallback={
+        <div
+          className="w-full animate-pulse bg-muted/40 rounded-3xl"
+          style={placeholderHeight ? { minHeight: placeholderHeight } : undefined}
+        />
+      }
+    >
+      {node}
+    </Suspense>
+  );
 
   const setOfflineFlag = (enabled: boolean) => {
     try {
@@ -65,7 +90,7 @@ const AppLayout: React.FC = () => {
         if (actives.length > 0) {
           const random = actives[Math.floor(Math.random() * actives.length)];
           const origin = getBaseOrigin();
-          const url = `${origin}/table/${random.id}`;
+          const url = `${origin}/${random.id}`;
           setLiveUrl(url);
           return url;
         }
@@ -138,7 +163,7 @@ const AppLayout: React.FC = () => {
           target = `${base}/publiccode/${first.publicCode}`;
         } else if (first?.tableId) {
           const base = getBaseOrigin();
-          target = `${base}/table/${first.tableId}`;
+          target = `${base}/${first.tableId}`;
         }
       } catch (error) {
         console.warn("Fallback to landing stores failed", error);
@@ -147,7 +172,7 @@ const AppLayout: React.FC = () => {
 
     // Last-resort offline demo
     if (!target) {
-      target = "/table/T1";
+      target = "/T1";
     }
 
     // Navigate in the same tab to avoid popup blockers.
@@ -160,13 +185,13 @@ const AppLayout: React.FC = () => {
       const data = await api.getTables();
       const first = data?.tables?.[0];
       if (first?.id) {
-        navigate(`/table/${first.id}`);
+        navigate(`/${first.id}`);
         return;
       }
     } catch (error) {
       console.warn('Failed to get tables for offline demo', error);
     }
-    navigate('/table/T1');
+    navigate('/T1');
   };
 
   // Do not connect to realtime streams from landing; ensure any active connection is closed.
@@ -195,17 +220,17 @@ const AppLayout: React.FC = () => {
         liveReady={!!liveUrl && !liveLoading}
       />
       <DeferredSection placeholderHeight={720}>
-        <AnimatedMockup />
+        {renderLazy(<AnimatedMockup />, 720)}
       </DeferredSection>
       <DeferredSection placeholderHeight={640}>
-        <Features />
+        {renderLazy(<Features />, 640)}
       </DeferredSection>
       <DeferredSection placeholderHeight={600}>
-        <Testimonials />
+        {renderLazy(<Testimonials />, 600)}
       </DeferredSection>
       <div id="demo-qr" ref={demoRef} className="scroll-mt-24">
         <DeferredSection forceVisible={forceDemoVisible} placeholderHeight={1200}>
-          <DemoQRGrid liveUrl={liveUrl ?? undefined} />
+          {renderLazy(<DemoQRGrid liveUrl={liveUrl ?? undefined} />, 1200)}
         </DeferredSection>
       </div>
       <footer className="relative bg-foreground text-background py-20 overflow-hidden">
@@ -255,4 +280,3 @@ const AppLayout: React.FC = () => {
 };
 
 export default AppLayout;
-

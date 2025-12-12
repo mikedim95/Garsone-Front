@@ -1,14 +1,11 @@
-import { useState, useEffect } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { MenuItemCard } from "@/components/menu/MenuItemCard";
-import { ModifierDialog } from "@/components/menu/ModifierDialog";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
@@ -33,7 +30,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
-import { setStoredStoreSlug } from "@/lib/storeSlug";
+import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
+import { useQuery } from "@tanstack/react-query";
+import { MenuSkeleton } from "./MenuSkeleton";
+
+const ModifierDialog = lazy(() =>
+  import("@/components/menu/ModifierDialog").then((mod) => ({
+    default: mod.ModifierDialog,
+  }))
+);
 
 
 type CategorySummary = Pick<
@@ -67,10 +72,6 @@ const mapCategories = (
     acc.push({ id, title });
     return acc;
   }, []);
-
-const isUuid = (value?: string | null) =>
-  typeof value === "string" &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 const buildMenuState = (
   payload: Partial<MenuStateData> & {
@@ -219,8 +220,14 @@ export default function TableMenu() {
   const [categorySelected, setCategorySelected] = useState(false);
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
-  const [storeSlug, setStoreSlug] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const [storeSlug, setStoreSlug] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const slugFromUrl = params.get("storeSlug");
+      if (slugFromUrl && slugFromUrl.trim()) return slugFromUrl.trim();
+    }
+    return getStoredStoreSlug() || "";
+  });
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
@@ -244,33 +251,43 @@ export default function TableMenu() {
     }
   );
   const [tableLabel, setTableLabel] = useState<string | null>(null);
-  const [tableTranslations, setTableTranslations] = useState<
-    Record<string, string>
-  >({});
   const [tableId, setTableId] = useState<string | null>(() =>
-    tableParam && isUuid(tableParam) ? tableParam : null
+    tableParam ? tableParam : null
   );
-  const activeTableId =
-    tableId || (tableParam && isUuid(tableParam) ? tableParam : null);
+  const activeTableId = tableId || tableParam || null;
   const isEditingExisting = Boolean(editingOrderId);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
   });
   const canEditLastOrder = lastOrderStatus === "PLACED" && !!lastOrder?.id;
-  const fallbackCategoryLabel = t("menu.category_label", {
-    defaultValue: "Category",
-  });
-  const offlineFallbackMessage = t("menu.load_error_offline", {
-    defaultValue: "Failed to load menu. Using offline mode.",
-  });
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
   const menuCache = useMenuStore((s) => s.data);
-  const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const clearMenuCache = useMenuStore((s) => s.clear);
+  const navMarkRef = useRef(false);
+  const paintMarkRef = useRef(false);
+  const dataMarkRef = useRef(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const bootstrapQueryEnabled = Boolean(activeTableId);
+  const {
+    data: bootstrap,
+    isLoading: bootstrapLoading,
+    isFetching: bootstrapFetching,
+    error: bootstrapError,
+  } = useQuery({
+    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId, preferGreek],
+    queryFn: async () => {
+      if (!activeTableId) {
+        throw new Error("Missing table identifier");
+      }
+      return api.getMenuBootstrap(activeTableId, { storeSlug: storeSlug || undefined });
+    },
+    enabled: bootstrapQueryEnabled,
+    staleTime: 60_000,
+    refetchInterval: 20_000,
+  });
 
   useEffect(() => {
     // Capture storeSlug from URL (e.g., QR redirect) and persist before API calls
@@ -298,6 +315,98 @@ export default function TableMenu() {
       }
     }
   }, [location.search, clearMenuCache]);
+
+  useEffect(() => {
+    if (!bootstrapError) return;
+    const message =
+      bootstrapError instanceof Error
+        ? bootstrapError.message
+        : t("menu.load_error_title", { defaultValue: "Failed to load menu" });
+    setError(message);
+  }, [bootstrapError, t]);
+
+  useEffect(() => {
+    if (!bootstrap?.menu) return;
+    const payload = bootstrap.menu;
+    setMenuCache(payload as MenuData);
+    setMenuData(
+      buildMenuState(
+        {
+          categories: payload.categories,
+          items: payload.items,
+          modifiers: payload.modifiers || [],
+          modifierOptions: [],
+          itemModifiers: payload.itemModifiers || [],
+        },
+        preferGreek
+      )
+    );
+    setError(null);
+    if (bootstrap.table?.label) {
+      setTableLabel(bootstrap.table.label);
+    }
+    if (bootstrap.table?.id) {
+      setTableId((prev) => prev || bootstrap.table?.id || null);
+    }
+    if (bootstrap.store?.name) {
+      setStoreName(bootstrap.store.name);
+      try {
+        localStorage.setItem("STORE_NAME", bootstrap.store.name);
+      } catch (error) {
+        console.warn("Failed to persist STORE_NAME", error);
+      }
+    }
+    if (bootstrap.store?.slug) {
+      setStoreSlug((prev) => prev || bootstrap.store.slug);
+      try {
+        setStoredStoreSlug(bootstrap.store.slug);
+        window.dispatchEvent(
+          new CustomEvent("store-slug-changed", {
+            detail: { slug: bootstrap.store.slug },
+          })
+        );
+      } catch (error) {
+        console.warn("Failed to persist STORE_SLUG", error);
+      }
+    }
+
+    if (!dataMarkRef.current && typeof performance !== "undefined") {
+      dataMarkRef.current = true;
+      try {
+        performance.mark("menu:data-ready");
+        if (performance.getEntriesByName("menu:nav-start").length) {
+          performance.measure(
+            "menu:nav-to-data",
+            "menu:nav-start",
+            "menu:data-ready"
+          );
+          const entry = performance.getEntriesByName("menu:nav-to-data").pop();
+          if (entry) {
+            console.log(
+              "[perf] menu:data-ready",
+              `${entry.duration.toFixed(1)}ms`
+            );
+          }
+        }
+      } catch {}
+    }
+  }, [bootstrap, preferGreek, setMenuCache]);
+
+  useEffect(() => {
+    if (!menuCache || menuData) return;
+    setMenuData(
+      buildMenuState(
+        {
+          categories: menuCache.categories,
+          items: menuCache.items,
+          modifiers: (menuCache as any).modifiers || [],
+          modifierOptions: [],
+          itemModifiers: (menuCache as any).itemModifiers || [],
+        },
+        preferGreek
+      )
+    );
+  }, [menuCache, menuData, preferGreek]);
 
   // If no storeSlug yet, try to resolve it via public table lookup (legacy QR without storeSlug)
   useEffect(() => {
@@ -349,46 +458,6 @@ export default function TableMenu() {
       setTableLabel(lastOrder.tableLabel);
     }
   }, [lastOrder]);
-
-  useEffect(() => {
-    if (!tableParam) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await api.getTables();
-        if (cancelled) return;
-        const map = (response?.tables ?? []).reduce<Record<string, string>>(
-          (acc, table) => {
-            if (table.id && table.label) acc[table.id] = table.label;
-            return acc;
-          },
-          {}
-        );
-        setTableTranslations(map);
-
-        const paramLower = tableParam.toLowerCase();
-        if (map[tableParam]) {
-          setTableLabel(map[tableParam]);
-          if (!tableId && isUuid(tableParam)) setTableId(tableParam);
-          return;
-        }
-
-        const found = Object.entries(map).find(
-          ([, label]) => label && label.toLowerCase() === paramLower
-        );
-        if (found) {
-          const [id, label] = found;
-          setTableLabel(label);
-          setTableId((prev) => prev ?? id);
-        }
-      } catch (error) {
-        console.warn("Failed to fetch table label", error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tableParam, tableId]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
@@ -473,182 +542,38 @@ export default function TableMenu() {
   };
 
   useEffect(() => {
-    const hydrate = async () => {
+    if (typeof performance === "undefined" || navMarkRef.current) return;
+    navMarkRef.current = true;
+    try {
+      performance.mark("menu:nav-start");
+    } catch {}
+    const raf = requestAnimationFrame(() => {
+      if (paintMarkRef.current) return;
+      paintMarkRef.current = true;
       try {
-        setLoading(true);
-        const now = Date.now();
-        const fresh = menuCache && now - menuTs < 60_000; // 60s TTL
-        const storeRes = await api.getStore();
-        const store = storeRes?.store;
-        if (store?.name) {
-          setStoreName(store.name);
-          try {
-            localStorage.setItem("STORE_NAME", store.name);
-          } catch (error) {
-            console.warn("Failed to persist STORE_NAME", error);
-          }
-        }
-        if (store?.slug) {
-          setStoreSlug(store.slug);
-          try {
-            setStoredStoreSlug(store.slug);
-            window.dispatchEvent(
-              new CustomEvent("store-slug-changed", {
-                detail: { slug: store.slug },
-              })
+        performance.mark("menu:first-paint");
+        if (performance.getEntriesByName("menu:nav-start").length) {
+          performance.measure(
+            "menu:first-paint-delay",
+            "menu:nav-start",
+            "menu:first-paint"
+          );
+          const entry =
+            performance.getEntriesByName("menu:first-paint-delay").pop();
+          if (entry) {
+            console.log(
+              "[perf] menu:first-paint",
+              `${entry.duration.toFixed(1)}ms`
             );
-          } catch (error) {
-            console.warn("Failed to persist STORE_SLUG", error);
           }
         }
-
-        let data: MenuData | null = null;
-        if (fresh && menuCache) {
-          data = menuCache;
-        } else {
-          data = await api.getMenu();
-          setMenuCache(data);
-        }
-
-        console.log("[TableMenu] hydrate", {
-          tableParam,
-          activeTableId,
-          storeSlug: store?.slug,
-          storeName: store?.name,
-          items: data?.items?.length ?? 0,
-          categories: data?.categories?.length ?? 0,
-          cached: fresh,
-        });
-
-        setMenuData(
-          buildMenuState(
-            {
-              categories: data?.categories,
-              items: data?.items,
-              modifiers: [],
-              modifierOptions: [],
-              itemModifiers: [],
-            },
-            preferGreek
-          )
-        );
-        setError(null);
-      } catch (err) {
-        console.error("Failed to fetch menu:", err);
-        setError(offlineFallbackMessage);
-        const { MENU_ITEMS } = await import("@/lib/menuData");
-        const fallbackCategories: CategorySummary[] = Array.from(
-          new Set(
-            MENU_ITEMS.map((item) => item.category ?? fallbackCategoryLabel)
-          )
-        ).map((name, idx) => ({
-          id: String(idx),
-          title: name || `${fallbackCategoryLabel} ${idx + 1}`,
-        }));
-        setMenuData(
-          buildMenuState(
-            {
-              categories: fallbackCategories,
-              items: MENU_ITEMS,
-              modifiers: [],
-              modifierOptions: [],
-              itemModifiers: [],
-            },
-            preferGreek
-          )
-        );
-      } finally {
-        console.log("[TableMenu] hydrate done", {
-          tableParam,
-          activeTableId,
-          loading: false,
-        });
-        setLoading(false);
-      }
-    };
-    hydrate();
-  }, [
-    menuCache,
-    menuTs,
-    setMenuCache,
-    offlineFallbackMessage,
-    fallbackCategoryLabel,
-    preferGreek,
-    storeSlug,
-  ]);
-
-  // Poll for menu updates (realtime disabled)
-  useEffect(() => {
-    let intervalId: number | undefined;
-    let lastSnapshot: string | undefined;
-
-    const normalizeAndSet = (data: MenuData | null) => {
-      setMenuData(
-        buildMenuState(
-          {
-            categories: data?.categories,
-            items: data?.items,
-            modifiers: [],
-            modifierOptions: [],
-            itemModifiers: [],
-          },
-          preferGreek
-        )
-      );
-    };
-
-    const poll = async () => {
-      try {
-        const data = await api.getMenu();
-        // Avoid unnecessary re-renders when data is unchanged
-        const snapshot = JSON.stringify({
-          items: (data?.items || []).map((item) => ({
-            id: item.id,
-            isAvailable: item.available ?? item.isAvailable,
-            priceCents: item.priceCents,
-          })),
-          categories: mapCategories(data?.categories),
-        });
-        if (snapshot !== lastSnapshot) {
-          lastSnapshot = snapshot;
-          setMenuCache(data);
-          normalizeAndSet(data);
-        }
-      } catch (error) {
-        console.error("Menu polling failed", error);
-      }
-    };
-
-    const start = () => {
-      if (intervalId) return;
-      // Less aggressive: 20s to reduce UX disturbance
-      intervalId = window.setInterval(poll, 20_000);
-    };
-    const stop = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = undefined;
-      }
-    };
-
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        poll();
-        start();
-      } else {
-        stop();
-      }
-    };
-
-    onVisibility();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [setMenuCache, preferGreek]);
+      } catch {}
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const categories = menuData ? menuData.categories : [];
+  const loading = (bootstrapLoading || bootstrapFetching) && !menuData;
   const filteredItems = menuData
     ? selectedCategory === "all"
       ? menuData.items
@@ -878,7 +803,7 @@ export default function TableMenu() {
 
   useEffect(() => {
     // subscribe for call acknowledgements for this table
-    if (!activeTableId) return;
+    if (!activeTableId || !storeSlug) return;
     let mounted = true;
     const callTopic = `${storeSlug}/waiter/call`;
     const preparingTopicLegacy = `${storeSlug}/orders/prepairing`;
@@ -1037,6 +962,19 @@ export default function TableMenu() {
       : callPrompted
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
+
+  if (!menuData && (bootstrapLoading || bootstrapFetching)) {
+    return (
+      <div
+        className={clsx(
+          themedWrapper,
+          "min-h-screen min-h-dvh overflow-hidden"
+        )}
+      >
+        <MenuSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1233,16 +1171,18 @@ export default function TableMenu() {
           </AnimatePresence>
         </div>
 
-        <ModifierDialog
-          open={customizeOpen}
-          item={customizeItem}
-          initialQty={1}
-          onClose={() => {
-            setCustomizeOpen(false);
-            setCustomizeItem(null);
-          }}
-          onConfirm={handleConfirmModifiers}
-        />
+        <Suspense fallback={null}>
+          <ModifierDialog
+            open={customizeOpen}
+            item={customizeItem}
+            initialQty={1}
+            onClose={() => {
+              setCustomizeOpen(false);
+              setCustomizeItem(null);
+            }}
+            onConfirm={handleConfirmModifiers}
+          />
+        </Suspense>
       </div>
     </div>
   );
