@@ -1,10 +1,12 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import clsx from "clsx";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { motion, AnimatePresence } from "framer-motion";
 import { MenuItemCard } from "@/components/menu/MenuItemCard";
 import { ModifierDialog } from "@/components/menu/ModifierDialog";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
+import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AppBurger } from "@/components/AppBurger";
@@ -26,12 +28,13 @@ import type {
   SubmittedOrderItem,
   SubmittedOrderSummary,
 } from "@/types";
-import { Pencil } from "lucide-react";
+import { Pencil, ArrowLeft } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
+
 
 type CategorySummary = Pick<
   MenuCategory,
@@ -212,7 +215,8 @@ export default function TableMenu() {
   const { dashboardDark, themeClass } = useDashboardTheme();
   const { theme, setTheme } = useTheme();
   const { addItem, clearCart, setItems } = useCartStore();
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categorySelected, setCategorySelected] = useState(false);
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
   const [storeSlug, setStoreSlug] = useState<string>("");
@@ -1146,107 +1150,87 @@ export default function TableMenu() {
         </header>
 
         <div className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
-          {loading ? (
-            <div className="flex gap-2 mb-8 overflow-x-hidden pb-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-9 w-24 rounded-full" />
-              ))}
-            </div>
-          ) : (
-            <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
-              <Button
-                key="all"
-                variant={selectedCategory === "all" ? "default" : "outline"}
-                onClick={() => setSelectedCategory("all")}
-                className="shrink-0"
-              >
-                {t("menu.category_all", { defaultValue: "All" })}
-              </Button>
-              {categories.map((cat) => (
-                <Button
-                  key={cat.id}
-                  variant={selectedCategory === cat.id ? "default" : "outline"}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className="shrink-0"
-                >
-                  {cat.title}
-                </Button>
-              ))}
-            </div>
-          )}
-
-          {loading ? (
-            selectedCategory === "all" ? (
-              <div className="space-y-8">
-                {Array.from({ length: 3 }).map((_, sectionIdx) => (
-                  <section key={sectionIdx}>
-                    <div className="flex items-center justify-center gap-4 my-8 max-w-3xl mx-auto w-full">
-                      <div className="flex-1 h-px bg-border" />
-                      <Skeleton className="h-6 w-40" />
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
-                    <div className="grid grid-cols-1 gap-6 mb-8">
-                      {Array.from({ length: 4 }).map((_, idx) => (
-                        <Card
-                          key={`skeleton-${sectionIdx}-${idx}`}
-                          className="p-0 rounded-2xl overflow-hidden"
-                        >
-                          <Skeleton className="w-full aspect-[16/10]" />
-                          <div className="p-4 space-y-3">
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-3 w-1/2" />
-                            <div className="flex items-center justify-between pt-1">
-                              <Skeleton className="h-6 w-16" />
-                              <Skeleton className="h-9 w-24 rounded-full" />
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+          <AnimatePresence mode="wait">
+            {!categorySelected ? (
+              <CategorySelectView
+                key="category-select"
+                categories={categories}
+                loading={loading}
+                onSelect={(catId) => {
+                  setSelectedCategory(catId);
+                  setCategorySelected(true);
+                }}
+              />
             ) : (
-              <div className="grid grid-cols-1 gap-6 mb-8">
-                {Array.from({ length: 6 }).map((_, idx) => (
-                  <Card
-                    key={`skeleton-${idx}`}
-                    className="p-0 rounded-2xl overflow-hidden"
+              <motion.div
+                key="menu-view"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                {/* Category tabs bar */}
+                <motion.div 
+                  initial={{ opacity: 0, y: -10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                  className="flex gap-2 mb-6 overflow-x-auto pb-2 items-center"
+                >
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setCategorySelected(false);
+                      setSelectedCategory(null);
+                    }}
+                    className="shrink-0 h-9 w-9 rounded-full"
                   >
-                    <Skeleton className="w-full aspect-square" />
-                    <div className="p-4 space-y-2">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                      <div className="flex items-center justify-between pt-2">
-                        <Skeleton className="h-6 w-16" />
-                        <Skeleton className="h-9 w-24 rounded-full" />
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )
-          ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-destructive mb-4">{error}</p>
-              <Button onClick={() => window.location.reload()}>
-                {t("actions.retry", { defaultValue: "Retry" })}
-              </Button>
-            </div>
-          ) : (
-            <ElegantMenuView
-              categories={categories}
-              items={menuData?.items ?? []}
-              selectedCategory={selectedCategory}
-              onAddItem={handleAddItem}
-              onCheckout={handleCheckout}
-              checkoutBusy={checkoutBusy}
-              callButtonLabel={callButtonLabel}
-              callStatus={calling}
-              callPrompted={callPrompted}
-              onCallClick={handleFloatingCallClick}
-            />
-          )}
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    key="all"
+                    variant={selectedCategory === "all" ? "default" : "outline"}
+                    onClick={() => setSelectedCategory("all")}
+                    className="shrink-0 rounded-full h-9 text-sm"
+                  >
+                    {t("menu.category_all", { defaultValue: "All" })}
+                  </Button>
+                  {categories.map((cat) => (
+                    <Button
+                      key={cat.id}
+                      variant={selectedCategory === cat.id ? "default" : "outline"}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className="shrink-0 rounded-full h-9 text-sm"
+                    >
+                      {cat.title}
+                    </Button>
+                  ))}
+                </motion.div>
+
+                {error ? (
+                  <div className="text-center py-12">
+                    <p className="text-destructive mb-4">{error}</p>
+                    <Button onClick={() => window.location.reload()}>
+                      {t("actions.retry", { defaultValue: "Retry" })}
+                    </Button>
+                  </div>
+                ) : (
+                  <ElegantMenuView
+                    categories={categories}
+                    items={menuData?.items ?? []}
+                    selectedCategory={selectedCategory || "all"}
+                    onAddItem={handleAddItem}
+                    onCheckout={handleCheckout}
+                    checkoutBusy={checkoutBusy}
+                    callButtonLabel={callButtonLabel}
+                    callStatus={calling}
+                    callPrompted={callPrompted}
+                    onCallClick={handleFloatingCallClick}
+                  />
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <ModifierDialog

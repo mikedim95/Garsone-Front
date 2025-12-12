@@ -160,7 +160,7 @@ export const ElegantMenuView = ({
                 <Separator className="flex-1 h-[2px] bg-border" />
               </div>
             )}
-            <div className="grid grid-cols-1 gap-6 mb-8">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
           {group.items.map((item) => {
             const price = getPrice(item);
             const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
@@ -171,36 +171,36 @@ export const ElegantMenuView = ({
                 key={item.id}
                 className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
               >
-                <div className="relative aspect-[16/10] overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/30 to-transparent z-10" />
+                <div className="relative aspect-square overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-transparent z-10" />
                   <img
                     src={item.image}
                     alt={displayName}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   />
-                  <div className="absolute bottom-4 left-4 z-20">
-                    <h3 className="font-semibold text-xl text-foreground mb-1 drop-shadow-lg">
+                  <div className="absolute bottom-2 left-2 right-2 z-20">
+                    <h3 className="font-semibold text-sm sm:text-base text-foreground mb-0.5 drop-shadow-lg line-clamp-2 leading-tight">
                       {displayName}
                     </h3>
                     <Badge
                       variant="secondary"
-                      className="bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-base px-3 py-1"
+                      className="bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-xs sm:text-sm px-2 py-0.5"
                     >
                       {formatPrice(price)}
                     </Badge>
                   </div>
                 </div>
-                <div className="p-5">
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4 line-clamp-2 min-h-[2.5rem]">
+                <div className="p-2.5 sm:p-3">
+                  <p className="text-xs text-muted-foreground leading-snug mb-2 line-clamp-2 min-h-[2rem]">
                     {description}
                   </p>
                   <Button
                     onClick={() => onAddItem(item)}
                     disabled={item.available === false}
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-11 font-medium transition-all duration-300 hover:shadow-lg"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-8 sm:h-9 font-medium text-xs sm:text-sm transition-all duration-300 hover:shadow-lg"
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    {t('menu.add_to_cart', { defaultValue: 'Add to Cart' })}
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    {t('menu.add', { defaultValue: 'Add' })}
                   </Button>
                 </div>
               </Card>

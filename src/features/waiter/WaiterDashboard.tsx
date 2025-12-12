@@ -253,7 +253,7 @@ export default function WaiterDashboard() {
   
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const assignmentsFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const assignmentsFetchRef = useRef<number | null>(null);
   
   // View mode (orders list vs tables grid)
   const [viewMode, setViewMode] = useState<ViewMode>(() => 
