@@ -81,12 +81,21 @@ export default function OrderThanks() {
             <p className="text-sm text-accent-foreground">You'll receive a notification when your order is ready.</p>
           </div>
         )}
-        <Button onClick={() => navigate(-1)} className="w-full">
+        <Button
+          onClick={() => {
+            // Go directly to the menu for this table (or home if unknown) instead of history.back()
+            if (tableId) {
+              navigate(`/table/${tableId}`);
+            } else {
+              navigate("/");
+            }
+          }}
+          className="w-full"
+        >
           Back to Menu
         </Button>
       </div>
     </div>
   );
 }
-
 

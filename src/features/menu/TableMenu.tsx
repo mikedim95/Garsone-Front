@@ -265,7 +265,64 @@ export default function TableMenu() {
   const menuCache = useMenuStore((s) => s.data);
   const menuTs = useMenuStore((s) => s.ts);
   const setMenuCache = useMenuStore((s) => s.setMenu);
+  const clearMenuCache = useMenuStore((s) => s.clear);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  useEffect(() => {
+    // Capture storeSlug from URL (e.g., QR redirect) and persist before API calls
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(location.search);
+      const slugFromUrl = params.get("storeSlug");
+      if (slugFromUrl && slugFromUrl.trim()) {
+        const trimmed = slugFromUrl.trim();
+        setStoreSlug((prev) => {
+          if (prev === trimmed) return prev;
+          // Clear cached menu when switching stores
+          clearMenuCache();
+          return trimmed;
+        });
+        try {
+          setStoredStoreSlug(trimmed);
+          window.dispatchEvent(
+            new CustomEvent("store-slug-changed", {
+              detail: { slug: trimmed },
+            })
+          );
+        } catch (error) {
+          console.warn("Failed to persist store slug from URL", error);
+        }
+      }
+    }
+  }, [location.search, clearMenuCache]);
+
+  // If no storeSlug yet, try to resolve it via public table lookup (legacy QR without storeSlug)
+  useEffect(() => {
+    if (!storeSlug && activeTableId) {
+      (async () => {
+        try {
+          const res = await fetch(
+            `/public/table/${encodeURIComponent(activeTableId)}`
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.storeSlug) {
+            clearMenuCache();
+            setStoreSlug(data.storeSlug);
+            try {
+              setStoredStoreSlug(data.storeSlug);
+              window.dispatchEvent(
+                new CustomEvent("store-slug-changed", {
+                  detail: { slug: data.storeSlug },
+                })
+              );
+            } catch {}
+          }
+        } catch (err) {
+          console.warn("Failed to resolve store slug for table", err);
+        }
+      })();
+    }
+  }, [storeSlug, activeTableId, clearMenuCache]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -513,6 +570,7 @@ export default function TableMenu() {
     offlineFallbackMessage,
     fallbackCategoryLabel,
     preferGreek,
+    storeSlug,
   ]);
 
   // Poll for menu updates (realtime disabled)

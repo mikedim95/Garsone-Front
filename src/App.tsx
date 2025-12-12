@@ -19,7 +19,7 @@ import {
   useDashboardTheme,
 } from "@/hooks/useDashboardDark";
 import { API_BASE } from "@/lib/api";
-import { getStoredStoreSlug } from "@/lib/storeSlug";
+import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 
 import "./i18n/config";
 
@@ -31,8 +31,10 @@ const WaiterDashboard = lazy(() => import("./pages/WaiterDashboard"));
 const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
 const OrderThanks = lazy(() => import("./pages/OrderThanks"));
 const PaymentComplete = lazy(
-  () => import("./features/payment/PaymentCompletePage")
+  () => import("./features/payment/PaymentCompleteRedirect")
 );
+const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
+const PaymentFailed = lazy(() => import("./pages/PaymentFailed"));
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const PublicCodeRedirect = () => {
@@ -54,7 +56,15 @@ const PublicCodeRedirect = () => {
         if (!res.ok) throw new Error("Failed to resolve");
         const data = await res.json();
         if (!aborted && data?.tableId) {
-          window.location.replace(`/table/${data.tableId}`);
+          if (data.storeSlug) {
+            try {
+              setStoredStoreSlug(data.storeSlug);
+            } catch {}
+          }
+          const qs = data.storeSlug
+            ? `?storeSlug=${encodeURIComponent(data.storeSlug)}`
+            : "";
+          window.location.replace(`/table/${data.tableId}${qs}`);
           return;
         }
       } catch {
@@ -167,6 +177,8 @@ const AppShell = () => {
                   element={<OrderThanks />}
                 />
                 <Route path="/payment-complete" element={<PaymentComplete />} />
+                <Route path="/payment-success" element={<PaymentSuccess />} />
+                <Route path="/payment-failed" element={<PaymentFailed />} />
                 <Route
                   path="/publiccode/:publicCode/*"
                   element={<PublicCodeRedirect />}
