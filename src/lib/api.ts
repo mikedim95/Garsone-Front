@@ -45,6 +45,8 @@ type MenuBootstrapResponse = {
 };
 
 const ENV_API: string | undefined = import.meta.env.VITE_API_URL;
+const isFallbackSlug = (slug?: string | null) =>
+  !slug || !slug.trim() || slug.trim().toLowerCase() === "default-store";
 export const API_BASE = (() => {
   // Use env only if it isn't pointing to localhost (which breaks on phones)
   if (
@@ -113,7 +115,8 @@ async function fetchApi<T>(
   options?: RequestInit
 ): Promise<T> {
   const getStoreSlug = () => {
-    return getStoredStoreSlug() || undefined;
+    const slug = getStoredStoreSlug();
+    return isFallbackSlug(slug) ? undefined : slug || undefined;
   };
   try {
     const token = useAuthStore.getState().token;

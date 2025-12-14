@@ -220,13 +220,17 @@ export default function TableMenu() {
   const [categorySelected, setCategorySelected] = useState(false);
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
+  const isFallbackSlug = (slug: string | null | undefined) =>
+    !slug || !slug.trim() || slug.trim().toLowerCase() === "default-store";
+
   const [storeSlug, setStoreSlug] = useState<string>(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const slugFromUrl = params.get("storeSlug");
       if (slugFromUrl && slugFromUrl.trim()) return slugFromUrl.trim();
     }
-    return getStoredStoreSlug() || "";
+    const stored = getStoredStoreSlug();
+    return isFallbackSlug(stored) ? "" : stored || "";
   });
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -270,7 +274,7 @@ export default function TableMenu() {
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const bootstrapQueryEnabled = Boolean(activeTableId);
+  const bootstrapQueryEnabled = Boolean(activeTableId) && !isFallbackSlug(storeSlug);
   const {
     data: bootstrap,
     isLoading: bootstrapLoading,
@@ -286,7 +290,7 @@ export default function TableMenu() {
     },
     enabled: bootstrapQueryEnabled,
     staleTime: 60_000,
-    refetchInterval: 20_000,
+    refetchInterval: false,
   });
 
   useEffect(() => {
@@ -296,6 +300,7 @@ export default function TableMenu() {
       const slugFromUrl = params.get("storeSlug");
       if (slugFromUrl && slugFromUrl.trim()) {
         const trimmed = slugFromUrl.trim();
+        if (isFallbackSlug(trimmed)) return;
         setStoreSlug((prev) => {
           if (prev === trimmed) return prev;
           // Clear cached menu when switching stores
@@ -356,7 +361,7 @@ export default function TableMenu() {
         console.warn("Failed to persist STORE_NAME", error);
       }
     }
-    if (bootstrap.store?.slug) {
+    if (bootstrap.store?.slug && !isFallbackSlug(bootstrap.store.slug)) {
       setStoreSlug((prev) => prev || bootstrap.store.slug);
       try {
         setStoredStoreSlug(bootstrap.store.slug);
@@ -408,13 +413,15 @@ export default function TableMenu() {
     );
   }, [menuCache, menuData, preferGreek]);
 
-  // If no storeSlug yet, try to resolve it via public table lookup (legacy QR without storeSlug)
+  // If no usable storeSlug yet (or only the fallback), try to resolve it via public table lookup
   useEffect(() => {
-    if (!storeSlug && activeTableId) {
+    if (isFallbackSlug(storeSlug) && activeTableId) {
       (async () => {
         try {
           const res = await fetch(
-            `/public/table/${encodeURIComponent(activeTableId)}`
+            `${API_BASE.replace(/\/$/, "")}/public/table/${encodeURIComponent(
+              activeTableId
+            )}`
           );
           if (!res.ok) return;
           const data = await res.json();
