@@ -592,6 +592,12 @@ export default function TableMenu() {
         )
     : [];
 
+  const headerTitle =
+    storeName ||
+    bootstrap?.store?.name ||
+    bootstrap?.store?.slug ||
+    t("menu.store_title_fallback", { defaultValue: "Store" });
+
   const handleAddItem = (item: MenuItem) => {
     // Always open the customize dialog, even if there are no modifiers,
     // so the user can set quantity before adding to the cart.
@@ -994,8 +1000,8 @@ export default function TableMenu() {
         <header className="bg-card/80 backdrop-blur border-b border-border sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {storeName ? (
-                <h1 className="text-2xl font-bold text-primary">{storeName}</h1>
+              {headerTitle ? (
+                <h1 className="text-2xl font-bold text-primary">{headerTitle}</h1>
               ) : (
                 <Skeleton className="h-8 w-48 rounded-full" />
               )}
@@ -1019,7 +1025,7 @@ export default function TableMenu() {
                 )}
               </button>
               <LanguageSwitcher />
-              <AppBurger title={storeName}>
+              <AppBurger title={headerTitle}>
                 {lastOrder ? (
                   <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
