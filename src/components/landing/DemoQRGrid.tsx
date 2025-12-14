@@ -38,7 +38,12 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
       const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
       const isLocal = hostname === 'localhost';
       let host = hostname;
-      if (storeSlug && !isIp && !isLocal && hostname.includes('.')) {
+      // Only swap subdomain when we control the wildcard domain (skip on *.onrender.com to avoid 404s)
+      const allowSubdomain =
+        !hostname.endsWith('onrender.com') &&
+        !hostname.endsWith('render.com') &&
+        hostname.split('.').length > 2;
+      if (storeSlug && !isIp && !isLocal && hostname.includes('.') && allowSubdomain) {
         const parts = hostname.split('.');
         parts[0] = storeSlug;
         host = parts.join('.');
