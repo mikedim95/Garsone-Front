@@ -206,6 +206,16 @@ const mapOrderToCartItems = (
   return mapped;
 };
 
+const getStoredName = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem("STORE_NAME");
+    return stored && stored.trim() ? stored.trim() : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function TableMenu() {
   const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
@@ -219,7 +229,7 @@ export default function TableMenu() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categorySelected, setCategorySelected] = useState(false);
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
-  const [storeName, setStoreName] = useState<string | null>(null);
+  const [storeName, setStoreName] = useState<string | null>(getStoredName());
   const isFallbackSlug = (slug: string | null | undefined) =>
     !slug || !slug.trim() || slug.trim().toLowerCase() === "default-store";
 
@@ -376,6 +386,12 @@ export default function TableMenu() {
       } catch (error) {
         console.warn("Failed to persist STORE_SLUG", error);
       }
+    }
+
+    // If we still don't have a storeName, fall back to slug
+    if (!storeName && (bootstrap.store?.name || bootstrap.store?.slug)) {
+      const name = bootstrap.store?.name || bootstrap.store?.slug || null;
+      if (name) setStoreName(name);
     }
 
     if (!dataMarkRef.current && typeof performance !== "undefined") {
@@ -596,6 +612,7 @@ export default function TableMenu() {
     storeName ||
     bootstrap?.store?.name ||
     bootstrap?.store?.slug ||
+    storeSlug ||
     t("menu.store_title_fallback", { defaultValue: "Store" });
 
   const handleAddItem = (item: MenuItem) => {
