@@ -353,10 +353,13 @@ export default function TableMenu() {
     if (bootstrap.table?.id) {
       setTableId((prev) => prev || bootstrap.table?.id || null);
     }
-    if (bootstrap.store?.name) {
-      setStoreName(bootstrap.store.name);
+    if (bootstrap.store?.name || bootstrap.store?.slug) {
+      const name = bootstrap.store.name || bootstrap.store.slug || null;
+      setStoreName(name);
       try {
-        localStorage.setItem("STORE_NAME", bootstrap.store.name);
+        if (name) {
+          localStorage.setItem("STORE_NAME", name);
+        }
       } catch (error) {
         console.warn("Failed to persist STORE_NAME", error);
       }
