@@ -15,10 +15,11 @@ import { Calendar, Clock, LayoutGrid, List } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
 import { TableCardView } from '@/components/waiter/TableCardView';
 import { getStoredStoreSlug, setStoredStoreSlug } from '@/lib/storeSlug';
+import { StatusCarousel } from '@/components/waiter/StatusCarousel';
+import { TimeRangePicker } from '@/components/waiter/TimeRangePicker';
 
 const ORDER_FETCH_LIMIT = 50;
 const DEBUG_LOG = true;
@@ -769,13 +770,6 @@ export default function WaiterDashboard() {
       }
     })() || user?.storeSlug || t('waiter.dashboard');
 
-  const dateFilterOptions: Array<{ key: DateFilterKey; label: string }> = [
-    { key: 'today', label: 'Today' },
-    { key: 'last24h', label: 'Last 24h' },
-    { key: 'week', label: 'This Week' },
-    { key: 'custom', label: 'Custom' },
-  ];
-
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
@@ -838,80 +832,24 @@ export default function WaiterDashboard() {
                 </div>
               </div>
               
-              {/* Date/Time Selector */}
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 bg-card border border-border rounded-full p-1 shadow-sm">
-                  {dateFilterOptions.map(({ key, label }) => (
-                    <button
-                      key={key}
-                      onClick={() => setDateFilter(key)}
-                      className={clsx(
-                        'px-3 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200',
-                        dateFilter === key
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                
-                {dateFilter === 'custom' && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-2 rounded-full">
-                        <Calendar className="h-4 w-4" />
-                        <span className="text-xs">
-                          {format(new Date(customDateStart), 'MMM d')} - {format(new Date(customDateEnd), 'MMM d')}
-                        </span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-4" align="end">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs font-medium text-muted-foreground">Start Date</label>
-                          <input
-                            type="date"
-                            value={customDateStart}
-                            onChange={(e) => setCustomDateStart(e.target.value)}
-                            className="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs font-medium text-muted-foreground">End Date</label>
-                          <input
-                            type="date"
-                            value={customDateEnd}
-                            onChange={(e) => setCustomDateEnd(e.target.value)}
-                            className="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </div>
+              {/* Time Range Picker */}
+              <TimeRangePicker
+                value={dateFilter}
+                onChange={setDateFilter}
+                customStart={customDateStart}
+                customEnd={customDateEnd}
+                onCustomStartChange={setCustomDateStart}
+                onCustomEndChange={setCustomDateEnd}
+              />
             </div>
 
-            {/* Status filter tabs - only show for orders view */}
+            {/* Status filter carousel - mobile optimized swipeable tabs */}
             {viewMode === 'orders' && (
-              <div className="flex flex-wrap gap-2">
-                {statusButtons.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setStatusFilter(statusFilter === key ? null : key)}
-                    className={clsx(
-                      'px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border',
-                      statusFilter === key
-                        ? 'bg-primary text-primary-foreground border-primary shadow-md scale-105'
-                        : 'bg-card/80 text-foreground border-border hover:bg-muted hover:border-muted-foreground/20'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <StatusCarousel
+                options={statusButtons}
+                selected={statusFilter}
+                onSelect={(key) => setStatusFilter(key)}
+              />
             )}
           </div>
 

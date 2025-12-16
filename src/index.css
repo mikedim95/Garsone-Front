@@ -696,3 +696,12 @@ html body[data-scroll-locked]:not(:root) {
 [data-radix-scroll-area-viewport] {
   scrollbar-gutter: stable;
 }
+
+/* Hide scrollbar utility for swipeable components */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

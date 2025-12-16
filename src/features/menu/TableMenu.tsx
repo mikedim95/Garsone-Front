@@ -10,7 +10,7 @@ import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
 import { useCartStore } from "@/store/cartStore";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, API_BASE } from "@/lib/api";
 import { realtimeService } from "@/lib/realtime";
 import { useMenuStore } from "@/store/menuStore";
 import type {

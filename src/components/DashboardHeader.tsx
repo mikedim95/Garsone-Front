@@ -30,12 +30,8 @@ export const DashboardHeader = ({
       accent: 'bg-gradient-accent',
     }[tone] || 'bg-gradient-primary';
 
-  const titleColorClass =
-    tone === 'secondary'
-      ? 'text-secondary-foreground'
-      : tone === 'accent'
-        ? 'text-accent-foreground'
-        : 'text-primary';
+  // Use vibrant primary color that stands out in both light and dark modes
+  const titleColorClass = 'text-primary brightness-110 saturate-150';
 
   const { theme, setTheme } = useTheme();
   const isDark =
