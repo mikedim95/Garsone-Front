@@ -291,7 +291,7 @@ export default function TableMenu() {
     isFetching: bootstrapFetching,
     error: bootstrapError,
   } = useQuery({
-    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId, preferGreek],
+    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId],
     queryFn: async () => {
       if (!activeTableId) {
         throw new Error("Missing table identifier");
@@ -301,6 +301,10 @@ export default function TableMenu() {
     enabled: bootstrapQueryEnabled,
     staleTime: 60_000,
     refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    placeholderData: (previous) => previous,
   });
 
   useEffect(() => {
@@ -1100,12 +1104,12 @@ export default function TableMenu() {
     >
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <header className="bg-card/80 backdrop-blur border-b border-border sticky top-0 z-40">
-          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               {headerTitle ? (
-                <h1 className="text-2xl font-bold text-primary">{headerTitle}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-primary">{headerTitle}</h1>
               ) : (
-                <Skeleton className="h-8 w-48 rounded-full" />
+                <Skeleton className="h-7 sm:h-8 w-40 sm:w-48 rounded-full" />
               )}
               {/* Table label intentionally hidden per request */}
             </div>
@@ -1205,7 +1209,7 @@ export default function TableMenu() {
           </div>
         </header>
 
-        <div className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8 flex-1 w-full">
           <AnimatePresence mode="wait">
             {!categorySelected ? (
               <CategorySelectView

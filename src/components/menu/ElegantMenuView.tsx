@@ -225,15 +225,15 @@ export const ElegantMenuView = ({
       <button
         onClick={handleCartButtonClick}
         className={[
-          'fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
+          'fixed bottom-4 right-4 z-50 flex items-center gap-2 sm:gap-3 rounded-full h-12 sm:h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
           expandedBubble === 'cart'
             ? 'pl-4 pr-5 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
-            : 'w-16 justify-center hover:scale-110',
+            : 'w-12 sm:w-16 justify-center hover:scale-110',
           expandedBubble === 'none' && 'active:scale-95',
         ].join(' ')}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <ShoppingCart className={`h-6 w-6 flex-shrink-0 transition-transform duration-500 ${expandedBubble === 'cart' ? 'rotate-12' : ''}`} />
+          <ShoppingCart className={`h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0 transition-transform duration-500 ${expandedBubble === 'cart' ? 'rotate-12' : ''}`} />
           {expandedBubble === 'cart' && cartItems.length > 0 && (
             <div className="flex flex-col leading-tight text-left min-w-0 animate-fade-in">
               <span className="text-xs sm:text-sm font-semibold truncate max-w-[8rem]">
@@ -251,7 +251,7 @@ export const ElegantMenuView = ({
           )}
         </div>
         {cartItems.length > 0 && expandedBubble !== 'cart' && (
-          <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center shadow-lg shadow-accent/50 ring-2 ring-background/70 animate-scale-in">
+          <span className="absolute -top-1.5 -right-1.5 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-7 sm:h-7 rounded-full bg-accent text-accent-foreground text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-lg shadow-accent/50 ring-2 ring-background/70 animate-scale-in">
             {cartItems.length}
           </span>
         )}
@@ -268,19 +268,19 @@ export const ElegantMenuView = ({
         onClick={handleCallButtonClick}
         disabled={callStatus === 'pending'}
         className={[
-          'fixed bottom-6 left-6 z-50 flex items-center gap-3 rounded-full h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out overflow-hidden',
+          'fixed bottom-4 left-4 z-50 flex items-center gap-2 sm:gap-3 rounded-full h-12 sm:h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out overflow-hidden',
           expandedBubble === 'call'
             ? 'pl-4 pr-3 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
-            : 'w-16 justify-center hover:scale-110',
+            : 'w-12 sm:w-16 justify-center hover:scale-110',
           callStatus === 'pending' ? 'opacity-80 cursor-wait' : expandedBubble === 'none' && 'active:scale-95',
         ].join(' ')}
       >
         <div className="flex items-center gap-3 min-w-0">
           <span className="relative flex items-center justify-center flex-shrink-0">
             {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
-              <span className="absolute inline-flex h-10 w-10 rounded-full bg-primary-foreground/20 animate-ping" />
+              <span className="absolute inline-flex h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-primary-foreground/20 animate-ping" />
             )}
-            <Bell className={`h-6 w-6 relative transition-transform duration-300 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
+            <Bell className={`h-5 w-5 sm:h-6 sm:w-6 relative transition-transform duration-300 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
           </span>
           {expandedBubble === 'call' && (
             <span className="text-xs sm:text-sm font-semibold whitespace-nowrap max-w-[9rem] truncate animate-fade-in">
@@ -321,7 +321,7 @@ export const ElegantMenuView = ({
           setCartOpen(open);
         }}
       >
-        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[90vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0">
+        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0 bottom-0 top-auto left-1/2 translate-y-0 sm:top-[50%] sm:bottom-auto sm:translate-y-[-50%] rounded-t-3xl sm:rounded-lg">
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
@@ -329,7 +329,7 @@ export const ElegantMenuView = ({
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
           <Card className="border-0 shadow-none h-full flex flex-col">
-            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-4 border-b border-border/40">
+            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
               <div className="flex items-center gap-3">
               <div className="p-2 rounded-full bg-primary/20">
                   <ShoppingCart className="h-5 w-5 text-primary" />
@@ -345,7 +345,7 @@ export const ElegantMenuView = ({
               </div>
             </div>
 
-            <ScrollArea className="max-h-[35vh]">
+            <ScrollArea className="max-h-[45vh] sm:max-h-[35vh]">
             {cartItems.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
@@ -373,8 +373,9 @@ export const ElegantMenuView = ({
                       className="relative group bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/30 transition-all duration-300"
                     >
                       <button
+                        aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
                         onClick={() => removeItem(cartItem.item.id)}
-                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110 z-10"
+                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110 z-10"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -427,21 +428,23 @@ export const ElegantMenuView = ({
                           )}
 
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 bg-background/50 rounded-full px-1.5 py-0.5">
+                            <div className="flex items-center gap-2 bg-background/50 rounded-full px-2 py-1">
                               <button
                                 onClick={() =>
                                   updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))
                                 }
-                                className="text-muted-foreground hover:text-foreground transition-colors w-5 h-5 flex items-center justify-center rounded-full hover:bg-muted text-sm"
+                                aria-label={t('menu.decrease_quantity', { defaultValue: 'Decrease quantity' })}
+                                className="text-muted-foreground hover:text-foreground transition-colors w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full hover:bg-muted text-base"
                               >
-                                −
+                                -
                               </button>
-                              <span className="text-xs font-medium w-5 text-center">
+                              <span className="text-xs font-medium w-6 text-center">
                                 {cartItem.quantity}
                               </span>
                               <button
                                 onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
-                                className="text-muted-foreground hover:text-foreground transition-colors w-5 h-5 flex items-center justify-center rounded-full hover:bg-muted text-sm"
+                                aria-label={t('menu.increase_quantity', { defaultValue: 'Increase quantity' })}
+                                className="text-muted-foreground hover:text-foreground transition-colors w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full hover:bg-muted text-base"
                               >
                                 +
                               </button>
