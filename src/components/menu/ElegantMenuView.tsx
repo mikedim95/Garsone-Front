@@ -24,6 +24,8 @@ interface Props {
   callPrompted?: boolean;
   onCallClick?: () => void;
   checkoutBusy?: boolean;
+  // When incremented by parent, opens the cart modal.
+  openCartSignal?: number;
 }
 
 export const ElegantMenuView = ({
@@ -38,6 +40,7 @@ export const ElegantMenuView = ({
   callPrompted = false,
   onCallClick,
   checkoutBusy = false,
+  openCartSignal = 0,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -125,6 +128,14 @@ export const ElegantMenuView = ({
     setEditingItemIndex(null);
   };
 
+  // Open cart when parent signals (e.g., edit existing order)
+  useEffect(() => {
+    if (openCartSignal > 0) {
+      setCartOpen(true);
+      setExpandedBubble('none');
+    }
+  }, [openCartSignal]);
+
   const handleCartButtonClick = () => {
     if (expandedBubble === 'cart') {
       setCartOpen(true);
@@ -170,7 +181,7 @@ export const ElegantMenuView = ({
                 <Separator className="flex-1 h-[2px] bg-border" />
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
           {group.items.map((item) => {
             const price = getPrice(item);
             const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
@@ -200,7 +211,7 @@ export const ElegantMenuView = ({
                     </Badge>
                   </div>
                 </div>
-                <div className="p-2.5 sm:p-3">
+                <div className="p-2 sm:p-3">
                   <p className="text-xs text-muted-foreground leading-snug mb-2 line-clamp-2 min-h-[2rem]">
                     {description}
                   </p>
@@ -330,8 +341,12 @@ export const ElegantMenuView = ({
           </DialogDescription>
           <Card className="border-0 shadow-none h-full flex flex-col">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
+              {/* Bottom-sheet drag handle (mobile only) */}
+              <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
+                <div className="h-1.5 w-12 rounded-full bg-muted" />
+              </div>
               <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-primary/20">
+                <div className="p-2 rounded-full bg-primary/20">
                   <ShoppingCart className="h-5 w-5 text-primary" />
                 </div>
                 <div>
@@ -463,7 +478,7 @@ export const ElegantMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="p-3 border-t border-border/40 space-y-2">
+              <div className="sticky bottom-0 p-3 sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-foreground">
                     {t('menu.total', { defaultValue: 'Total' })}

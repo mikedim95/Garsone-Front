@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
@@ -268,6 +269,14 @@ export default function TableMenu() {
   const [tableId, setTableId] = useState<string | null>(() =>
     tableParam ? tableParam : null
   );
+  const [ordersSheetOpen, setOrdersSheetOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.sessionStorage.getItem("ordersSheetOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
   const activeTableId = tableId || tableParam || null;
   const isEditingExisting = Boolean(editingOrderId);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
@@ -284,6 +293,7 @@ export default function TableMenu() {
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [activeOrders, setActiveOrders] = useState<SubmittedOrderSummary[]>([]);
   const bootstrapQueryEnabled = Boolean(activeTableId) && !isFallbackSlug(storeSlug);
   const {
     data: bootstrap,
@@ -482,6 +492,111 @@ export default function TableMenu() {
       console.warn("Failed to persist last order", error);
     }
   }, [lastOrder]);
+
+  // persist ordersSheetOpen in sessionStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (ordersSheetOpen) {
+        window.sessionStorage.setItem("ordersSheetOpen", "1");
+      } else {
+        window.sessionStorage.removeItem("ordersSheetOpen");
+      }
+    } catch {}
+  }, [ordersSheetOpen]);
+
+  // Currency formatting for order totals in the sheet
+  const currencyCode =
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("CURRENCY") || "EUR"
+      : "EUR";
+  const formatCurrencyOrder = (value: number) => {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currencyCode,
+      }).format(value);
+    } catch {
+      return value.toFixed(2);
+    }
+  };
+
+  // Hydrate and persist all orders for current table (best-effort, client-side)
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeTableId) return;
+    try {
+      const stored = window.localStorage.getItem(
+        `table:orders:${activeTableId}`
+      );
+      if (stored) {
+        const parsed = JSON.parse(stored) as SubmittedOrderSummary[];
+        if (Array.isArray(parsed)) setActiveOrders(parsed);
+      }
+    } catch {}
+  }, [activeTableId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeTableId) return;
+    try {
+      window.localStorage.setItem(
+        `table:orders:${activeTableId}`,
+        JSON.stringify(activeOrders)
+      );
+    } catch {}
+  }, [activeOrders, activeTableId]);
+
+  // Render grouped Active Orders with section dividers
+  const renderActiveOrders = () => {
+    const placed = activeOrders.filter((o) => o.status === 'PLACED');
+    const preparing = activeOrders.filter((o) => o.status === 'PREPARING');
+    const ready = activeOrders.filter((o) => o.status === 'READY');
+    const Section = ({ title, list }: { title: string; list: SubmittedOrderSummary[] }) => (
+      <>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <span className="text-xs text-muted-foreground">{list.length}</span>
+        </div>
+        <div className="space-y-3 mt-1">
+          {list.map((o) => (
+            <div key={o.id} className="rounded-xl border border-border/50 bg-card/70 p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground truncate">#{o.id.slice(0,6)} · {o.tableLabel}</div>
+                <div className="text-xs text-muted-foreground">{t(`status.${o.status}`, { defaultValue: o.status || 'PLACED' })}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-primary">{formatCurrencyOrder((o.totalCents ?? 0) / 100)}</span>
+                <Button
+                  size="sm"
+                  variant={o.status === 'PLACED' ? 'default' : 'outline'}
+                  disabled={o.status !== 'PLACED'}
+                  onClick={() => handleEditOrder(o)}
+                >
+                  {t('actions.edit', { defaultValue: 'Edit' })}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+    return (
+      <div className="space-y-5">
+        {placed.length > 0 && <Section title={t('status.PLACED', { defaultValue: 'Placed' })} list={placed} />}
+        {preparing.length > 0 && (
+          <>
+            <div className="border-t border-border/40" />
+            <Section title={t('status.PREPARING', { defaultValue: 'In Preparation' })} list={preparing} />
+          </>
+        )}
+        {ready.length > 0 && (
+          <>
+            <div className="border-t border-border/40" />
+            <Section title={t('status.READY', { defaultValue: 'Ready' })} list={ready} />
+          </>
+        )}
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (lastOrder?.tableLabel) {
@@ -740,6 +855,53 @@ export default function TableMenu() {
     });
   };
 
+  // Edit an existing submitted order from the Active Orders sheet
+  const handleEditOrder = (order: SubmittedOrderSummary) => {
+    if (!order || !order.id) return;
+    if (order.status && order.status !== "PLACED") {
+      toast({
+        title: t("menu.toast_edit_unavailable_title", {
+          defaultValue: "Order cannot be edited",
+        }),
+        description: t("menu.toast_edit_unavailable_desc", {
+          defaultValue: "The kitchen has already started preparing your order.",
+        }),
+      });
+      return;
+    }
+    if (!menuData) {
+      toast({
+        title: t("menu.toast_error_title", { defaultValue: "Error" }),
+        description: t("menu.toast_error_description", {
+          defaultValue: "Menu data is not loaded yet. Please try again.",
+        }),
+      });
+      return;
+    }
+
+    const mappedItems = mapOrderToCartItems(order, menuData.items);
+    if (!mappedItems.length) {
+      toast({
+        title: t("menu.edit_order_unavailable_title", {
+          defaultValue: "Unable to edit order",
+        }),
+        description: t("menu.edit_order_items_missing", {
+          defaultValue: "Items are no longer available to edit.",
+        }),
+      });
+      return;
+    }
+
+    clearCart();
+    setItems(mappedItems);
+    setEditingOrderId(order.id);
+    setEditingNote(order.note ?? "");
+    setOrdersSheetOpen(false);
+    setCategorySelected(true);
+    setSelectedCategory("all");
+    setCartOpenSignal((s) => s + 1);
+  };
+
   const handleCheckout = async (note?: string) => {
     if (checkoutBusy) return null;
     if (!activeTableId || !menuData) {
@@ -794,6 +956,7 @@ export default function TableMenu() {
         note: note ?? "",
         paymentSessionId: paymentResponse.sessionId,
         totalCents: totalCents,
+        editingOrderId: editingOrderId ?? undefined,
       };
 
       try {
@@ -867,7 +1030,10 @@ export default function TableMenu() {
         note: note ?? "",
       };
 
-      const response = await api.createOrder(payload);
+      // If editing, patch existing order instead of creating a new one
+      const response = editingOrderId
+        ? await api.editOrder(editingOrderId, payload)
+        : await api.createOrder(payload);
       const order = (response as OrderResponse)?.order;
 
       if (!order?.id) {
@@ -885,6 +1051,11 @@ export default function TableMenu() {
         tableLabel: tableLabel ?? activeTableId,
         note: note,
       });
+      // If we were editing, clear editing state
+      if (editingOrderId) {
+        setEditingOrderId(null);
+        setEditingNote(undefined);
+      }
 
       toast({
         title: t("menu.toast_order_placed_title", {
@@ -894,6 +1065,27 @@ export default function TableMenu() {
           defaultValue: "Your order has been sent to the kitchen.",
         }),
       });
+
+      // Track/update in active orders and open the sheet
+      setActiveOrders((prev) => {
+        const updated = {
+          id: order.id,
+          status: (order.status ?? "PLACED") as any,
+          createdAt: order.createdAt ?? new Date().toISOString(),
+          items: (order.items ?? []) as any,
+          totalCents: order.totalCents,
+          tableLabel: tableLabel ?? activeTableId,
+          note: note,
+        } as SubmittedOrderSummary;
+        const exists = prev.some((o) => o.id === order.id);
+        if (exists) return prev.map((o) => (o.id === order.id ? updated : o));
+        return [updated, ...prev];
+      });
+
+      // After successful submission, guide back to category selection and open the Active Orders sheet.
+      setCategorySelected(false);
+      setSelectedCategory(null);
+      setOrdersSheetOpen(true);
 
       return {
         id: order.id,
@@ -928,6 +1120,7 @@ export default function TableMenu() {
     if (!activeTableId || !storeSlug) return;
     let mounted = true;
     const callTopic = `${storeSlug}/waiter/call`;
+    const placedTopic = `${storeSlug}/orders/placed`;
     const preparingTopicLegacy = `${storeSlug}/orders/prepairing`;
     const preparingTopic = `${storeSlug}/orders/preparing`;
     const readyTopic = `${storeSlug}/orders/ready`;
@@ -955,6 +1148,24 @@ export default function TableMenu() {
         if (payload.action === "accepted") setCalling("accepted");
         else if (payload.action === "cleared") setCalling("idle");
       });
+      // New orders placed (any client) for this table
+      realtimeService.subscribe(placedTopic, (payload) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        if (payload.tableId !== activeTableId) return;
+        setActiveOrders((prev) => {
+          const exists = prev.some((o) => o.id === payload.orderId);
+          const entry = {
+            id: payload.orderId,
+            status: "PLACED" as const,
+            createdAt: payload.createdAt ?? new Date().toISOString(),
+            items: (payload.items ?? []) as any,
+            totalCents: payload.totalCents ?? 0,
+            tableLabel: tableLabel ?? activeTableId ?? undefined,
+          } as SubmittedOrderSummary;
+          if (exists) return prev.map((o) => (o.id === entry.id ? { ...o, ...entry } : o));
+          return [entry, ...prev];
+        });
+      });
       realtimeService.subscribe(preparingTopicLegacy, handlePreparing);
       realtimeService.subscribe(preparingTopic, handlePreparing);
       realtimeService.subscribe(readyTopic, (payload) => {
@@ -964,6 +1175,9 @@ export default function TableMenu() {
             ? { ...prev, status: "READY" }
             : prev
         );
+        setActiveOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: "READY" } : o)));
+        // Optional: disconnect if no live orders remain
+        const anyLive = (useOrdersStore.getState?.() ? [] : prev).length; // placeholder safeguard
       });
       realtimeService.subscribe(cancelledTopic, (payload) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
@@ -972,6 +1186,7 @@ export default function TableMenu() {
             ? { ...prev, status: "CANCELLED" }
             : prev
         );
+        setActiveOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: "CANCELLED" } : o)));
       });
       realtimeService.subscribe(cancelledLegacyTopic, (payload) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
@@ -980,6 +1195,7 @@ export default function TableMenu() {
             ? { ...prev, status: "CANCELLED" }
             : prev
         );
+        setActiveOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: "CANCELLED" } : o)));
       });
       realtimeService.subscribe(paidTopic, (payload) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
@@ -988,11 +1204,13 @@ export default function TableMenu() {
             ? { ...prev, status: "PAID" }
             : prev
         );
+        setActiveOrders((prev) => prev.map((o) => (o.id === payload.orderId ? { ...o, status: "PAID" } : o)));
       });
     })();
     return () => {
       mounted = false;
       realtimeService.unsubscribe(callTopic);
+      realtimeService.unsubscribe(placedTopic);
       realtimeService.unsubscribe(preparingTopicLegacy);
       realtimeService.unsubscribe(preparingTopic);
       realtimeService.unsubscribe(readyTopic);
@@ -1216,6 +1434,8 @@ export default function TableMenu() {
                 key="category-select"
                 categories={categories}
                 loading={loading}
+                activeOrdersCount={activeOrders.length}
+                onShowActiveOrders={() => setOrdersSheetOpen(true)}
                 onSelect={(catId) => {
                   setSelectedCategory(catId);
                   setCategorySelected(true);
@@ -1283,6 +1503,7 @@ export default function TableMenu() {
                     onCheckout={handleCheckout}
                     onImmediateCheckout={handleImmediateCheckout}
                     checkoutBusy={checkoutBusy}
+                    openCartSignal={cartOpenSignal}
                     callButtonLabel={callButtonLabel}
                     callStatus={calling}
                     callPrompted={callPrompted}
@@ -1293,6 +1514,8 @@ export default function TableMenu() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Removed floating trigger; button now sits next to View Full Menu */}
 
         <Suspense fallback={null}>
           <ModifierDialog
@@ -1306,6 +1529,43 @@ export default function TableMenu() {
             onConfirm={handleConfirmModifiers}
           />
         </Suspense>
+        {/* Active Orders Sheet */}
+        <Sheet open={ordersSheetOpen} onOpenChange={setOrdersSheetOpen}>
+          <SheetContent side="bottom" className="max-h-[85vh] p-0">
+            <SheetHeader className="px-4 pt-4 pb-2 border-b border-border/40">
+              <SheetTitle>{t('menu.active_orders', { defaultValue: 'Active Orders' })}</SheetTitle>
+            </SheetHeader>
+            <div className="px-4 py-3 max-h-[65vh] overflow-y-auto">
+              {activeOrders.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('menu.no_active_orders', { defaultValue: 'No active orders yet.' })}</p>
+              ) : (
+                <div className="space-y-3">
+                  {activeOrders.map((o) => (
+                    <div key={o.id} className="rounded-xl border border-border/50 bg-card/70 p-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-foreground truncate">#{o.id.slice(0,6)} · {o.tableLabel}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {t(`status.${o.status}`, { defaultValue: o.status || 'PLACED' })}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-primary">ƒ,ª{((o.totalCents ?? 0)/100).toFixed(2)}</span>
+                        <Button
+                          size="sm"
+                          variant={o.status === 'PLACED' ? 'default' : 'outline'}
+                          disabled={o.status !== 'PLACED'}
+                          onClick={() => handleEditOrder(o)}
+                        >
+                          {t('actions.edit', { defaultValue: 'Edit' })}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );
