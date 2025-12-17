@@ -13,6 +13,7 @@ type PendingOrder = {
   note: string;
   paymentSessionId: string;
   totalCents: number;
+  editingOrderId?: string | null;
 };
 
 /**
@@ -41,8 +42,10 @@ export default function PaymentCompleteRedirect() {
         const tableId =
           searchParams.get("tableId") || pendingOrder.tableId || "";
 
-        // Create the order now that payment succeeded
-        const orderResponse = await api.createOrder(pendingOrder);
+        // Create or edit the order now that payment succeeded
+        const orderResponse = pendingOrder.editingOrderId
+          ? await api.editOrder(pendingOrder.editingOrderId, pendingOrder)
+          : await api.createOrder(pendingOrder);
         const order = (orderResponse as any)?.order;
         if (!order?.id) {
           throw new Error("Order was not created");

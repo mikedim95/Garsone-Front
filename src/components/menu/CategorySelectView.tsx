@@ -7,6 +7,8 @@ interface Props {
   categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
   onSelect: (categoryId: string) => void;
   loading?: boolean;
+  activeOrdersCount?: number;
+  onShowActiveOrders?: () => void;
 }
 
 const categoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -61,7 +63,7 @@ const categoryGradients = [
   'from-accent/15 to-primary/10',
 ];
 
-export const CategorySelectView = ({ categories, onSelect, loading }: Props) => {
+export const CategorySelectView = ({ categories, onSelect, loading, activeOrdersCount = 0, onShowActiveOrders }: Props) => {
   const { t } = useTranslation();
 
   if (loading) {
@@ -133,17 +135,35 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
         })}
       </div>
 
-      <motion.button
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 + categories.length * 0.05 }}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={() => onSelect('all')}
-        className="mt-6 mx-auto block px-8 py-3 rounded-full border border-border/60 bg-card/80 backdrop-blur-sm text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
-      >
-        {t('menu.view_all', { defaultValue: 'View Full Menu' })}
-      </motion.button>
+      <div className="mt-6 flex items-center justify-center gap-3">
+        {activeOrdersCount > 0 && (
+          <motion.button
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 + categories.length * 0.05 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => onShowActiveOrders?.()}
+            className="px-4 py-3 rounded-full border border-accent/60 text-accent bg-accent/10 backdrop-blur-sm text-sm font-medium hover:bg-accent/20 transition-all duration-300"
+          >
+            {t('menu.view_active_orders', { defaultValue: 'Active Orders' })}
+            <span className="ml-2 inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full bg-accent text-accent-foreground text-xs font-bold">
+              {activeOrdersCount}
+            </span>
+          </motion.button>
+        )}
+        <motion.button
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 + categories.length * 0.05 }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onSelect('all')}
+          className="px-8 py-3 rounded-full border border-border/60 bg-card/80 backdrop-blur-sm text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
+        >
+          {t('menu.view_all', { defaultValue: 'View Full Menu' })}
+        </motion.button>
+      </div>
     </motion.div>
   );
 };

@@ -42,7 +42,6 @@ const ModifierDialog = lazy(() =>
   }))
 );
 
-
 type CategorySummary = Pick<
   MenuCategory,
   "id" | "title" | "titleEn" | "titleEl"
@@ -300,7 +299,8 @@ export default function TableMenu() {
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const bootstrapQueryEnabled = Boolean(activeTableId) && !isFallbackSlug(storeSlug);
+  const bootstrapQueryEnabled =
+    Boolean(activeTableId) && !isFallbackSlug(storeSlug);
   const {
     data: bootstrap,
     isLoading: bootstrapLoading,
@@ -312,7 +312,9 @@ export default function TableMenu() {
       if (!activeTableId) {
         throw new Error("Missing table identifier");
       }
-      return api.getMenuBootstrap(activeTableId, { storeSlug: storeSlug || undefined });
+      return api.getMenuBootstrap(activeTableId, {
+        storeSlug: storeSlug || undefined,
+      });
     },
     enabled: bootstrapQueryEnabled,
     staleTime: 60_000,
@@ -606,8 +608,9 @@ export default function TableMenu() {
             "menu:nav-start",
             "menu:first-paint"
           );
-          const entry =
-            performance.getEntriesByName("menu:first-paint-delay").pop();
+          const entry = performance
+            .getEntriesByName("menu:first-paint-delay")
+            .pop();
           if (entry) {
             console.log(
               "[perf] menu:first-paint",
@@ -870,15 +873,12 @@ export default function TableMenu() {
     const servedTopic = `${storeSlug}/orders/served`;
     (async () => {
       await realtimeService.connect();
-      const updateStatus =
-        (status: OrderStatus) => (payload: unknown) => {
-          if (!mounted || !isOrderEventMessage(payload)) return;
-          setLastOrder((prev) =>
-            prev && prev.id === payload.orderId
-              ? { ...prev, status }
-              : prev
-          );
-        };
+      const updateStatus = (status: OrderStatus) => (payload: unknown) => {
+        if (!mounted || !isOrderEventMessage(payload)) return;
+        setLastOrder((prev) =>
+          prev && prev.id === payload.orderId ? { ...prev, status } : prev
+        );
+      };
 
       const handlePreparing = updateStatus("PREPARING");
       const handleReady = updateStatus("READY");
@@ -1022,7 +1022,9 @@ export default function TableMenu() {
           <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               {headerTitle ? (
-                <h1 className="text-2xl font-bold text-primary">{headerTitle}</h1>
+                <h1 className="text-2xl font-bold text-primary">
+                  {headerTitle}
+                </h1>
               ) : (
                 <Skeleton className="h-8 w-48 rounded-full" />
               )}
@@ -1145,9 +1147,9 @@ export default function TableMenu() {
                 transition={{ duration: 0.3 }}
               >
                 {/* Category tabs bar */}
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: -10, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  animate={{ opacity: 1, y: 0, height: "auto" }}
                   transition={{ duration: 0.3, delay: 0.1 }}
                   className="flex gap-2 mb-6 overflow-x-auto pb-2 items-center"
                 >
@@ -1173,7 +1175,9 @@ export default function TableMenu() {
                   {categories.map((cat) => (
                     <Button
                       key={cat.id}
-                      variant={selectedCategory === cat.id ? "default" : "outline"}
+                      variant={
+                        selectedCategory === cat.id ? "default" : "outline"
+                      }
                       onClick={() => setSelectedCategory(cat.id)}
                       className="shrink-0 rounded-full h-9 text-sm"
                     >

@@ -11,43 +11,64 @@ export type DashboardTheme =
   | 'modern-mist'
   | 'velvet-dusk';
 
+
+type ThemePreview = {
+  light: [string, string]; // [primary, background]
+  dark: [string, string];  // [primary, background]
+};
+
 type DashboardThemeOption = {
   value: DashboardTheme;
   label: string;
   subtitle: string;
-  preview: [string, string];
+  preview: ThemePreview;
 };
 
 export const dashboardThemeOptions: DashboardThemeOption[] = [
   {
     value: 'classic',
     label: 'Garsoné Classic',
-    subtitle: 'Violet primary + neutral surfaces',
-    preview: ['#7a5bff', '#0f172a'],
+    subtitle: 'Violet & cyan modern look',
+    preview: {
+      light: ['#8b5cf6', '#faf9f7'],
+      dark: ['#38bdf8', '#0f172a'],
+    },
   },
   {
     value: 'luxe-ember',
     label: 'Luxe Ember',
-    subtitle: 'Copper warmth with obsidian dark',
-    preview: ['#d98f4a', '#151828'],
+    subtitle: 'Warm copper & gold accents',
+    preview: {
+      light: ['#d97706', '#fdf6ed'],
+      dark: ['#fbbf24', '#1c0c08'],
+    },
   },
   {
     value: 'nocturne-marina',
     label: 'Nocturne Marina',
-    subtitle: 'Deep navy & teal gradients',
-    preview: ['#1c2b4a', '#2782a6'],
+    subtitle: 'Ocean teal & deep navy',
+    preview: {
+      light: ['#0891b2', '#f0f9ff'],
+      dark: ['#22d3ee', '#0a1628'],
+    },
   },
   {
     value: 'modern-mist',
     label: 'Modern Mist',
-    subtitle: 'Soft neutrals with sand copper',
-    preview: ['#edf1f8', '#f5a05f'],
+    subtitle: 'Soft violet & electric pink',
+    preview: {
+      light: ['#a855f7', '#faf5ff'],
+      dark: ['#e879f9', '#1a0a1e'],
+    },
   },
   {
     value: 'velvet-dusk',
     label: 'Velvet Dusk',
-    subtitle: 'Rose gold layered on midnight',
-    preview: ['#f3c9b8', '#1b1f32'],
+    subtitle: 'Forest green & warm gold',
+    preview: {
+      light: ['#16a34a', '#f9faf5'],
+      dark: ['#facc15', '#0a1a0d'],
+    },
   },
 ];
 

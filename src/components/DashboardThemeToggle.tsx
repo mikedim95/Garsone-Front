@@ -43,12 +43,18 @@ export const DashboardThemeToggle = ({ className }: DashboardThemeToggleProps) =
               )}
             >
               <span
-                className="inline-flex h-6 w-10 rounded-full border border-border/70"
-                style={{
-                  background: `linear-gradient(120deg, ${option.preview[0]}, ${option.preview[1]})`,
-                }}
+                className="inline-flex h-6 w-10 rounded-full border border-border/70 overflow-hidden"
                 aria-hidden
-              />
+              >
+                <span 
+                  className="w-1/2 h-full" 
+                  style={{ backgroundColor: option.preview.light[0] }} 
+                />
+                <span 
+                  className="w-1/2 h-full" 
+                  style={{ backgroundColor: option.preview.dark[0] }} 
+                />
+              </span>
               <span className="text-left">
                 <span className="block font-medium leading-tight">{option.label}</span>
                 <span className="block text-[11px] text-muted-foreground leading-tight">
