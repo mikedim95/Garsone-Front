@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
@@ -24,8 +25,9 @@ import type {
   CartItem,
   SubmittedOrderItem,
   SubmittedOrderSummary,
+  OrderStatus,
 } from "@/types";
-import { Pencil, ArrowLeft } from "lucide-react";
+import { Pencil, ArrowLeft, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
@@ -206,6 +208,15 @@ const mapOrderToCartItems = (
   return mapped;
 };
 
+const ORDER_STATUS_FLOW: OrderStatus[] = [
+  "PLACED",
+  "PREPARING",
+  "READY",
+  "SERVED",
+  "PAID",
+  "CANCELLED",
+];
+
 const getStoredName = () => {
   if (typeof window === "undefined") return null;
   try {
@@ -264,6 +275,7 @@ export default function TableMenu() {
       }
     }
   );
+  const [activeOrdersOpen, setActiveOrdersOpen] = useState(true);
   const [tableLabel, setTableLabel] = useState<string | null>(null);
   const [tableId, setTableId] = useState<string | null>(() =>
     tableParam ? tableParam : null
@@ -275,6 +287,10 @@ export default function TableMenu() {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
   });
   const canEditLastOrder = lastOrderStatus === "PLACED" && !!lastOrder?.id;
+  const isLastOrderCancelled = lastOrderStatus === "CANCELLED";
+  const lastOrderStepIndex = ORDER_STATUS_FLOW.indexOf(
+    lastOrderStatus as OrderStatus
+  );
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
   const menuCache = useMenuStore((s) => s.data);
@@ -484,6 +500,12 @@ export default function TableMenu() {
       setTableLabel(lastOrder.tableLabel);
     }
   }, [lastOrder]);
+
+  useEffect(() => {
+    if (lastOrder) {
+      setActiveOrdersOpen(true);
+    }
+  }, [lastOrder?.id]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
@@ -845,16 +867,24 @@ export default function TableMenu() {
     const cancelledTopic = `${storeSlug}/orders/canceled`;
     const cancelledLegacyTopic = `${storeSlug}/orders/cancelled`;
     const paidTopic = `${storeSlug}/orders/paid`;
+    const servedTopic = `${storeSlug}/orders/served`;
     (async () => {
       await realtimeService.connect();
-      const handlePreparing = (payload: unknown) => {
-        if (!mounted || !isOrderEventMessage(payload)) return;
-        setLastOrder((prev) =>
-          prev && prev.id === payload.orderId
-            ? { ...prev, status: "PREPARING" }
-            : prev
-        );
-      };
+      const updateStatus =
+        (status: OrderStatus) => (payload: unknown) => {
+          if (!mounted || !isOrderEventMessage(payload)) return;
+          setLastOrder((prev) =>
+            prev && prev.id === payload.orderId
+              ? { ...prev, status }
+              : prev
+          );
+        };
+
+      const handlePreparing = updateStatus("PREPARING");
+      const handleReady = updateStatus("READY");
+      const handleCancelled = updateStatus("CANCELLED");
+      const handlePaid = updateStatus("PAID");
+      const handleServed = updateStatus("SERVED");
 
       realtimeService.subscribe(callTopic, (payload) => {
         if (
@@ -868,38 +898,11 @@ export default function TableMenu() {
       });
       realtimeService.subscribe(preparingTopicLegacy, handlePreparing);
       realtimeService.subscribe(preparingTopic, handlePreparing);
-      realtimeService.subscribe(readyTopic, (payload) => {
-        if (!mounted || !isOrderEventMessage(payload)) return;
-        setLastOrder((prev) =>
-          prev && prev.id === payload.orderId
-            ? { ...prev, status: "READY" }
-            : prev
-        );
-      });
-      realtimeService.subscribe(cancelledTopic, (payload) => {
-        if (!mounted || !isOrderEventMessage(payload)) return;
-        setLastOrder((prev) =>
-          prev && prev.id === payload.orderId
-            ? { ...prev, status: "CANCELLED" }
-            : prev
-        );
-      });
-      realtimeService.subscribe(cancelledLegacyTopic, (payload) => {
-        if (!mounted || !isOrderEventMessage(payload)) return;
-        setLastOrder((prev) =>
-          prev && prev.id === payload.orderId
-            ? { ...prev, status: "CANCELLED" }
-            : prev
-        );
-      });
-      realtimeService.subscribe(paidTopic, (payload) => {
-        if (!mounted || !isOrderEventMessage(payload)) return;
-        setLastOrder((prev) =>
-          prev && prev.id === payload.orderId
-            ? { ...prev, status: "PAID" }
-            : prev
-        );
-      });
+      realtimeService.subscribe(readyTopic, handleReady);
+      realtimeService.subscribe(cancelledTopic, handleCancelled);
+      realtimeService.subscribe(cancelledLegacyTopic, handleCancelled);
+      realtimeService.subscribe(paidTopic, handlePaid);
+      realtimeService.subscribe(servedTopic, handleServed);
     })();
     return () => {
       mounted = false;
@@ -910,6 +913,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(cancelledTopic);
       realtimeService.unsubscribe(cancelledLegacyTopic);
       realtimeService.unsubscribe(paidTopic);
+      realtimeService.unsubscribe(servedTopic);
     };
   }, [storeSlug, activeTableId]);
 
@@ -1203,6 +1207,108 @@ export default function TableMenu() {
             )}
           </AnimatePresence>
         </div>
+
+        {lastOrder && activeOrdersOpen ? (
+          <div className="fixed inset-x-0 bottom-6 z-50 px-4 pointer-events-none">
+            <div className="mx-auto w-full max-w-4xl">
+              <div className="pointer-events-auto rounded-3xl border border-border/70 bg-card/90 backdrop-blur-xl shadow-2xl">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+                  <div>
+                    <p className="text-base font-semibold text-foreground">
+                      Active Orders
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Live status updates from the kitchen
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="rounded-full px-3 py-1">
+                      {lastOrderStatusLabel}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 rounded-full"
+                      onClick={() => setActiveOrdersOpen(false)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="px-5 py-4 space-y-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        #{(lastOrder.id || "").slice(-6)}
+                        {tableLabel ? ` • ${tableLabel}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(
+                          lastOrder.createdAt || Date.now()
+                        ).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-lg font-bold text-foreground">
+                        €{computeOrderTotal(lastOrder).toFixed(2)}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={canEditLastOrder ? "default" : "outline"}
+                        disabled={!canEditLastOrder}
+                        onClick={handleEditLastOrder}
+                        className="rounded-full px-4"
+                      >
+                        {t("actions.edit", { defaultValue: "Edit" })}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Status
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {ORDER_STATUS_FLOW.map((status, idx) => {
+                        const reached = isLastOrderCancelled
+                          ? status === "CANCELLED"
+                          : lastOrderStepIndex >= idx && !isLastOrderCancelled;
+                        const isActive = status === lastOrderStatus;
+                        return (
+                          <div
+                            key={status}
+                            className={clsx(
+                              "flex items-center gap-2 rounded-full px-3 py-1.5 border text-xs font-semibold transition-colors",
+                              reached
+                                ? "border-primary/60 bg-primary/10 text-primary"
+                                : "border-border/80 bg-card/60 text-muted-foreground",
+                              isActive && "ring-2 ring-primary/40"
+                            )}
+                          >
+                            <span>
+                              {t(`status.${status}`, {
+                                defaultValue: status,
+                              })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {!canEditLastOrder && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Edits are only available while an order is still placed.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <Suspense fallback={null}>
           <ModifierDialog

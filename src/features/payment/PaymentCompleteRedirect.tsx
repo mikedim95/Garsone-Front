@@ -48,6 +48,33 @@ export default function PaymentCompleteRedirect() {
           throw new Error("Order was not created");
         }
 
+        try {
+          const summary = {
+            id: order.id,
+            tableId: order.tableId,
+            tableLabel: order.tableLabel ?? order.table?.label,
+            createdAt: order.placedAt ?? order.createdAt,
+            updatedAt: order.updatedAt,
+            total: order.total ?? order.totalCents / 100,
+            totalCents: order.totalCents,
+            status: order.status,
+            note: order.note,
+            ticketNumber: order.ticketNumber,
+            items: (order.items ?? []).map((item: any) => ({
+              itemId: item.itemId ?? item.item?.id,
+              title: item.title ?? item.titleSnapshot ?? item.name,
+              quantity: item.quantity ?? item.qty,
+              modifiers: item.modifiers ?? item.orderItemOptions ?? [],
+            })),
+          };
+          window.localStorage.setItem(
+            "table:last-order",
+            JSON.stringify(summary)
+          );
+        } catch (error) {
+          console.warn("Failed to persist last order summary", error);
+        }
+
         clearCart();
         window.sessionStorage.removeItem("pending-order");
 
