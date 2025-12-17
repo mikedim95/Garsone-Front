@@ -834,6 +834,91 @@ export default function TableMenu() {
     return null;
   };
 
+  // Immediate checkout handler (bypasses Viva payment for debugging)
+  const handleImmediateCheckout = async (note?: string) => {
+    if (checkoutBusy) return null;
+    if (!activeTableId || !menuData) {
+      toast({
+        title: t("menu.toast_error_title", {
+          defaultValue: "Error placing order",
+        }),
+        description: t("menu.toast_error_description", {
+          defaultValue: "Missing table information. Please rescan the QR.",
+        }),
+      });
+      return null;
+    }
+
+    try {
+      setCheckoutBusy(true);
+      const cartItems = useCartStore.getState().items;
+
+      const payload: CreateOrderPayload = {
+        tableId: activeTableId,
+        items: cartItems.map((ci) => ({
+          itemId: ci.item.id,
+          quantity: ci.quantity,
+          modifiers: JSON.stringify(ci.selectedModifiers),
+        })),
+        note: note ?? "",
+      };
+
+      const response = await api.createOrder(payload);
+      const order = (response as OrderResponse)?.order;
+
+      if (!order?.id) {
+        throw new Error("Order was not created");
+      }
+
+      // Clear cart and update state
+      useCartStore.getState().clearCart();
+      setLastOrder({
+        id: order.id,
+        status: order.status ?? "PLACED",
+        createdAt: order.createdAt ?? new Date().toISOString(),
+        items: order.items ?? [],
+        totalCents: order.totalCents,
+        tableLabel: tableLabel ?? activeTableId,
+        note: note,
+      });
+
+      toast({
+        title: t("menu.toast_order_placed_title", {
+          defaultValue: "Order placed!",
+        }),
+        description: t("menu.toast_order_placed_desc", {
+          defaultValue: "Your order has been sent to the kitchen.",
+        }),
+      });
+
+      return {
+        id: order.id,
+        status: order.status ?? "PLACED",
+        createdAt: order.createdAt ?? new Date().toISOString(),
+        items: order.items ?? [],
+        totalCents: order.totalCents,
+        tableLabel: tableLabel ?? activeTableId,
+        note: note,
+      } as SubmittedOrderSummary;
+    } catch (error) {
+      console.error("Failed to place order:", error);
+      toast({
+        title: t("menu.toast_error_title", {
+          defaultValue: "Error placing order",
+        }),
+        description:
+          error instanceof Error
+            ? error.message
+            : t("menu.toast_error_description", {
+                defaultValue: "Failed to place order. Please try again.",
+              }),
+      });
+      return null;
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
+
   useEffect(() => {
     // subscribe for call acknowledgements for this table
     if (!activeTableId || !storeSlug) return;
@@ -1192,6 +1277,7 @@ export default function TableMenu() {
                     selectedCategory={selectedCategory || "all"}
                     onAddItem={handleAddItem}
                     onCheckout={handleCheckout}
+                    onImmediateCheckout={handleImmediateCheckout}
                     checkoutBusy={checkoutBusy}
                     callButtonLabel={callButtonLabel}
                     callStatus={calling}

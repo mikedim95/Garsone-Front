@@ -1,6 +1,6 @@
 import type { MenuItem, MenuCategory } from '@/types';
 import { Button } from '../ui/button';
-import { Plus, ShoppingCart, X, Pencil, Bell, Loader2 } from 'lucide-react';
+import { Plus, ShoppingCart, X, Pencil, Bell, Loader2, CreditCard, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCartStore } from '@/store/cartStore';
 import { Card } from '../ui/card';
@@ -18,6 +18,7 @@ interface Props {
   selectedCategory: string;
   onAddItem: (item: MenuItem) => void;
   onCheckout: (note?: string) => void | Promise<any>;
+  onImmediateCheckout?: (note?: string) => void | Promise<any>;
   callButtonLabel?: string | null;
   callStatus?: 'idle' | 'pending' | 'accepted';
   callPrompted?: boolean;
@@ -31,6 +32,7 @@ export const ElegantMenuView = ({
   selectedCategory,
   onAddItem,
   onCheckout,
+  onImmediateCheckout,
   callButtonLabel,
   callStatus = 'idle',
   callPrompted = false,
@@ -96,6 +98,14 @@ export const ElegantMenuView = ({
   const handleCheckout = async () => {
     if (checkoutBusy) return;
     const res = await onCheckout(orderNote);
+    if (res) {
+      setOrderNote('');
+    }
+  };
+
+  const handleImmediateCheckout = async () => {
+    if (checkoutBusy || !onImmediateCheckout) return;
+    const res = await onImmediateCheckout(orderNote);
     if (res) {
       setOrderNote('');
     }
@@ -472,20 +482,37 @@ export const ElegantMenuView = ({
                   />
                 </div>
 
-                <Button
-                  onClick={handleCheckout}
-                  disabled={checkoutBusy}
-                  aria-busy={checkoutBusy}
-                  data-busy={checkoutBusy ? 'true' : 'false'}
-                  className="relative w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] disabled:opacity-80"
-                >
-                  <span className={`absolute inset-0 flex items-center justify-center transition-opacity ${checkoutBusy ? 'opacity-100' : 'opacity-0'}`}>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </span>
-                  <span className={checkoutBusy ? 'opacity-0' : 'opacity-100'}>
-                    {t('menu.checkout', { defaultValue: 'Place Order' })}
-                  </span>
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={handleCheckout}
+                    disabled={checkoutBusy}
+                    aria-busy={checkoutBusy}
+                    data-busy={checkoutBusy ? 'true' : 'false'}
+                    className="relative w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] disabled:opacity-80"
+                  >
+                    <span className={`absolute inset-0 flex items-center justify-center transition-opacity ${checkoutBusy ? 'opacity-100' : 'opacity-0'}`}>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </span>
+                    <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
+                      <CreditCard className="h-4 w-4" />
+                      {t('menu.pay_with_viva', { defaultValue: 'Pay with Viva' })}
+                    </span>
+                  </Button>
+                  
+                  {onImmediateCheckout && (
+                    <Button
+                      onClick={handleImmediateCheckout}
+                      disabled={checkoutBusy}
+                      variant="outline"
+                      className="w-full h-10 rounded-full border-dashed border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-medium text-sm transition-all duration-300"
+                    >
+                      <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
+                        <Zap className="h-4 w-4" />
+                        {t('menu.quick_order', { defaultValue: 'Quick Order (Debug)' })}
+                      </span>
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </Card>

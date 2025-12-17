@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCartStore } from "@/store/cartStore";
 import { Button } from "../ui/button";
@@ -8,6 +8,8 @@ import {
   ShoppingCart,
   Trash2,
   Pencil,
+  CreditCard,
+  Zap,
 } from "lucide-react";
 import {
   Dialog,
@@ -48,6 +50,7 @@ const getItemName = (item: { name?: string; title?: string }) =>
 
 interface CartProps {
   onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;
+  onImmediateCheckout?: (note?: string) => Promise<SubmittedOrderSummary | null>;
   editing?: boolean;
   activeOrderId?: string | null;
   activeOrderNote?: string;
@@ -55,7 +58,7 @@ interface CartProps {
   onAbandonEdit?: () => void;
 }
 
-export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
+export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
   const { t } = useTranslation();
   const { items, removeItem, getTotal } = useCartStore();
 
@@ -508,46 +511,71 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col gap-3 sm:flex-col">
+            <div className="flex flex-col gap-2 w-full">
+              <Button
+                onClick={async () => {
+                  try {
+                    setLastSubmitWasEdit(isEditingExisting);
+                    setPlacing(true);
+                    const result = await onCheckout(note || undefined);
+                    const aheadValue = queueAhead ?? 0;
+                    setReviewOpen(false);
+                    setQueueAhead(null);
+                    setNote("");
+                    if (result) {
+                      setSubmittedAhead(aheadValue);
+                      setSubmittedOrder(result);
+                      setSuccessOpen(true);
+                    }
+                  } finally {
+                    setPlacing(false);
+                  }
+                }}
+                disabled={placing}
+                className="w-full inline-flex items-center justify-center gap-2"
+              >
+                <CreditCard className="h-4 w-4" />
+                {placing ? "Redirecting…" : "Pay with Viva"}
+              </Button>
+              
+              {onImmediateCheckout && (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      setLastSubmitWasEdit(isEditingExisting);
+                      setPlacing(true);
+                      const result = await onImmediateCheckout(note || undefined);
+                      const aheadValue = queueAhead ?? 0;
+                      setReviewOpen(false);
+                      setQueueAhead(null);
+                      setNote("");
+                      if (result) {
+                        setSubmittedAhead(aheadValue);
+                        setSubmittedOrder(result);
+                        setSuccessOpen(true);
+                      }
+                    } finally {
+                      setPlacing(false);
+                    }
+                  }}
+                  disabled={placing}
+                  className="w-full inline-flex items-center justify-center gap-2 border-dashed border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                >
+                  <Zap className="h-4 w-4" />
+                  {placing ? "Placing…" : "Quick Order (Debug)"}
+                </Button>
+              )}
+            </div>
+            
             <Button
               variant="ghost"
               onClick={() => setReviewOpen(false)}
               disabled={placing}
+              className="w-full sm:w-auto"
             >
               Back
-            </Button>
-            <Button
-              onClick={async () => {
-                try {
-                  setLastSubmitWasEdit(isEditingExisting);
-                  setPlacing(true);
-                  const result = await onCheckout(note || undefined);
-                  const aheadValue = queueAhead ?? 0;
-                  setReviewOpen(false);
-                  setQueueAhead(null);
-                  setNote("");
-                  if (result) {
-                    setSubmittedAhead(aheadValue);
-                    setSubmittedOrder(result);
-                    setSuccessOpen(true);
-                  }
-                } finally {
-                  setPlacing(false);
-                }
-              }}
-              disabled={placing}
-              className="inline-flex items-center gap-2"
-            >
-              {placing && (
-                <span className="animate-spin h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full" />
-              )}
-              {placing
-                ? editing
-                  ? "Updating…"
-                  : "Placing…"
-                : editing
-                ? "Update order"
-                : "Place order"}
             </Button>
           </DialogFooter>
         </DialogContent>
