@@ -6,7 +6,71 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Smart Order Management</title>
     <meta name="description" content="A modern app for managing restaurant orders with dynamic menus and role-based dashboards, using WebSocket and Postgres." />
-    <link rel="icon" type="image/svg+xml" href="/placeholder.svg" />
+    <link id="app-favicon" rel="icon" type="image/svg+xml" href="/Garsone_Favicon.svg?v=light" />
+
+    <script>
+      (function () {
+        const lightHref = '/Garsone_Favicon.svg?v=light';
+        const darkHref = '/Garsone_Favicon.dark.svg?v=dark';
+
+        function ensureLink() {
+          let link = document.getElementById('app-favicon');
+          if (!link) {
+            link = document.createElement('link');
+            link.id = 'app-favicon';
+            link.rel = 'icon';
+            link.type = 'image/svg+xml';
+            document.head.appendChild(link);
+          }
+          return link;
+        }
+
+        function setFavicon(isDark) {
+          const link = ensureLink();
+          const href = isDark ? darkHref : lightHref;
+          if (link.getAttribute('href') !== href) link.setAttribute('href', href);
+        }
+
+        function computeIsDark() {
+          try {
+            const saved = localStorage.getItem('theme');
+            if (saved === 'dark') return true;
+            if (saved === 'light') return false;
+            return (
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches
+            );
+          } catch (e) {
+            return (
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches
+            );
+          }
+        }
+
+        // Initial set (before React mounts)
+        setFavicon(computeIsDark());
+
+        // Watch <html> class changes from the ThemeProvider
+        const root = document.documentElement;
+        const obs = new MutationObserver(() => {
+          const isDark = root.classList.contains('dark');
+          const isLight = root.classList.contains('light');
+          if (isDark || isLight) setFavicon(isDark);
+        });
+        obs.observe(root, { attributes: true, attributeFilter: ['class'] });
+
+        // If user uses system theme, reflect OS changes too
+        const mql =
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+        if (mql && mql.addEventListener) {
+          mql.addEventListener('change', () => {
+            const saved = localStorage.getItem('theme');
+            if (saved === 'system' || !saved) setFavicon(mql.matches);
+          });
+        }
+      })();
+    </script>
 
     <meta property="og:title" content="Smart Order Management" />
     <meta property="og:description" content="A modern app for managing restaurant orders with dynamic menus and role-based dashboards, using WebSocket and Postgres." />

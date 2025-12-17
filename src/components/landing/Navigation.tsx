@@ -25,19 +25,20 @@ export const Navigation = () => {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/60 bg-card/85 dark:bg-background/80 backdrop-blur-xl shadow-lg supports-[backdrop-filter]:bg-card/70">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center h-16 gap-3">
+        <div className="flex items-center h-16 md:h-20 lg:h-24 gap-3">
           {/* Logo */}
           <a
             href="/"
-            className="flex items-center gap-2 mr-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-xl transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center h-full mr-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-xl transition-transform hover:scale-[1.01] active:scale-[0.99]"
             aria-label="Garsone home"
           >
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-primary shadow-lg">
-              <span className="text-primary-foreground font-black text-lg">G</span>
-            </div>
-            <span className="text-xl font-black bg-gradient-primary bg-clip-text text-transparent">
-              Garsone
-            </span>
+            <img
+              src="/Garsone_Logo.svg"
+              alt="Garsone"
+              className="h-full w-auto"
+              loading="eager"
+              decoding="async"
+            />
           </a>
 
           {/* Desktop Menu */}
