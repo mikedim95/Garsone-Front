@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
@@ -207,15 +206,6 @@ const mapOrderToCartItems = (
   return mapped;
 };
 
-const ORDER_STATUS_FLOW: OrderStatus[] = [
-  "PLACED",
-  "PREPARING",
-  "READY",
-  "SERVED",
-  "PAID",
-  "CANCELLED",
-];
-
 const getStoredName = () => {
   if (typeof window === "undefined") return null;
   try {
@@ -256,6 +246,7 @@ export default function TableMenu() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [cartOpenSignal, setCartOpenSignal] = useState(0);
+  const [orderPlacedSignal, setOrderPlacedSignal] = useState(0);
   const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
   const [calling, setCalling] = useState<"idle" | "pending" | "accepted">(
     "idle"
@@ -274,6 +265,9 @@ export default function TableMenu() {
       }
     }
   );
+  const [placedOrders, setPlacedOrders] = useState<SubmittedOrderSummary[]>([]);
+  const [placedLoading, setPlacedLoading] = useState(false);
+  const [placedError, setPlacedError] = useState<string | null>(null);
   const [activeOrdersOpen, setActiveOrdersOpen] = useState(true);
   const [tableLabel, setTableLabel] = useState<string | null>(null);
   const [tableId, setTableId] = useState<string | null>(() =>
@@ -285,11 +279,15 @@ export default function TableMenu() {
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
   });
+  const statusSteps: OrderStatus[] = [
+    "PLACED",
+    "PREPARING",
+    "READY",
+    "SERVED",
+    "PAID",
+    "CANCELLED",
+  ];
   const canEditLastOrder = lastOrderStatus === "PLACED" && !!lastOrder?.id;
-  const isLastOrderCancelled = lastOrderStatus === "CANCELLED";
-  const lastOrderStepIndex = ORDER_STATUS_FLOW.indexOf(
-    lastOrderStatus as OrderStatus
-  );
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
   const menuCache = useMenuStore((s) => s.data);
@@ -504,6 +502,51 @@ export default function TableMenu() {
   }, [lastOrder]);
 
   useEffect(() => {
+    if (!activeTableId) {
+      setPlacedOrders([]);
+      return;
+    }
+    let cancelled = false;
+    const fetchPlaced = async () => {
+      try {
+        setPlacedLoading(true);
+        setPlacedError(null);
+        const res = await api.getPublicTableOrders(activeTableId, {
+          storeSlug: storeSlug || undefined,
+          take: 10,
+        });
+        if (cancelled) return;
+        const summaries = (res?.orders ?? []).map(toOrderSummary);
+        setPlacedOrders(summaries);
+        if (summaries.length > 0) {
+          setActiveOrdersOpen(true);
+        }
+        if (summaries[0]) {
+          setLastOrder((prev) =>
+            prev && prev.id === summaries[0].id
+              ? { ...prev, ...summaries[0] }
+              : summaries[0]
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Failed to load placed orders", error);
+          setPlacedError(
+            error instanceof Error ? error.message : "Failed to load orders"
+          );
+        }
+      } finally {
+        if (!cancelled) setPlacedLoading(false);
+      }
+    };
+    // One-time fetch to hydrate; live updates handled via realtime subscriptions below.
+    fetchPlaced();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTableId, storeSlug]);
+
+  useEffect(() => {
     if (lastOrder) {
       setActiveOrdersOpen(true);
     }
@@ -514,6 +557,43 @@ export default function TableMenu() {
     if (typeof order.total === "number") return order.total;
     if (typeof order.totalCents === "number") return order.totalCents / 100;
     return 0;
+  };
+
+  const toOrderSummary = (order: any): SubmittedOrderSummary => {
+    const items = Array.isArray(order?.items)
+      ? order.items.map((item: any) => ({
+          itemId: item.itemId ?? item.item?.id,
+          title: item.title ?? item.titleSnapshot ?? item.name,
+          quantity: item.quantity ?? item.qty,
+          modifiers: item.modifiers ?? item.orderItemOptions ?? [],
+        }))
+      : [];
+    return {
+      id: order?.id ?? order?.orderId,
+      tableId: order?.tableId,
+      tableLabel: order?.tableLabel ?? order?.table?.label,
+      createdAt: order?.placedAt ?? order?.createdAt,
+      updatedAt: order?.updatedAt,
+      total: order?.total ?? (order?.totalCents ? order.totalCents / 100 : 0),
+      totalCents: order?.totalCents,
+      status: (order?.status as OrderStatus) ?? "PLACED",
+      note: order?.note,
+      ticketNumber: order?.ticketNumber,
+      items,
+    };
+  };
+
+  const upsertPlacedOrder = (order: SubmittedOrderSummary) => {
+    setPlacedOrders((prev) => {
+      const next = prev.filter((o) => o.id !== order.id);
+      next.unshift(order);
+      next.sort((a, b) => {
+        const aTime = new Date(a.createdAt || 0).getTime();
+        const bTime = new Date(b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+      return next;
+    });
   };
 
   const stopEditingLastOrder = () => {
@@ -665,9 +745,9 @@ export default function TableMenu() {
     setCustomizeItem(null);
   };
 
-  const handleEditLastOrder = () => {
-    if (!lastOrder || !lastOrder.id) return;
-    if (lastOrder.status && lastOrder.status !== "PLACED") {
+  const loadOrderIntoCart = (order: SubmittedOrderSummary | null) => {
+    if (!order || !order.id) return;
+    if (order.status && order.status !== "PLACED") {
       toast({
         title: t("menu.toast_edit_unavailable_title", {
           defaultValue: "Order cannot be edited",
@@ -690,7 +770,7 @@ export default function TableMenu() {
 
     clearCart();
 
-    const orderItems = (lastOrder.items ?? []) as Array<
+    const orderItems = (order.items ?? []) as Array<
       SubmittedOrderItem & { itemId?: string; modifiers?: any }
     >;
     let addedCount = 0;
@@ -750,15 +830,103 @@ export default function TableMenu() {
       return;
     }
 
-    setEditingOrderId(lastOrder.id || null);
-    toast({
-      title: t("menu.toast_edit_loaded_title", {
-        defaultValue: "Order ready to edit",
-      }),
-      description: t("menu.toast_edit_loaded_desc", {
-        defaultValue: "Your previous order has been loaded into the cart.",
-      }),
-    });
+    setLastOrder(order);
+    setEditingOrderId(order.id || null);
+    setActiveOrdersOpen(false);
+    setCartOpenSignal((s) => s + 1);
+  };
+
+  const handleEditLastOrder = () => {
+    if (!lastOrder || !lastOrder.id) return;
+    loadOrderIntoCart(lastOrder);
+  };
+
+  const handleImmediateCheckout = async (
+    note?: string
+  ): Promise<SubmittedOrderSummary | null> => {
+    if (checkoutBusy) return null;
+    if (!activeTableId || !menuData) {
+      toast({
+        title: t("menu.toast_error_title", {
+          defaultValue: "Error placing order",
+        }),
+        description: t("menu.toast_error_description", {
+          defaultValue: "Missing table information. Please rescan the QR.",
+        }),
+      });
+      return null;
+    }
+
+    const cartItems = useCartStore.getState().items;
+    if (!cartItems.length) {
+      toast({
+        title: t("menu.toast_error_title", {
+          defaultValue: "Cart is empty",
+        }),
+        description: t("menu.toast_error_description", {
+          defaultValue: "Add items to your cart before placing the order.",
+        }),
+      });
+      return null;
+    }
+
+    const payload: CreateOrderPayload = {
+      tableId: activeTableId,
+      items: cartItems.map((item) => ({
+        itemId: item.item.id,
+        quantity: item.quantity,
+        modifiers: JSON.stringify(item.selectedModifiers),
+      })),
+      ...(note ? { note } : {}),
+    };
+
+    try {
+      setCheckoutBusy(true);
+      const response = editingOrderId
+        ? await api.editOrder(editingOrderId, payload)
+        : await api.createOrder(payload);
+      const order = (response as any)?.order;
+      if (!order?.id) {
+        throw new Error("Order was not created");
+      }
+      const summary = toOrderSummary(order);
+      setLastOrder(summary);
+      upsertPlacedOrder(summary);
+      setActiveOrdersOpen(true);
+      clearCart();
+      stopEditingLastOrder();
+      setCategorySelected(false);
+      setSelectedCategory(null);
+      setOrderPlacedSignal((s) => s + 1);
+      const qs = new URLSearchParams();
+      if (activeTableId) {
+        qs.set("tableId", activeTableId);
+      }
+      const qsString = qs.toString();
+      navigate(
+        qsString
+          ? `/order/${summary.id}/thanks?${qsString}`
+          : `/order/${summary.id}/thanks`
+      );
+      return summary;
+    } catch (error) {
+      console.error("Immediate checkout failed:", error);
+      toast({
+        title: t("menu.toast_error_title", {
+          defaultValue: "Order not placed",
+        }),
+        description:
+          error instanceof Error
+            ? error.message
+            : t("menu.toast_error_description", {
+                defaultValue:
+                  "We could not place your order right now. Please try again.",
+              }),
+      });
+      return null;
+    } finally {
+      setCheckoutBusy(false);
+    }
   };
 
   const handleCheckout = async (note?: string) => {
@@ -807,6 +975,8 @@ export default function TableMenu() {
       // Step 2: Store order data temporarily in sessionStorage
       const pendingOrder = {
         tableId: activeTableId,
+        storeSlug: storeSlug || null,
+        expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutes
         items: cartItems.map((item) => ({
           itemId: item.item.id,
           quantity: item.quantity,
@@ -817,13 +987,17 @@ export default function TableMenu() {
         totalCents: totalCents,
       };
 
+      const pendingOrderJson = JSON.stringify(pendingOrder);
+      // Persist in both sessionStorage (primary) and localStorage (fallback) to survive cross-origin redirects
       try {
-        window.sessionStorage.setItem(
-          "pending-order",
-          JSON.stringify(pendingOrder)
-        );
+        window.sessionStorage.setItem("pending-order", pendingOrderJson);
       } catch (e) {
-        console.warn("Failed to store pending order", e);
+        console.warn("Failed to store pending order in sessionStorage", e);
+      }
+      try {
+        window.localStorage.setItem("pending-order", pendingOrderJson);
+      } catch (e) {
+        console.warn("Failed to store pending order in localStorage", e);
       }
 
       // Step 3: Redirect to Viva payment
@@ -871,12 +1045,18 @@ export default function TableMenu() {
     const cancelledLegacyTopic = `${storeSlug}/orders/cancelled`;
     const paidTopic = `${storeSlug}/orders/paid`;
     const servedTopic = `${storeSlug}/orders/served`;
+    const placedTopic = `${storeSlug}/orders/placed`;
     (async () => {
       await realtimeService.connect();
       const updateStatus = (status: OrderStatus) => (payload: unknown) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
         setLastOrder((prev) =>
           prev && prev.id === payload.orderId ? { ...prev, status } : prev
+        );
+        setPlacedOrders((prev) =>
+          prev.map((o) =>
+            o.id === payload.orderId ? { ...o, status } : o
+          )
         );
       };
 
@@ -885,6 +1065,19 @@ export default function TableMenu() {
       const handleCancelled = updateStatus("CANCELLED");
       const handlePaid = updateStatus("PAID");
       const handleServed = updateStatus("SERVED");
+      const handlePlaced = (payload: any) => {
+        if (
+          !mounted ||
+          !payload ||
+          (payload as any).tableId !== activeTableId
+        )
+          return;
+        const summary = toOrderSummary((payload as any).order ?? payload);
+        upsertPlacedOrder(summary);
+        setLastOrder((prev) =>
+          prev && prev.id === summary.id ? { ...prev, ...summary } : summary
+        );
+      };
 
       realtimeService.subscribe(callTopic, (payload) => {
         if (
@@ -903,6 +1096,7 @@ export default function TableMenu() {
       realtimeService.subscribe(cancelledLegacyTopic, handleCancelled);
       realtimeService.subscribe(paidTopic, handlePaid);
       realtimeService.subscribe(servedTopic, handleServed);
+      realtimeService.subscribe(placedTopic, handlePlaced);
     })();
     return () => {
       mounted = false;
@@ -914,6 +1108,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(cancelledLegacyTopic);
       realtimeService.unsubscribe(paidTopic);
       realtimeService.unsubscribe(servedTopic);
+      realtimeService.unsubscribe(placedTopic);
     };
   }, [storeSlug, activeTableId]);
 
@@ -1136,6 +1331,7 @@ export default function TableMenu() {
                 onSelect={(catId) => {
                   setSelectedCategory(catId);
                   setCategorySelected(true);
+                  setActiveOrdersOpen(false);
                 }}
               />
             ) : (
@@ -1200,6 +1396,8 @@ export default function TableMenu() {
                     selectedCategory={selectedCategory || "all"}
                     onAddItem={handleAddItem}
                     onCheckout={handleCheckout}
+                    onImmediateCheckout={handleImmediateCheckout}
+                    orderPlacedSignal={orderPlacedSignal}
                     checkoutBusy={checkoutBusy}
                     callButtonLabel={callButtonLabel}
                     callStatus={calling}
@@ -1212,109 +1410,160 @@ export default function TableMenu() {
           </AnimatePresence>
         </div>
 
-        {lastOrder && activeOrdersOpen ? (
-          <div className="fixed inset-x-0 bottom-6 z-50 px-4 pointer-events-none">
-            <div className="mx-auto w-full max-w-4xl">
-              <div className="pointer-events-auto rounded-3xl border border-border/70 bg-card/90 backdrop-blur-xl shadow-2xl">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                  <div>
-                    <p className="text-base font-semibold text-foreground">
-                      Active Orders
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Live status updates from the kitchen
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="rounded-full px-3 py-1">
-                      {lastOrderStatusLabel}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 rounded-full"
-                      onClick={() => setActiveOrdersOpen(false)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
+        {activeOrdersOpen && !categorySelected && (
+          <div className="max-w-6xl mx-auto px-4 w-full my-6">
+            <div className="rounded-[28px] border border-border/60 bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-border/60">
+                <div>
+                  <p className="text-lg font-semibold text-foreground">
+                    Active Orders
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Live status updates from the kitchen
+                  </p>
                 </div>
-
-                <div className="px-5 py-4 space-y-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        #{(lastOrder.id || "").slice(-6)}
-                        {tableLabel ? ` • ${tableLabel}` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(
-                          lastOrder.createdAt || Date.now()
-                        ).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-lg font-bold text-foreground">
-                        €{computeOrderTotal(lastOrder).toFixed(2)}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant={canEditLastOrder ? "default" : "outline"}
-                        disabled={!canEditLastOrder}
-                        onClick={handleEditLastOrder}
-                        className="rounded-full px-4"
-                      >
-                        {t("actions.edit", { defaultValue: "Edit" })}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {ORDER_STATUS_FLOW.map((status, idx) => {
-                        const reached = isLastOrderCancelled
-                          ? status === "CANCELLED"
-                          : lastOrderStepIndex >= idx && !isLastOrderCancelled;
-                        const isActive = status === lastOrderStatus;
-                        return (
-                          <div
-                            key={status}
-                            className={clsx(
-                              "flex items-center gap-2 rounded-full px-3 py-1.5 border text-xs font-semibold transition-colors",
-                              reached
-                                ? "border-primary/60 bg-primary/10 text-primary"
-                                : "border-border/80 bg-card/60 text-muted-foreground",
-                              isActive && "ring-2 ring-primary/40"
-                            )}
-                          >
-                            <span>
-                              {t(`status.${status}`, {
-                                defaultValue: status,
-                              })}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {!canEditLastOrder && (
-                      <p className="text-[11px] text-muted-foreground">
-                        Edits are only available while an order is still placed.
-                      </p>
-                    )}
-                  </div>
+                <div className="flex items-center gap-3">
+                  {placedOrders[0] && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary">
+                      {t(
+                        `status.${placedOrders[0].status ?? "PLACED"}`,
+                        {
+                          defaultValue: placedOrders[0].status ?? "Placed",
+                        }
+                      )}
+                    </span>
+                  )}
+                  {placedLoading && (
+                    <span className="text-xs text-muted-foreground">
+                      {t("status.loading", { defaultValue: "Loading..." })}
+                    </span>
+                  )}
+                  {placedError && (
+                    <span className="text-xs text-destructive">
+                      {placedError}
+                    </span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-full"
+                    onClick={() => setActiveOrdersOpen(false)}
+                    aria-label={t("actions.close", { defaultValue: "Close" })}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
+
+              {placedOrders.length === 0 ? (
+                <div className="px-6 py-8 text-sm text-muted-foreground">
+                  No placed orders for this table right now.
+                </div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {placedOrders.map((order) => {
+                    const statusLabel = t(
+                      `status.${order.status ?? "PLACED"}`,
+                      { defaultValue: order.status ?? "Placed" }
+                    );
+                    const placedTime = new Date(
+                      order.createdAt || Date.now()
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    return (
+                      <div
+                        key={order.id}
+                        className="px-6 py-5 bg-gradient-to-br from-background/60 to-background"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                              <span>#{(order.id || "").slice(-6)}</span>
+                              {order.tableLabel && (
+                                <span className="text-muted-foreground">
+                                  - {order.tableLabel}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {placedTime}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-lg font-bold text-foreground">
+                              €{computeOrderTotal(order).toFixed(2)}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="rounded-full px-4"
+                              disabled={order.status !== "PLACED"}
+                              onClick={() => loadOrderIntoCart(order)}
+                            >
+                              {t("actions.edit", { defaultValue: "Edit" })}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4">
+                          <p className="text-xs font-semibold text-muted-foreground mb-2">
+                            STATUS
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {statusSteps.map((step) => {
+                              const isActive = step === order.status;
+                              return (
+                                <span
+                                  key={`${order.id}-${step}`}
+                                  className={clsx(
+                                    "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+                                    isActive
+                                      ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                      : "border-border/60 text-muted-foreground bg-background/70"
+                                  )}
+                                >
+                                  {t(`status.${step}`, {
+                                    defaultValue: step,
+                                  })}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <p className="sr-only">{statusLabel}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
-        ) : null}
+        )}
 
-        <Suspense fallback={null}>
+        {!activeOrdersOpen && placedOrders.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 220, damping: 20 }}
+            className="fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none"
+          >
+            <Button
+              variant="secondary"
+              className="pointer-events-auto rounded-full shadow-2xl bg-card/90 border border-border/70 px-4 py-3"
+              onClick={() => setActiveOrdersOpen(true)}
+            >
+              {t("menu.view_active_orders", { defaultValue: "Active Orders" })}
+              <span className="ml-2 inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                {placedOrders.length}
+              </span>
+            </Button>
+          </motion.div>
+        )}
+
+<Suspense fallback={null}>
           <ModifierDialog
             open={customizeOpen}
             item={customizeItem}
@@ -1330,3 +1579,4 @@ export default function TableMenu() {
     </div>
   );
 }
+

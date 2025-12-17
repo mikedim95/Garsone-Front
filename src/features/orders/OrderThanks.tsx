@@ -17,9 +17,12 @@ export default function OrderThanks() {
   const location = useLocation();
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
-  const tableId = useMemo(() => {
+  const { tableId, paid } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
-    return qs.get('tableId') || undefined;
+    return {
+      tableId: qs.get('tableId') || undefined,
+      paid: qs.get('paid') === '1',
+    };
   }, [location.search]);
   const [storeSlug, setStoreSlug] = useState<string>('');
 
@@ -69,8 +72,10 @@ export default function OrderThanks() {
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
           <CheckCircle className="h-12 w-12 text-primary" />
         </div>
-        <h1 className="text-3xl font-bold mb-4">Order Placed!</h1>
-        <p className="text-muted-foreground mb-2">Your order has been sent to the kitchen.</p>
+        <h1 className="text-3xl font-bold mb-4">Order successfully submitted</h1>
+        <p className="text-muted-foreground mb-2">
+          {paid ? 'Payment confirmed. Your order has been sent to the kitchen.' : 'Your order has been sent to the kitchen.'}
+        </p>
         <p className="text-sm text-muted-foreground mb-8">Order ID: {orderId}</p>
         {ready ? (
           <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 mb-8">

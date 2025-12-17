@@ -138,6 +138,19 @@ export default function CookDashboard() {
     return "classic";
   });
 
+  // Ensure the active store context matches the authenticated user (avoid stale STORE_SLUG from other tabs/sessions)
+  useEffect(() => {
+    const slug = (user?.storeSlug || "").trim();
+    if (slug) {
+      setStoreSlug(slug);
+      setStoredStoreSlug(slug);
+    } else if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.removeItem("STORE_SLUG");
+      } catch {}
+    }
+  }, [user?.storeSlug]);
+
   const toggleViewMode = () => {
     const next = viewMode === "classic" ? "pro" : "classic";
     setViewMode(next);

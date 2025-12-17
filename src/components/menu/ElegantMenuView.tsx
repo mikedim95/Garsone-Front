@@ -1,6 +1,6 @@
 import type { MenuItem, MenuCategory } from '@/types';
 import { Button } from '../ui/button';
-import { Plus, ShoppingCart, X, Pencil, Bell, Loader2, CreditCard, Zap } from 'lucide-react';
+import { ShoppingCart, X, Pencil, Bell, Loader2, CreditCard, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCartStore } from '@/store/cartStore';
 import { Card } from '../ui/card';
@@ -10,7 +10,7 @@ import { Separator } from '../ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { ModifierDialog } from './ModifierDialog';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 
 interface Props {
   categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
@@ -26,6 +26,8 @@ interface Props {
   checkoutBusy?: boolean;
   // When incremented by parent, opens the cart modal.
   openCartSignal?: number;
+  // When incremented by parent after a successful submission, closes the cart and resets UI.
+  orderPlacedSignal?: number;
 }
 
 export const ElegantMenuView = ({
@@ -41,6 +43,7 @@ export const ElegantMenuView = ({
   onCallClick,
   checkoutBusy = false,
   openCartSignal = 0,
+  orderPlacedSignal = 0,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -128,6 +131,18 @@ export const ElegantMenuView = ({
     setEditingItemIndex(null);
   };
 
+  const handleAddItemClick = (item: MenuItem) => {
+    if (item.available === false) return;
+    onAddItem(item);
+  };
+
+  const handleImageKeyDown = (event: KeyboardEvent, item: MenuItem) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleAddItemClick(item);
+    }
+  };
+
   // Open cart when parent signals (e.g., edit existing order)
   useEffect(() => {
     if (openCartSignal > 0) {
@@ -135,6 +150,16 @@ export const ElegantMenuView = ({
       setExpandedBubble('none');
     }
   }, [openCartSignal]);
+
+  // Close the cart and collapse UI when a submission succeeds.
+  useEffect(() => {
+    if (orderPlacedSignal > 0) {
+      setCartOpen(false);
+      setExpandedBubble('none');
+      setOrderNote('');
+      setEditingItemIndex(null);
+    }
+  }, [orderPlacedSignal]);
 
   const handleCartButtonClick = () => {
     if (expandedBubble === 'cart') {
@@ -192,8 +217,14 @@ export const ElegantMenuView = ({
                 key={item.id}
                 className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
               >
-                <div className="relative aspect-square overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-transparent z-10" />
+                <div
+                  className="relative aspect-square overflow-hidden cursor-pointer"
+                  role="button"
+                  tabIndex={item.available === false ? -1 : 0}
+                  aria-disabled={item.available === false}
+                  onClick={() => handleAddItemClick(item)}
+                  onKeyDown={(e) => handleImageKeyDown(e, item)}
+                >
                   <img
                     src={item.image}
                     alt={displayName}
@@ -210,19 +241,6 @@ export const ElegantMenuView = ({
                       {formatPrice(price)}
                     </Badge>
                   </div>
-                </div>
-                <div className="p-2 sm:p-3">
-                  <p className="text-xs text-muted-foreground leading-snug mb-2 line-clamp-2 min-h-[2rem]">
-                    {description}
-                  </p>
-                  <Button
-                    onClick={() => onAddItem(item)}
-                    disabled={item.available === false}
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-8 sm:h-9 font-medium text-xs sm:text-sm transition-all duration-300 hover:shadow-lg"
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    {t('menu.add', { defaultValue: 'Add' })}
-                  </Button>
                 </div>
               </Card>
               );
@@ -390,7 +408,7 @@ export const ElegantMenuView = ({
                       <button
                         aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
                         onClick={() => removeItem(cartItem.item.id)}
-                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110 z-10"
+                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110 z-10"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -521,12 +539,12 @@ export const ElegantMenuView = ({
                     <Button
                       onClick={handleImmediateCheckout}
                       disabled={checkoutBusy}
-                      variant="outline"
-                      className="w-full h-10 rounded-full border-dashed border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-medium text-sm transition-all duration-300"
+                      variant="secondary"
+                      className="w-full h-10 rounded-full font-medium text-sm transition-all duration-300"
                     >
                       <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
                         <Zap className="h-4 w-4" />
-                        {t('menu.quick_order', { defaultValue: 'Quick Order (Debug)' })}
+                        {t('menu.quick_order', { defaultValue: 'Place order now' })}
                       </span>
                     </Button>
                   )}

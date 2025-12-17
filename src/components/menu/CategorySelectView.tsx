@@ -152,17 +152,6 @@ export const CategorySelectView = ({ categories, onSelect, loading, activeOrders
             </span>
           </motion.button>
         )}
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 + categories.length * 0.05 }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onSelect('all')}
-          className="px-8 py-3 rounded-full border border-border/60 bg-card/80 backdrop-blur-sm text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all duration-300"
-        >
-          {t('menu.view_all', { defaultValue: 'View Full Menu' })}
-        </motion.button>
       </div>
     </motion.div>
   );

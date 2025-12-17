@@ -541,7 +541,7 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
               
               {onImmediateCheckout && (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={async () => {
                     try {
                       setLastSubmitWasEdit(isEditingExisting);
@@ -561,10 +561,10 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                     }
                   }}
                   disabled={placing}
-                  className="w-full inline-flex items-center justify-center gap-2 border-dashed border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                  className="w-full inline-flex items-center justify-center gap-2"
                 >
                   <Zap className="h-4 w-4" />
-                  {placing ? "Placing…" : "Quick Order (Debug)"}
+                  {placing ? "Placing…" : "Place order now"}
                 </Button>
               )}
             </div>

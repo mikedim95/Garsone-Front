@@ -2,9 +2,12 @@ import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useCartStore } from "@/store/cartStore";
+import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 type PendingOrder = {
   tableId: string;
+  storeSlug?: string | null;
+  expiresAt?: number;
   items: Array<{
     itemId: string;
     quantity: number;
@@ -28,8 +31,31 @@ export default function PaymentCompleteRedirect() {
   useEffect(() => {
     const complete = async () => {
       try {
-        const pendingOrderJson = window.sessionStorage.getItem("pending-order");
-        if (!pendingOrderJson) {
+        const now = Date.now();
+        const pendingOrderJson =
+          window.sessionStorage.getItem("pending-order") ||
+          window.localStorage.getItem("pending-order");
+
+        const pendingOrder: PendingOrder | null = pendingOrderJson
+          ? (() => {
+              try {
+                return JSON.parse(pendingOrderJson);
+              } catch (e) {
+                console.warn("Failed to parse pending order JSON", e);
+                return null;
+              }
+            })()
+          : null;
+
+        if (
+          !pendingOrder ||
+          !pendingOrder.tableId ||
+          (pendingOrder.expiresAt && pendingOrder.expiresAt < now)
+        ) {
+          try {
+            window.sessionStorage.removeItem("pending-order");
+            window.localStorage.removeItem("pending-order");
+          } catch {}
           navigate(
             `/payment-failed?message=${encodeURIComponent(
               "Order data not found. Please start a new order."
@@ -38,9 +64,17 @@ export default function PaymentCompleteRedirect() {
           return;
         }
 
-        const pendingOrder: PendingOrder = JSON.parse(pendingOrderJson);
         const tableId =
           searchParams.get("tableId") || pendingOrder.tableId || "";
+
+        // Restore store context if available (helps API headers)
+        if (pendingOrder.storeSlug) {
+          try {
+            setStoredStoreSlug(pendingOrder.storeSlug);
+          } catch (error) {
+            console.warn("Failed to restore store slug", error);
+          }
+        }
 
         // Create or edit the order now that payment succeeded
         const orderResponse = pendingOrder.editingOrderId
@@ -80,10 +114,14 @@ export default function PaymentCompleteRedirect() {
 
         clearCart();
         window.sessionStorage.removeItem("pending-order");
+        try {
+          window.localStorage.removeItem("pending-order");
+        } catch {}
 
-        navigate(
-          `/order/${order.id}/thanks?tableId=${encodeURIComponent(tableId)}`
-        );
+        const qs = new URLSearchParams();
+        if (tableId) qs.set("tableId", tableId);
+        qs.set("paid", "1");
+        navigate(`/order/${order.id}/thanks?${qs.toString()}`);
       } catch (err) {
         const message =
           err instanceof ApiError

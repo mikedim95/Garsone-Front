@@ -327,6 +327,27 @@ export const api = {
     isOffline()
       ? devMocks.getOrderQueueSummary()
       : fetchApi<OrderQueueSummary>("/orders/queue"),
+  getPublicTableOrders: (
+    tableId: string,
+    opts?: { status?: string; take?: number; storeSlug?: string }
+  ): Promise<OrdersResponse> => {
+    const params = new URLSearchParams();
+    if (opts?.status) params.set("status", opts.status);
+    if (opts?.take) params.set("take", String(opts.take));
+    const qs = params.toString();
+    return fetchApi<OrdersResponse>(
+      `/public/table/${encodeURIComponent(tableId)}/orders${
+        qs ? `?${qs}` : ""
+      }`,
+      opts?.storeSlug
+        ? {
+            headers: {
+              "x-store-slug": opts.storeSlug,
+            },
+          }
+        : undefined
+    );
+  },
   // Authenticated orders API
   getOrders: (params?: {
     status?: string;
