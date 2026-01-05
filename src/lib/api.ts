@@ -577,13 +577,19 @@ export const api = {
   createCategory: (
     titleEn: string,
     titleEl: string,
-    sortOrder?: number
+    sortOrder?: number,
+    printerTopic?: string | null
   ): Promise<{ category: MenuCategory }> =>
     isOffline()
-      ? devMocks.createCategory(titleEn, sortOrder)
+      ? devMocks.createCategory(titleEn, sortOrder, titleEl, printerTopic)
       : fetchApi<{ category: MenuCategory }>("/manager/categories", {
           method: "POST",
-          body: JSON.stringify({ titleEn, titleEl, sortOrder }),
+          body: JSON.stringify({
+            titleEn,
+            titleEl,
+            ...(sortOrder !== undefined ? { sortOrder } : {}),
+            ...(printerTopic !== undefined ? { printerTopic } : {}),
+          }),
         }),
   updateCategory: (
     id: string,

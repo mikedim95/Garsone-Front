@@ -118,6 +118,7 @@ export interface MenuCategory {
   titleEn?: string;
   titleEl?: string;
   sortOrder?: number;
+  printerTopic?: string | null;
 }
 
 export interface MenuData {
@@ -131,6 +132,7 @@ export interface SubmittedOrderItem {
   name?: string;
   item?: MenuItem;
   itemId?: string;
+  printerTopic?: string | null;
   modifiers?: Array<{
     id?: string;
     modifierId?: string;
@@ -261,6 +263,7 @@ export interface CategoryPayload {
   titleEn: string;
   titleEl: string;
   sortOrder?: number;
+  printerTopic?: string | null;
 }
 
 export interface OkResponse {

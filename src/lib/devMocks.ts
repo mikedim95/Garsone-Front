@@ -5,7 +5,14 @@ import type { CreateOrderPayload, CreateOrderPayloadItem, OrderingMode } from "@
 
 type Id = string;
 
-type Category = { id: Id; title: string; titleEn?: string; titleEl?: string; sortOrder: number };
+type Category = {
+  id: Id;
+  title: string;
+  titleEn?: string;
+  titleEl?: string;
+  sortOrder: number;
+  printerTopic?: string | null;
+};
 type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
 type ModifierOption = { id: Id; title: string; titleEn?: string; titleEl?: string; label: string; priceDeltaCents: number; sortOrder: number };
 type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; name: string; minSelect: number; maxSelect: number | null; isAvailable?: boolean; options: ModifierOption[] };
@@ -41,6 +48,16 @@ type Db = {
 };
 
 const LS_KEY = 'devMocks';
+
+const normalizePrinterTopic = (value?: string | null, fallback?: string) => {
+  const raw = (value ?? fallback ?? '').trim().toLowerCase();
+  if (!raw) return undefined;
+  const sanitized = raw
+    .replace(/[^a-z0-9:_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return sanitized || undefined;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -226,8 +243,18 @@ function load(): Db {
     }
   }
   // Seed with demo data
-  const catCoffee: Category = { id: uid('cat'), title: 'Coffee', sortOrder: 0 };
-  const catPastry: Category = { id: uid('cat'), title: 'Pastries', sortOrder: 1 };
+  const catCoffee: Category = {
+    id: uid('cat'),
+    title: 'Coffee',
+    sortOrder: 0,
+    printerTopic: normalizePrinterTopic('coffee') || 'coffee',
+  };
+  const catPastry: Category = {
+    id: uid('cat'),
+    title: 'Pastries',
+    sortOrder: 1,
+    printerTopic: normalizePrinterTopic('pastries') || 'pastries',
+  };
   const modMilk: Modifier = { id: uid('mod'), title: 'Milk', name: 'Milk', minSelect: 0, maxSelect: 1, options: [
     { id: uid('opt'), title: 'Whole', label: 'Whole', priceDeltaCents: 0, sortOrder: 0 },
     { id: uid('opt'), title: 'Oat', label: 'Oat', priceDeltaCents: 50, sortOrder: 1 },
@@ -737,12 +764,33 @@ export const devMocks = {
 
   // Manager: categories
   listCategories() { const db = snapshot(); return Promise.resolve({ categories: db.categories }); },
-  createCategory(titleEn: string, sortOrder?: number, titleEl?: string) {
-    const db = snapshot(); const c: Category = { id: uid('cat'), title: titleEn, titleEn, titleEl: titleEl ?? titleEn, sortOrder: sortOrder ?? db.categories.length };
+  createCategory(titleEn: string, sortOrder?: number, titleEl?: string, printerTopic?: string | null) {
+    const db = snapshot();
+    const c: Category = {
+      id: uid('cat'),
+      title: titleEn,
+      titleEn,
+      titleEl: titleEl ?? titleEn,
+      sortOrder: sortOrder ?? db.categories.length,
+      printerTopic: normalizePrinterTopic(printerTopic, titleEn) ?? null,
+    };
     db.categories.push(c); save(db); return Promise.resolve({ category: c });
   },
   updateCategory(id: Id, data: Partial<Category>) {
-    const db = snapshot(); const c = db.categories.find(x=>x.id===id); if (c) Object.assign(c, data); save(db); return Promise.resolve({ category: c });
+    const db = snapshot();
+    const c = db.categories.find(x=>x.id===id);
+    if (c) {
+      const payload: Partial<Category> = { ...data };
+      if (data.printerTopic !== undefined) {
+        payload.printerTopic =
+          data.printerTopic === null
+            ? null
+            : normalizePrinterTopic(data.printerTopic, c.printerTopic || c.title) ?? null;
+      }
+      Object.assign(c, payload);
+    }
+    save(db);
+    return Promise.resolve({ category: c });
   },
   deleteCategory(id: Id) {
     const db = snapshot(); db.categories = db.categories.filter(c=>c.id!==id); save(db); return Promise.resolve({ ok: true });

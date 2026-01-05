@@ -175,8 +175,10 @@ export const ManagerMenuPanel = () => {
             const title = window.prompt('Add new category');
             const t = (title || '').trim();
             if (!t) return;
+            const printerInput = window.prompt('Printer topic for this category (optional, e.g. bar-printer)', t.toLowerCase().replace(/\s+/g, '-'));
+            const printerTopic = printerInput === null ? undefined : (printerInput || '').trim() || undefined;
             try {
-              await api.createCategory(t, t);
+              await api.createCategory(t, t, undefined, printerTopic);
               await load();
               toast({ title: 'Category added', description: t });
             } catch (error) {
@@ -212,11 +214,19 @@ export const ManagerMenuPanel = () => {
                 <Button size="sm" variant="outline" className="gap-1" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const title = window.prompt('Rename category', cat.title);
-                  if (!title || title.trim() === cat.title) return;
+                  const nextTitle = (title || '').trim();
+                  if (!nextTitle || nextTitle === cat.title) return;
+                  const printerInput = window.prompt('Printer topic for this category (optional, leave blank to clear, cancel to keep current)', cat.printerTopic || '');
+                  const trimmedPrinter = printerInput === null ? undefined : (printerInput || '').trim();
+                  const printerTopic = trimmedPrinter === undefined ? undefined : trimmedPrinter === '' ? null : trimmedPrinter;
                   try {
-                    await api.updateCategory(cat.id, { titleEn: title.trim(), titleEl: title.trim() });
+                    await api.updateCategory(cat.id, {
+                      titleEn: nextTitle,
+                      titleEl: nextTitle,
+                      ...(printerTopic !== undefined ? { printerTopic } : {}),
+                    });
                     await load();
-                    toast({ title: 'Category renamed', description: title.trim() });
+                    toast({ title: 'Category renamed', description: nextTitle });
                   } catch (error) {
                     const message = error instanceof Error ? error.message : 'Could not rename category';
                     toast({ title: 'Rename failed', description: message });
