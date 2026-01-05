@@ -206,7 +206,7 @@ function load(): Db {
             slug: (parsed.store as any).slug || 'local-store',
             orderingMode: normalizeOrderingMode((parsed.store as any).orderingMode),
           }
-        : { id: storeId, name: 'Garsone Offline Demo', slug: 'local-store', orderingMode: 'qr' };
+        : { id: storeId, name: 'Garsone Offline Demo', slug: 'local-store', orderingMode: 'qr' as OrderingMode };
       const db: Db = {
         store,
         categories: parsed.categories ?? [],

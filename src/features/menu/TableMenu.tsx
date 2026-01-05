@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { ElegantMenuView } from "@/components/menu/ElegantMenuView";
+import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
 import { AppBurger } from "@/components/AppBurger";
@@ -27,7 +27,7 @@ import type {
   OrderStatus,
   OrderingMode,
 } from "@/types";
-import { Pencil, ArrowLeft, X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
@@ -1402,46 +1402,6 @@ export default function TableMenu() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                {/* Category tabs bar */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: "auto" }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
-                  className="flex gap-2 mb-6 overflow-x-auto pb-2 items-center"
-                >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setCategorySelected(false);
-                      setSelectedCategory(null);
-                    }}
-                    className="shrink-0 h-9 w-9 rounded-full"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    key="all"
-                    variant={selectedCategory === "all" ? "default" : "outline"}
-                    onClick={() => setSelectedCategory("all")}
-                    className="shrink-0 rounded-full h-9 text-sm"
-                  >
-                    {t("menu.category_all", { defaultValue: "All" })}
-                  </Button>
-                  {categories.map((cat) => (
-                    <Button
-                      key={cat.id}
-                      variant={
-                        selectedCategory === cat.id ? "default" : "outline"
-                      }
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className="shrink-0 rounded-full h-9 text-sm"
-                    >
-                      {cat.title}
-                    </Button>
-                  ))}
-                </motion.div>
-
                 {error ? (
                   <div className="text-center py-12">
                     <p className="text-destructive mb-4">{error}</p>
@@ -1450,10 +1410,15 @@ export default function TableMenu() {
                     </Button>
                   </div>
                 ) : (
-                  <ElegantMenuView
+                  <SwipeableMenuView
                     categories={categories}
                     items={menuData?.items ?? []}
                     selectedCategory={selectedCategory || "all"}
+                    onCategoryChange={(catId) => setSelectedCategory(catId)}
+                    onBack={() => {
+                      setCategorySelected(false);
+                      setSelectedCategory(null);
+                    }}
                     onAddItem={handleAddItem}
                     onCheckout={handleCheckout}
                     onImmediateCheckout={handleImmediateCheckout}
