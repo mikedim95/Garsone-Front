@@ -24,7 +24,10 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
     if (typeof window !== 'undefined') {
       return `${window.location.origin.replace(/\/$/, '')}/publiccode`;
     }
-    return `${API_BASE.replace(/\/$/, '')}/publiccode`;
+    // SSR fallback: prefer a declared public origin, otherwise default to localhost frontend port
+    const originEnv = (import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined)?.trim();
+    const origin = originEnv && originEnv.length > 0 ? originEnv.replace(/\/$/, '') : 'http://localhost:5173';
+    return `${origin}/publiccode`;
   }, []);
 
   const getBaseOrigin = (storeSlug?: string | null) => {

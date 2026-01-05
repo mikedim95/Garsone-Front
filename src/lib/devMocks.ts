@@ -1,7 +1,7 @@
 // Lightweight in-browser mock backend for offline testing.
 // Persists to localStorage under key "devMocks" so state survives reloads.
 
-import type { CreateOrderPayload, CreateOrderPayloadItem } from "@/types";
+import type { CreateOrderPayload, CreateOrderPayloadItem, OrderingMode } from "@/types";
 
 type Id = string;
 
@@ -28,7 +28,7 @@ type QRTileRecord = {
 };
 
 type Db = {
-  store: { id: string; name: string; slug?: string };
+  store: { id: string; name: string; slug?: string; orderingMode?: OrderingMode };
   categories: Category[];
   items: Item[];
   modifiers: Modifier[];
@@ -86,6 +86,11 @@ const isWaiterAssignment = (assignment: unknown): assignment is WaiterAssignment
   isRecord(assignment) &&
   typeof assignment.waiterId === 'string' &&
   typeof assignment.tableId === 'string';
+
+const normalizeOrderingMode = (mode: unknown): OrderingMode => {
+  if (mode === 'waiter' || mode === 'hybrid') return mode;
+  return 'qr';
+};
 
 const normalizeModifierMap = (value: unknown): Record<string, string> => {
   if (!value) return {};
@@ -195,8 +200,13 @@ function load(): Db {
         : [];
       const store =
         parsed.store && isRecord(parsed.store)
-        ? { id: storeId, name: (parsed.store as any).name || 'Garsone Offline Demo', slug: (parsed.store as any).slug || 'local-store' }
-        : { id: storeId, name: 'Garsone Offline Demo', slug: 'local-store' };
+        ? {
+            id: storeId,
+            name: (parsed.store as any).name || 'Garsone Offline Demo',
+            slug: (parsed.store as any).slug || 'local-store',
+            orderingMode: normalizeOrderingMode((parsed.store as any).orderingMode),
+          }
+        : { id: storeId, name: 'Garsone Offline Demo', slug: 'local-store', orderingMode: 'qr' };
       const db: Db = {
         store,
         categories: parsed.categories ?? [],
@@ -240,7 +250,7 @@ function load(): Db {
   };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
-    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'local-store' },
+    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'local-store', orderingMode: 'qr' },
     categories: [catCoffee, catPastry],
     items: [itemEsp, itemCap, itemCro],
     modifiers: [modMilk, modSugar],

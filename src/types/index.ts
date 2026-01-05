@@ -1,5 +1,6 @@
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
 export type UserRole = 'waiter' | 'manager' | 'cook' | 'architect';
+export type OrderingMode = 'qr' | 'waiter' | 'hybrid';
 
 export interface MenuItem {
   id: string;
@@ -163,6 +164,7 @@ export interface StoreInfo {
   currencyCode?: string;
   currencySymbol?: string;
   timezone?: string;
+  orderingMode?: OrderingMode;
 }
 
 export interface LandingStoreLink {
@@ -272,6 +274,7 @@ export interface AuthResponse {
     id: string;
     slug: string;
     name?: string;
+    orderingMode?: OrderingMode;
   };
 }
 

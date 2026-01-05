@@ -19,6 +19,9 @@ interface Props {
   onAddItem: (item: MenuItem) => void;
   onCheckout: (note?: string) => void | Promise<any>;
   onImmediateCheckout?: (note?: string) => void | Promise<any>;
+  showPaymentButton?: boolean;
+  primaryCtaLabel?: string;
+  secondaryCtaLabel?: string;
   callButtonLabel?: string | null;
   callStatus?: 'idle' | 'pending' | 'accepted';
   callPrompted?: boolean;
@@ -44,6 +47,9 @@ export const ElegantMenuView = ({
   checkoutBusy = false,
   openCartSignal = 0,
   orderPlacedSignal = 0,
+  showPaymentButton = true,
+  primaryCtaLabel,
+  secondaryCtaLabel,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -230,13 +236,15 @@ export const ElegantMenuView = ({
                     alt={displayName}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   />
-                  <div className="absolute bottom-2 left-2 right-2 z-20">
-                    <h3 className="font-semibold text-sm sm:text-base text-foreground mb-0.5 drop-shadow-lg line-clamp-2 leading-tight">
-                      {displayName}
-                    </h3>
+                  <div className="absolute inset-x-0 top-0 z-20 p-2 sm:p-2.5 bg-gradient-to-b from-black/70 via-black/40 to-transparent flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-xs sm:text-sm text-foreground drop-shadow-lg line-clamp-2 leading-tight">
+                        {displayName}
+                      </h3>
+                    </div>
                     <Badge
                       variant="secondary"
-                      className="bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-xs sm:text-sm px-2 py-0.5"
+                      className="shrink-0 bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
                     >
                       {formatPrice(price)}
                     </Badge>
@@ -519,22 +527,23 @@ export const ElegantMenuView = ({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <Button
-                    onClick={handleCheckout}
-                    disabled={checkoutBusy}
-                    aria-busy={checkoutBusy}
-                    data-busy={checkoutBusy ? 'true' : 'false'}
-                    className="relative w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] disabled:opacity-80"
-                  >
-                    <span className={`absolute inset-0 flex items-center justify-center transition-opacity ${checkoutBusy ? 'opacity-100' : 'opacity-0'}`}>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    </span>
-                    <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
-                      <CreditCard className="h-4 w-4" />
-                      {t('menu.pay_with_viva', { defaultValue: 'Pay with Viva' })}
-                    </span>
-                  </Button>
-                  
+                  {showPaymentButton && (
+                    <Button
+                      onClick={handleCheckout}
+                      disabled={checkoutBusy}
+                      aria-busy={checkoutBusy}
+                      data-busy={checkoutBusy ? 'true' : 'false'}
+                      className="relative w-full h-10 rounded-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] disabled:opacity-80"
+                    >
+                      <span className={`absolute inset-0 flex items-center justify-center transition-opacity ${checkoutBusy ? 'opacity-100' : 'opacity-0'}`}>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      </span>
+                      <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
+                        <CreditCard className="h-4 w-4" />
+                        {primaryCtaLabel ?? t('menu.pay_with_viva', { defaultValue: 'Pay with Viva' })}
+                      </span>
+                    </Button>
+                  )}
                   {onImmediateCheckout && (
                     <Button
                       onClick={handleImmediateCheckout}
@@ -544,7 +553,7 @@ export const ElegantMenuView = ({
                     >
                       <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
                         <Zap className="h-4 w-4" />
-                        {t('menu.quick_order', { defaultValue: 'Place order now' })}
+                        {secondaryCtaLabel ?? t('menu.quick_order', { defaultValue: 'Place order now' })}
                       </span>
                     </Button>
                   )}

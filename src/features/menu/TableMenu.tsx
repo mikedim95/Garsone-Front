@@ -25,6 +25,7 @@ import type {
   SubmittedOrderItem,
   SubmittedOrderSummary,
   OrderStatus,
+  OrderingMode,
 } from "@/types";
 import { Pencil, ArrowLeft, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -137,6 +138,9 @@ const buildMenuState = (
   };
 };
 
+const normalizeOrderingMode = (mode?: string | null): OrderingMode =>
+  mode === "waiter" || mode === "hybrid" ? mode : "qr";
+
 const matchesCategory = (
   item: MenuItem,
   categoryId: string,
@@ -242,6 +246,7 @@ export default function TableMenu() {
     const stored = getStoredStoreSlug();
     return isFallbackSlug(stored) ? "" : stored || "";
   });
+  const [orderingMode, setOrderingMode] = useState<OrderingMode>("qr");
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
@@ -274,6 +279,7 @@ export default function TableMenu() {
     tableParam ? tableParam : null
   );
   const activeTableId = tableId || tableParam || null;
+  const guestOrderingEnabled = orderingMode !== "waiter";
   const isEditingExisting = Boolean(editingOrderId);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
@@ -348,6 +354,12 @@ export default function TableMenu() {
   }, [location.search, clearMenuCache]);
 
   useEffect(() => {
+    if (!guestOrderingEnabled) {
+      clearCart();
+    }
+  }, [guestOrderingEnabled, clearCart]);
+
+  useEffect(() => {
     if (!bootstrapError) return;
     const message =
       bootstrapError instanceof Error
@@ -379,6 +391,7 @@ export default function TableMenu() {
     if (bootstrap.table?.id) {
       setTableId((prev) => prev || bootstrap.table?.id || null);
     }
+    setOrderingMode(normalizeOrderingMode(bootstrap.store?.orderingMode));
     if (bootstrap.store?.name || bootstrap.store?.slug) {
       const name = bootstrap.store.name || bootstrap.store.slug || null;
       setStoreName(name);
@@ -721,6 +734,17 @@ export default function TableMenu() {
     t("menu.store_title_fallback", { defaultValue: "Store" });
 
   const handleAddItem = (item: MenuItem) => {
+    if (!guestOrderingEnabled) {
+      toast({
+        title: t("menu.waiter_only_title", {
+          defaultValue: "Ordering with waiter only",
+        }),
+        description: t("menu.waiter_only_desc", {
+          defaultValue: "Please ask your waiter to place the order.",
+        }),
+      });
+      return;
+    }
     // Always open the customize dialog, even if there are no modifiers,
     // so the user can set quantity before adding to the cart.
     setCustomizeItem(item);
@@ -845,6 +869,17 @@ export default function TableMenu() {
     note?: string
   ): Promise<SubmittedOrderSummary | null> => {
     if (checkoutBusy) return null;
+    if (!guestOrderingEnabled) {
+      toast({
+        title: t("menu.waiter_only_title", {
+          defaultValue: "Ordering with waiter only",
+        }),
+        description: t("menu.waiter_only_desc", {
+          defaultValue: "Please ask your waiter to place the order.",
+        }),
+      });
+      return null;
+    }
     if (!activeTableId || !menuData) {
       toast({
         title: t("menu.toast_error_title", {
@@ -931,6 +966,17 @@ export default function TableMenu() {
 
   const handleCheckout = async (note?: string) => {
     if (checkoutBusy) return null;
+    if (!guestOrderingEnabled) {
+      toast({
+        title: t("menu.waiter_only_title", {
+          defaultValue: "Ordering with waiter only",
+        }),
+        description: t("menu.waiter_only_desc", {
+          defaultValue: "Please ask your waiter to place the order.",
+        }),
+      });
+      return null;
+    }
     if (!activeTableId || !menuData) {
       toast({
         title: t("menu.toast_error_title", {
@@ -1322,6 +1368,20 @@ export default function TableMenu() {
         </header>
 
         <div className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
+          {!guestOrderingEnabled && (
+            <div className="mb-6 rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
+              <p className="text-sm font-semibold text-foreground">
+                {t("menu.waiter_only_title", {
+                  defaultValue: "Ordering is handled by your waiter",
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("menu.waiter_only_desc", {
+                  defaultValue: "Browse the menu and let your waiter place the order for you.",
+                })}
+              </p>
+            </div>
+          )}
           <AnimatePresence mode="wait">
             {!categorySelected ? (
               <CategorySelectView

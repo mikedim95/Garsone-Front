@@ -135,7 +135,9 @@ export default function ArchitectQrTiles() {
       derived = `${window.location.origin.replace(/\/$/, '')}/publiccode`;
     }
     if (!derived) {
-      derived = `${API_BASE.replace(/\/$/, '')}/publiccode`;
+      const originEnv = (import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined)?.trim();
+      const origin = originEnv && originEnv.length > 0 ? originEnv.replace(/\/$/, '') : 'http://localhost:5173';
+      derived = `${origin}/publiccode`;
     }
     setPublicResolverBase(derived.replace(/\/$/, ''));
   }, [loadStores]);
