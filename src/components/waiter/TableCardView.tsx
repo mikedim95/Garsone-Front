@@ -129,10 +129,19 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
     { tableId, tableLabel, orders: tableOrders }: typeof tableGroups[0],
     isInactive: boolean = false
   ) => {
+    const importantStatuses: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'SERVED'];
     const priorityStatus = getTablePriorityStatus(tableOrders);
     const hasReady = tableOrders.some(o => o.status === 'READY');
     const hasPlaced = tableOrders.some(o => o.status === 'PLACED');
     const activeCount = tableOrders.filter(o => !['PAID', 'CANCELLED'].includes(o.status)).length;
+    const importantOrders = tableOrders.filter(o => importantStatuses.includes(o.status));
+    const orderDots = [...importantOrders]
+      .sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 18);
     
     return (
       <motion.button
@@ -159,8 +168,8 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
           ]
         )}
       >
-        {/* Priority status dot */}
-        {priorityStatus && !isInactive && (
+        {/* Priority status dot (hide if rendering center dots) */}
+        {priorityStatus && !isInactive && orderDots.length === 0 && (
           <span 
             className={clsx(
               'absolute top-1 right-1 w-2 h-2 rounded-full',
@@ -187,6 +196,22 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
           )}>
             {activeCount}
           </span>
+        )}
+
+        {/* Order status dots */}
+        {!isInactive && tableOrders.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-1.5 mt-1 max-w-[90%]">
+            {orderDots.map((order) => (
+              <span
+                key={order.id}
+                className={clsx(
+                  'w-2.5 h-2.5 rounded-full border border-background shadow-sm',
+                  STATUS_DOT_COLORS[order.status]
+                )}
+                title={`${t(`status.${order.status}`)} ${order.tableLabel || ''}`}
+              />
+            ))}
+          </div>
         )}
         
         {/* Inactive indicator */}
@@ -264,9 +289,9 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
           {/* Table orders filter toolbar */}
           <div className="px-4 py-2 flex items-center justify-between border-b border-border/60">
             <div className="text-xs text-muted-foreground">
-              Important: {(selectedTableData?.orders?.filter(o => ['READY','PREPARING','SERVED'].includes(o.status)).length) ?? 0}
+              Important: {(selectedTableData?.orders?.filter(o => ['PLACED','READY','PREPARING','SERVED'].includes(o.status)).length) ?? 0}
             </div>
-            {((selectedTableData?.orders?.filter(o => !['READY','PREPARING','SERVED'].includes(o.status)).length) ?? 0) > 0 && (
+            {((selectedTableData?.orders?.filter(o => !['PLACED','READY','PREPARING','SERVED'].includes(o.status)).length) ?? 0) > 0 && (
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">Show less important</span>
                 <Switch checked={showLessImportant} onCheckedChange={setShowLessImportant} />
@@ -277,9 +302,9 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <AnimatePresence mode="popLayout">
               {selectedTableData?.orders
-                .filter((o) => ['READY','PREPARING','SERVED'].includes(o.status))
+                .filter((o) => ['PLACED','READY','PREPARING','SERVED'].includes(o.status))
                 .sort((a, b) => {
-                  const statusOrder: OrderStatus[] = ['READY', 'PREPARING', 'SERVED'];
+                  const statusOrder: OrderStatus[] = ['PLACED','PREPARING','READY','SERVED'];
                   const aIdx = statusOrder.indexOf(a.status);
                   const bIdx = statusOrder.indexOf(b.status);
                   if (aIdx !== bIdx) return aIdx - bIdx;
@@ -387,14 +412,8 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
                 <div className="text-xs font-semibold text-muted-foreground mb-2">Other orders</div>
                 <AnimatePresence mode="popLayout">
                   {selectedTableData?.orders
-                    .filter((o) => !['READY','PREPARING','SERVED'].includes(o.status))
-                    .sort((a, b) => {
-                      const statusOrder: OrderStatus[] = ['PLACED', 'PAID', 'CANCELLED'];
-                      const aIdx = statusOrder.indexOf(a.status);
-                      const bIdx = statusOrder.indexOf(b.status);
-                      if (aIdx !== bIdx) return aIdx - bIdx;
-                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                    })
+                    .filter((o) => !['PLACED','READY','PREPARING','SERVED'].includes(o.status))
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .map((order) => {
                       const isActing = actingIds.has(order.id);
                       return (

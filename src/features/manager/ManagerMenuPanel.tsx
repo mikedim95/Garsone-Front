@@ -30,6 +30,7 @@ export const ManagerMenuPanel = () => {
   const [categories, setCategories] = useState<MenuCategory[]>([]);
 
   const [storeSlug, setStoreSlug] = useState<string>('');
+  const [printerTopics, setPrinterTopics] = useState<string[]>([]);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -59,9 +60,42 @@ export const ManagerMenuPanel = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
 
+  // Category edit modal
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
+  const [categoryForm, setCategoryForm] = useState<{ title: string; printerChoice: string }>({
+    title: '',
+    printerChoice: '',
+  });
+  const [savingCategory, setSavingCategory] = useState(false);
+
+  const choosePrinterTopic = (initial?: string | null) => {
+    if (!printerTopics.length) {
+      const input = window.prompt('Printer topic for this category (optional)', initial ?? '') ?? '';
+      const trimmed = input.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    const options = printerTopics.map((p, i) => `${i + 1}) ${p}`).join('\n');
+    const input =
+      window.prompt(
+        `Select printer topic (enter number) or type a custom topic:\n${options}`,
+        initial ?? printerTopics[0]
+      ) ?? '';
+    const trimmed = input.trim();
+    const idx = Number(trimmed);
+    if (Number.isInteger(idx) && idx >= 1 && idx <= printerTopics.length) {
+      return printerTopics[idx - 1];
+    }
+    return trimmed.length ? trimmed : null;
+  };
+
   const load = useCallback(async () => {
     try {
-      const [itemsRes, categoriesRes] = await Promise.all([api.listItems(), api.listCategories()]);
+      const [itemsRes, categoriesRes, storeRes] = await Promise.all([
+        api.listItems(),
+        api.listCategories(),
+        api.getStore(),
+      ]);
       setItems(itemsRes.items ?? []);
       setCategories(
         (categoriesRes.categories ?? []).map((c) => ({
@@ -69,6 +103,26 @@ export const ManagerMenuPanel = () => {
           title: c.title || c.titleEn || c.titleEl || '',
         }))
       );
+      const categoryPrinters =
+        (categoriesRes.categories ?? [])
+          .map((c) => (typeof c.printerTopic === 'string' ? c.printerTopic.trim() : ''))
+          .filter(Boolean) ?? [];
+      const printers =
+        ((storeRes as any)?.store?.settings?.printers as string[]) ||
+        ((storeRes as any)?.store?.settingsJson?.printers as string[]) ||
+        [];
+      if (Array.isArray(printers)) {
+        setPrinterTopics(
+          Array.from(
+            new Set(
+              [...printers, ...categoryPrinters].map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean)
+            )
+          )
+        );
+      } else if (categoryPrinters.length) {
+        setPrinterTopics(Array.from(new Set(categoryPrinters)));
+      }
+      if (storeRes?.store?.slug) setStoreSlug(storeRes.store.slug);
     } catch (error) {
       console.error('Failed to load menu data', error);
       toast({ title: 'Load failed', description: 'Could not load menu data' });
@@ -96,6 +150,45 @@ export const ManagerMenuPanel = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const openCategoryEdit = (cat: MenuCategory) => {
+    const printer = cat.printerTopic || '';
+    const hasPrinters = printerTopics.length > 0;
+    const fallbackPrinter = hasPrinters ? printerTopics[0] : '';
+    setCategoryForm({
+      title: cat.title || '',
+      printerChoice: printer || fallbackPrinter || '',
+    });
+    setEditingCategory(cat);
+    setCategoryDialogOpen(true);
+  };
+
+  const saveCategoryEdit = async () => {
+    if (!editingCategory) return;
+    const title = categoryForm.title.trim() || editingCategory.title || '';
+    if (!title) {
+      toast({ title: 'Title required', description: 'Category title cannot be empty' });
+      return;
+    }
+    const effectivePrinter = (categoryForm.printerChoice || '').trim();
+    setSavingCategory(true);
+    try {
+      await api.updateCategory(editingCategory.id, {
+        titleEn: title,
+        titleEl: title,
+        printerTopic: effectivePrinter || null,
+      });
+      await load();
+      toast({ title: 'Category updated', description: title });
+      setCategoryDialogOpen(false);
+      setEditingCategory(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update category';
+      toast({ title: 'Update failed', description: message });
+    } finally {
+      setSavingCategory(false);
+    }
+  };
 
   const openAdd = (prefCategoryId?: string) => {
     setEditing(null);
@@ -175,8 +268,7 @@ export const ManagerMenuPanel = () => {
             const title = window.prompt('Add new category');
             const t = (title || '').trim();
             if (!t) return;
-            const printerInput = window.prompt('Printer topic for this category (optional, e.g. bar-printer)', t.toLowerCase().replace(/\s+/g, '-'));
-            const printerTopic = printerInput === null ? undefined : (printerInput || '').trim() || undefined;
+            const printerTopic = choosePrinterTopic(t.toLowerCase().replace(/\s+/g, '-'));
             try {
               await api.createCategory(t, t, undefined, printerTopic);
               await load();
@@ -212,26 +304,7 @@ export const ManagerMenuPanel = () => {
               <h3 className="text-lg font-semibold text-foreground flex-1">{cat.title}</h3>
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="outline" className="gap-1" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
-                <Button size="sm" variant="ghost" onClick={async ()=>{
-                  const title = window.prompt('Rename category', cat.title);
-                  const nextTitle = (title || '').trim();
-                  if (!nextTitle || nextTitle === cat.title) return;
-                  const printerInput = window.prompt('Printer topic for this category (optional, leave blank to clear, cancel to keep current)', cat.printerTopic || '');
-                  const trimmedPrinter = printerInput === null ? undefined : (printerInput || '').trim();
-                  const printerTopic = trimmedPrinter === undefined ? undefined : trimmedPrinter === '' ? null : trimmedPrinter;
-                  try {
-                    await api.updateCategory(cat.id, {
-                      titleEn: nextTitle,
-                      titleEl: nextTitle,
-                      ...(printerTopic !== undefined ? { printerTopic } : {}),
-                    });
-                    await load();
-                    toast({ title: 'Category renamed', description: nextTitle });
-                  } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Could not rename category';
-                    toast({ title: 'Rename failed', description: message });
-                  }
-                }}><Pencil className="h-4 w-4"/></Button>
+                <Button size="sm" variant="ghost" onClick={() => openCategoryEdit(cat)}><Pencil className="h-4 w-4"/></Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const yes = window.confirm('Delete this category? Items will remain but may appear uncategorized.');
                   if (!yes) return;
@@ -354,6 +427,66 @@ export const ManagerMenuPanel = () => {
       </div>
         </>
       )}
+
+      {/* Edit Category */}
+      <Dialog
+        open={categoryDialogOpen}
+        onOpenChange={(open) => {
+          setCategoryDialogOpen(open);
+          if (!open) {
+            setEditingCategory(null);
+            setCategoryForm({ title: '', printerChoice: '' });
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit category</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Category title"
+              value={categoryForm.title}
+              onChange={(e) => setCategoryForm((prev) => ({ ...prev, title: e.target.value }))}
+            />
+            {printerTopics.length > 0 ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Printer topic</label>
+                <select
+                  className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={categoryForm.printerChoice}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, printerChoice: e.target.value }))}
+                >
+                  <option value="">No printer</option>
+                  {printerTopics.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <Input
+                placeholder="Printer topic (optional)"
+                value={categoryForm.printerChoice}
+                onChange={(e) => setCategoryForm((prev) => ({ ...prev, printerChoice: e.target.value }))}
+              />
+            )}
+            <p className="text-xs text-muted-foreground">Choose where this category prints (per venue printer list).</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>
+              Cancel
+            </Button>
+            <Button onClick={saveCategoryEdit} disabled={savingCategory}>
+              {savingCategory && (
+                <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+              )}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Item */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

@@ -440,8 +440,25 @@ export const devMocks = {
           id: db.store.id,
           name: db.store.name,
           slug: db.store.slug || 'local-store',
+          orderingMode: db.store.orderingMode || 'qr',
         },
       ],
+    });
+  },
+  adminUpdateStoreOrderingMode(storeId: string, orderingMode: OrderingMode) {
+    const db = snapshot();
+    if (db.store.id !== storeId) {
+      return Promise.reject(new Error('Store not found'));
+    }
+    db.store.orderingMode = orderingMode;
+    save(db);
+    return Promise.resolve({
+      store: {
+        id: db.store.id,
+        name: db.store.name,
+        slug: db.store.slug || 'local-store',
+        orderingMode: db.store.orderingMode,
+      },
     });
   },
   adminListStoreTables(_storeId: string) {

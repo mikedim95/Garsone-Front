@@ -16,11 +16,11 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/components/ui/use-toast';
 import { api, ApiError, API_BASE } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
-import type { ManagerTableSummary, QRTile, StoreInfo } from '@/types';
+import type { ManagerTableSummary, OrderingMode, QRTile, StoreInfo } from '@/types';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { PageTransition } from '@/components/ui/page-transition';
 
-type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug'>;
+type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug' | 'orderingMode'>;
 
 const formatDate = (value?: string) => {
   if (!value) return '—';
@@ -47,10 +47,12 @@ export default function ArchitectQrTiles() {
   const [count, setCount] = useState<string>('12');
   const [labelPrefix, setLabelPrefix] = useState<string>(''); // unused now, kept for compatibility
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
+  const [updatingMode, setUpdatingMode] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [codeSearch, setCodeSearch] = useState('');
   const [previewQr, setPreviewQr] = useState<{ code: string; url: string } | null>(null);
   const [publicResolverBase, setPublicResolverBase] = useState<string>('');
+  const [storeOrderingMode, setStoreOrderingMode] = useState<OrderingMode>('qr');
 
   const isArchitect = user?.role === 'architect';
   const isAllowed = isArchitect;
@@ -71,6 +73,7 @@ export default function ArchitectQrTiles() {
         if (!selectedStoreId) {
           setSelectedStoreId(list[0].id);
         }
+        setStoreOrderingMode((list[0] as StoreOption | undefined)?.orderingMode ?? 'qr');
         return;
       }
     } catch (error) {
@@ -146,7 +149,9 @@ export default function ArchitectQrTiles() {
     if (selectedStoreId) {
       refreshTiles(selectedStoreId);
     }
-  }, [selectedStoreId, refreshTiles]);
+    const mode = stores.find((s) => s.id === selectedStoreId)?.orderingMode ?? 'qr';
+    setStoreOrderingMode(mode as OrderingMode);
+  }, [selectedStoreId, refreshTiles, stores]);
 
   useEffect(() => {
     setRecentTiles([]);
@@ -369,6 +374,64 @@ export default function ArchitectQrTiles() {
                 </Button>
               </div>
             )}
+          </CardHeader>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle>Venue mode</CardTitle>
+              <CardDescription>
+                Choose whether guests can place orders from their phones or browse-only while waiters submit orders.
+              </CardDescription>
+            </div>
+            <div className="space-y-2 sm:space-y-0 sm:flex sm:items-center sm:gap-3">
+              <Label className="text-xs text-muted-foreground">Mode</Label>
+              <Select
+                value={storeOrderingMode}
+                onValueChange={(val) => {
+                  const next = val as OrderingMode;
+                  if (!selectedStoreId) return;
+                  setUpdatingMode(true);
+                  api
+                    .adminUpdateStoreOrderingMode(selectedStoreId, next)
+                    .then(() => {
+                      setStoreOrderingMode(next);
+                      setStores((prev) =>
+                        prev.map((s) =>
+                          s.id === selectedStoreId ? { ...s, orderingMode: next } : s
+                        )
+                      );
+                      toast({
+                        title: 'Venue mode updated',
+                        description:
+                          next === 'waiter'
+                            ? 'Guests can browse; waiters place orders.'
+                            : 'Guests can place their own orders.',
+                      });
+                    })
+                    .catch((error) => {
+                      console.error('Failed to update ordering mode', error);
+                      toast({
+                        variant: 'destructive',
+                        title: 'Update failed',
+                        description: error instanceof ApiError ? error.message : 'Try again.',
+                      });
+                    })
+                    .finally(() => setUpdatingMode(false));
+                }}
+                disabled={!selectedStoreId || updatingMode}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="qr">Customer self-order</SelectItem>
+                  <SelectItem value="waiter">Browse-only (waiter submits)</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
         </Card>
 

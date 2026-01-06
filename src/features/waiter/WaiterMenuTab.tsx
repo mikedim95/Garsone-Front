@@ -149,8 +149,8 @@ export function WaiterMenuTab({
   const [selectedTable, setSelectedTable] = useState<string>(
     assignedTables[0]?.id ?? ""
   );
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [categorySelected, setCategorySelected] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [categorySelected, setCategorySelected] = useState(true);
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
@@ -159,6 +159,7 @@ export function WaiterMenuTab({
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [orderPlacedSignal, setOrderPlacedSignal] = useState(0);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [openCartSignal, setOpenCartSignal] = useState(0);
 
   useEffect(() => {
     if (!assignedTables.some((t) => t.id === selectedTable)) {
@@ -168,8 +169,8 @@ export function WaiterMenuTab({
 
   useEffect(() => {
     clearCart();
-    setCategorySelected(false);
-    setSelectedCategory(null);
+    setCategorySelected(true);
+    setSelectedCategory("all");
     setMenuData(null);
   }, [selectedTable, clearCart]);
 
@@ -306,8 +307,8 @@ export function WaiterMenuTab({
       onOrderCreated(order);
       clearCart();
       setOrderPlacedSignal((s) => s + 1);
-      setCategorySelected(false);
-      setSelectedCategory(null);
+      setCategorySelected(true);
+      setSelectedCategory("all");
       toast({
         title: t("waiter.order_created", {
           defaultValue: "Order placed",
@@ -396,12 +397,20 @@ export function WaiterMenuTab({
             </SelectContent>
           </Select>
           <Button
+            variant="secondary"
+            size="sm"
+            className="rounded-full"
+            onClick={() => setOpenCartSignal((s) => s + 1)}
+          >
+            {t("menu.cart", { defaultValue: "Cart" })}
+          </Button>
+          <Button
             variant="outline"
             size="sm"
             onClick={() => {
               clearCart();
-              setCategorySelected(false);
-              setSelectedCategory(null);
+              setCategorySelected(true);
+              setSelectedCategory("all");
             }}
           >
             {t("actions.reset", { defaultValue: "Reset" })}
@@ -450,22 +459,11 @@ export function WaiterMenuTab({
               transition={{ duration: 0.3 }}
             >
               <motion.div
-                initial={{ opacity: 0, y: -10, height: 0 }}
-                animate={{ opacity: 1, y: 0, height: "auto" }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-                className="flex gap-2 mb-6 overflow-x-auto pb-2 items-center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setCategorySelected(false);
-                    setSelectedCategory(null);
-                  }}
-                  className="shrink-0 h-9 w-9 rounded-full"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="flex gap-2 mb-6 overflow-x-auto pb-2 items-center"
+            >
                 <Button
                   key="all"
                   variant={selectedCategory === "all" ? "default" : "outline"}
@@ -498,7 +496,12 @@ export function WaiterMenuTab({
                   defaultValue: "Place order",
                 })}
                 orderPlacedSignal={orderPlacedSignal}
+                openCartSignal={openCartSignal}
                 checkoutBusy={checkoutBusy}
+                showCallButton={false}
+                autoOpenCart={false}
+                showCartButton={true}
+                floatingCartPosition="none"
               />
             </motion.div>
           )}

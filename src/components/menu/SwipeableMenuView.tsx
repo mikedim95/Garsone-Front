@@ -43,6 +43,7 @@ interface Props {
   checkoutBusy?: boolean;
   openCartSignal?: number;
   orderPlacedSignal?: number;
+  showCartButton?: boolean;
 }
 
 const matchesCategory = (
@@ -73,6 +74,7 @@ export const SwipeableMenuView = ({
   openCartSignal = 0,
   orderPlacedSignal = 0,
   showPaymentButton = true,
+  showCartButton = true,
   primaryCtaLabel,
   secondaryCtaLabel,
 }: Props) => {
@@ -433,30 +435,32 @@ export const SwipeableMenuView = ({
           </motion.button>
 
           {/* Cart Button - Compact */}
-          <motion.button
-            onClick={() => setCartOpen(true)}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="relative flex items-center gap-2 h-10 pl-3 pr-4 rounded-full bg-primary text-primary-foreground font-medium transition-all duration-300 shadow-sm hover:shadow-md"
-          >
-            <div className="relative">
-              <ShoppingCart className="h-4 w-4" />
-              {cartItems.length > 0 && (
-                <motion.span 
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center ring-1 ring-primary"
-                >
-                  {cartItems.length}
-                </motion.span>
+          {showCartButton && (
+            <motion.button
+              onClick={() => setCartOpen(true)}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative flex items-center gap-2 h-10 pl-3 pr-4 rounded-full bg-primary text-primary-foreground font-medium transition-all duration-300 shadow-sm hover:shadow-md"
+            >
+              <div className="relative">
+                <ShoppingCart className="h-4 w-4" />
+                {cartItems.length > 0 && (
+                  <motion.span 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center ring-1 ring-primary"
+                  >
+                    {cartItems.length}
+                  </motion.span>
+                )}
+              </div>
+              {cartItems.length > 0 ? (
+                <span className="text-sm font-semibold tracking-tight">{formatPrice(cartTotal)}</span>
+              ) : (
+                <span className="text-sm font-medium">{t('menu.cart', { defaultValue: 'Cart' })}</span>
               )}
-            </div>
-            {cartItems.length > 0 ? (
-              <span className="text-sm font-semibold tracking-tight">{formatPrice(cartTotal)}</span>
-            ) : (
-              <span className="text-sm font-medium">{t('menu.cart', { defaultValue: 'Cart' })}</span>
-            )}
-          </motion.button>
+            </motion.button>
+          )}
         </motion.div>
       </div>
 
@@ -482,6 +486,7 @@ export const SwipeableMenuView = ({
       </AlertDialog>
 
       {/* Cart Modal */}
+      {showCartButton && (
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>
         <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0 bottom-0 top-auto left-1/2 translate-y-0 sm:top-[50%] sm:bottom-auto sm:translate-y-[-50%] rounded-t-3xl sm:rounded-lg">
           <DialogTitle className="sr-only">
@@ -632,6 +637,7 @@ export const SwipeableMenuView = ({
           </Card>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Modifier Edit Dialog */}
       {editingCartItem && (

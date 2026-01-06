@@ -31,6 +31,10 @@ interface Props {
   openCartSignal?: number;
   // When incremented by parent after a successful submission, closes the cart and resets UI.
   orderPlacedSignal?: number;
+  showCallButton?: boolean;
+  autoOpenCart?: boolean;
+  showCartButton?: boolean;
+  floatingCartPosition?: 'right' | 'none';
 }
 
 export const ElegantMenuView = ({
@@ -48,6 +52,10 @@ export const ElegantMenuView = ({
   openCartSignal = 0,
   orderPlacedSignal = 0,
   showPaymentButton = true,
+  showCallButton = true,
+  autoOpenCart = false,
+  showCartButton = true,
+  floatingCartPosition = 'right',
   primaryCtaLabel,
   secondaryCtaLabel,
 }: Props) => {
@@ -140,6 +148,7 @@ export const ElegantMenuView = ({
   const handleAddItemClick = (item: MenuItem) => {
     if (item.available === false) return;
     onAddItem(item);
+    if (autoOpenCart) setCartOpen(true);
   };
 
   const handleImageKeyDown = (event: KeyboardEvent, item: MenuItem) => {
@@ -259,99 +268,104 @@ export const ElegantMenuView = ({
       </div>
 
       {/* Floating Cart Button */}
-      <button
-        onClick={handleCartButtonClick}
-        className={[
-          'fixed bottom-4 right-4 z-50 flex items-center gap-2 sm:gap-3 rounded-full h-12 sm:h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
-          expandedBubble === 'cart'
-            ? 'pl-4 pr-5 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
-            : 'w-12 sm:w-16 justify-center hover:scale-110',
-          expandedBubble === 'none' && 'active:scale-95',
-        ].join(' ')}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <ShoppingCart className={`h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0 transition-transform duration-500 ${expandedBubble === 'cart' ? 'rotate-12' : ''}`} />
-          {expandedBubble === 'cart' && cartItems.length > 0 && (
-            <div className="flex flex-col leading-tight text-left min-w-0 animate-fade-in">
-              <span className="text-xs sm:text-sm font-semibold truncate max-w-[8rem]">
-                {itemCountLabel}
+      {showCartButton && floatingCartPosition === 'right' && (
+        <button
+          onClick={handleCartButtonClick}
+          className={[
+            'fixed bottom-4 right-4 z-50 flex items-center gap-2 sm:gap-3 rounded-full h-12 sm:h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out',
+            expandedBubble === 'cart'
+              ? 'pl-4 pr-5 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
+              : 'w-12 sm:w-16 justify-center hover:scale-110',
+            expandedBubble === 'none' && 'active:scale-95',
+          ].join(' ')}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <ShoppingCart className={`h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0 transition-transform duration-500 ${expandedBubble === 'cart' ? 'rotate-12' : ''}`} />
+            {expandedBubble === 'cart' && cartItems.length > 0 && (
+              <div className="flex flex-col leading-tight text-left min-w-0 animate-fade-in">
+                <span className="text-xs sm:text-sm font-semibold truncate max-w-[8rem]">
+                  {itemCountLabel}
+                </span>
+                <span className="text-xs text-primary-foreground/80 truncate max-w-[8rem]">
+                  {formatPrice(cartTotal)}
+                </span>
+              </div>
+            )}
+            {expandedBubble === 'cart' && cartItems.length === 0 && (
+              <span className="text-sm font-medium animate-fade-in">
+                {t('menu.cart_empty', { defaultValue: 'Cart empty' })}
               </span>
-              <span className="text-xs text-primary-foreground/80 truncate max-w-[8rem]">
-                {formatPrice(cartTotal)}
-              </span>
-            </div>
-          )}
-          {expandedBubble === 'cart' && cartItems.length === 0 && (
-            <span className="text-sm font-medium animate-fade-in">
-              {t('menu.cart_empty', { defaultValue: 'Cart empty' })}
+            )}
+          </div>
+          {cartItems.length > 0 && expandedBubble !== 'cart' && (
+            <span className="absolute -top-1.5 -right-1.5 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-7 sm:h-7 rounded-full bg-accent text-accent-foreground text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-lg shadow-accent/50 ring-2 ring-background/70 animate-scale-in">
+              {cartItems.length}
             </span>
           )}
-        </div>
-        {cartItems.length > 0 && expandedBubble !== 'cart' && (
-          <span className="absolute -top-1.5 -right-1.5 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-7 sm:h-7 rounded-full bg-accent text-accent-foreground text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-lg shadow-accent/50 ring-2 ring-background/70 animate-scale-in">
-            {cartItems.length}
-          </span>
-        )}
-        {expandedBubble === 'cart' && (
-          <span className="text-xs text-primary-foreground/60 whitespace-nowrap animate-fade-in">
-            {t('menu.tap_checkout', { defaultValue: 'Tap to checkout' })}
-          </span>
-        )}
-      </button>
+          {expandedBubble === 'cart' && (
+            <span className="text-xs text-primary-foreground/60 whitespace-nowrap animate-fade-in">
+              {t('menu.tap_checkout', { defaultValue: 'Tap to checkout' })}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Floating Call Button */}
-      <button
-        type="button"
-        onClick={handleCallButtonClick}
-        disabled={callStatus === 'pending'}
-        className={[
-          'fixed bottom-4 left-4 z-50 flex items-center gap-2 sm:gap-3 rounded-full h-12 sm:h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out overflow-hidden',
-          expandedBubble === 'call'
-            ? 'pl-4 pr-3 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
-            : 'w-12 sm:w-16 justify-center hover:scale-110',
-          callStatus === 'pending' ? 'opacity-80 cursor-wait' : expandedBubble === 'none' && 'active:scale-95',
-        ].join(' ')}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="relative flex items-center justify-center flex-shrink-0">
-            {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
-              <span className="absolute inline-flex h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-primary-foreground/20 animate-ping" />
-            )}
-            <Bell className={`h-5 w-5 sm:h-6 sm:w-6 relative transition-transform duration-300 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
-          </span>
-          {expandedBubble === 'call' && (
-            <span className="text-xs sm:text-sm font-semibold whitespace-nowrap max-w-[9rem] truncate animate-fade-in">
-              {t('menu.call_waiter', { defaultValue: 'Call Waiter' })}
+      {showCallButton && (
+        <button
+          type="button"
+          onClick={handleCallButtonClick}
+          disabled={callStatus === 'pending'}
+          className={[
+            'fixed bottom-4 left-4 z-50 flex items-center gap-2 sm:gap-3 rounded-full h-12 sm:h-16 shadow-2xl border border-border/60 bg-primary text-primary-foreground transition-all duration-500 ease-out overflow-hidden',
+            expandedBubble === 'call'
+              ? 'pl-4 pr-3 justify-between w-[calc(100vw-8rem)] max-w-[18rem] sm:w-80'
+              : 'w-12 sm:w-16 justify-center hover:scale-110',
+            callStatus === 'pending' ? 'opacity-80 cursor-wait' : expandedBubble === 'none' && 'active:scale-95',
+          ].join(' ')}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="relative flex items-center justify-center flex-shrink-0">
+              {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
+                <span className="absolute inline-flex h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-primary-foreground/20 animate-ping" />
+              )}
+              <Bell className={`h-5 w-5 sm:h-6 sm:w-6 relative transition-transform duration-300 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
             </span>
-          )}
-        </div>
-        {expandedBubble === 'call' && (
-          <div className="flex items-center gap-2 animate-fade-in">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpandedBubble('none');
-              }}
-              className="w-10 h-10 rounded-full bg-primary-foreground/20 hover:bg-primary-foreground/30 flex items-center justify-center transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleInitiateCall();
-              }}
-              className="w-10 h-10 rounded-full bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center transition-colors"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
+            {expandedBubble === 'call' && (
+              <span className="text-xs sm:text-sm font-semibold whitespace-nowrap max-w-[9rem] truncate animate-fade-in">
+                {t('menu.call_waiter', { defaultValue: 'Call Waiter' })}
+              </span>
+            )}
           </div>
-        )}
-      </button>
+          {expandedBubble === 'call' && (
+            <div className="flex items-center gap-2 animate-fade-in">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedBubble('none');
+                }}
+                className="w-10 h-10 rounded-full bg-primary-foreground/20 hover:bg-primary-foreground/30 flex items-center justify-center transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleInitiateCall();
+                }}
+                className="w-10 h-10 rounded-full bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center transition-colors"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </button>
+      )}
 
       {/* Cart Modal */}
+      {showCartButton && (
       <Dialog
         open={cartOpen}
         onOpenChange={(open) => {
@@ -563,6 +577,7 @@ export const ElegantMenuView = ({
           </Card>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Edit Modifiers Dialog */}
       <ModifierDialog

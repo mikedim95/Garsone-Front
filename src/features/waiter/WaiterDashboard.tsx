@@ -798,7 +798,8 @@ export default function WaiterDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const loadingOrders = !assignmentsLoaded || !shiftLoaded;
-  const enableWaiterMenu = storeOrderingMode !== 'qr';
+  // Always allow waiter to place orders for their assigned tables
+  const enableWaiterMenu = true;
   const storeTitle =
     (() => {
       try {
@@ -807,12 +808,6 @@ export default function WaiterDashboard() {
         return null;
       }
     })() || user?.storeSlug || t('waiter.dashboard');
-
-  useEffect(() => {
-    if (!enableWaiterMenu && activeTab === 'menu') {
-      setActiveTab('orders');
-    }
-  }, [enableWaiterMenu, activeTab]);
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
@@ -840,35 +835,33 @@ export default function WaiterDashboard() {
         />
 
         <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 flex-1 w-full">
-          {enableWaiterMenu ? (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-              <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1 shadow-sm">
-                <Button
-                  size="sm"
-                  variant={activeTab === 'orders' ? 'default' : 'ghost'}
-                  className="rounded-full"
-                  onClick={() => setActiveTab('orders')}
-                >
-                  {t('waiter.orders')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={activeTab === 'menu' ? 'default' : 'ghost'}
-                  className="rounded-full"
-                  onClick={() => setActiveTab('menu')}
-                >
-                  {t('menu.title')}
-                </Button>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {storeOrderingMode === 'waiter'
-                  ? t('waiter.waiter_only_mode', { defaultValue: 'Waiter-led ordering' })
-                  : t('waiter.hybrid_mode', { defaultValue: 'Hybrid (QR + waiter)' })}
-              </span>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1 shadow-sm">
+              <Button
+                size="sm"
+                variant={activeTab === 'orders' ? 'default' : 'ghost'}
+                className="rounded-full"
+                onClick={() => setActiveTab('orders')}
+              >
+                {t('waiter.orders')}
+              </Button>
+              <Button
+                size="sm"
+                variant={activeTab === 'menu' ? 'default' : 'ghost'}
+                className="rounded-full"
+                onClick={() => setActiveTab('menu')}
+              >
+                {t('menu.title')}
+              </Button>
             </div>
-          ) : null}
+            <span className="text-xs text-muted-foreground">
+              {storeOrderingMode === 'waiter'
+                ? t('waiter.waiter_only_mode', { defaultValue: 'Waiter-led ordering' })
+                : t('waiter.hybrid_mode', { defaultValue: 'Hybrid (QR + waiter)' })}
+            </span>
+          </div>
 
-          {activeTab === 'menu' && enableWaiterMenu ? (
+          {activeTab === 'menu' ? (
             !assignmentsLoaded ? (
               <DashboardGridSkeleton count={3} />
             ) : (

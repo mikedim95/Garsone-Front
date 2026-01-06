@@ -322,8 +322,23 @@ export default function TableMenu() {
       });
     },
     enabled: bootstrapQueryEnabled,
-    staleTime: 60_000,
+    staleTime: 0,
+    cacheTime: 0,
+    refetchOnMount: "always",
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
     refetchInterval: false,
+  });
+
+  const { data: storeMeta } = useQuery({
+    queryKey: ["store-meta", storeSlug || null],
+    queryFn: async () => api.getStore(),
+    enabled: Boolean(storeSlug || activeTableId),
+    staleTime: 0,
+    cacheTime: 0,
+    refetchOnMount: "always",
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
@@ -445,6 +460,14 @@ export default function TableMenu() {
       } catch {}
     }
   }, [bootstrap, preferGreek, setMenuCache]);
+
+  useEffect(() => {
+    if (!storeMeta?.store) return;
+    setOrderingMode(normalizeOrderingMode(storeMeta.store.orderingMode));
+    if (storeMeta.store.name && !storeName) {
+      setStoreName(storeMeta.store.name);
+    }
+  }, [storeMeta, storeName]);
 
   useEffect(() => {
     if (!menuCache || menuData) return;
@@ -1429,6 +1452,7 @@ export default function TableMenu() {
                     callStatus={calling}
                     callPrompted={callPrompted}
                     onCallClick={handleFloatingCallClick}
+                    showCartButton={guestOrderingEnabled}
                   />
                 )}
               </motion.div>

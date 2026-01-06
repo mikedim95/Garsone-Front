@@ -27,6 +27,7 @@ import type {
   Table,
   WaiterSummary,
   WaiterTableOverview,
+  OrderingMode,
 } from "@/types";
 import { devMocks } from "./devMocks";
 import { getStoredStoreSlug } from "./storeSlug";
@@ -674,6 +675,19 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify(data),
         }),
+  adminUpdateStoreOrderingMode: (
+    storeId: string,
+    orderingMode: OrderingMode
+  ): Promise<{ store: StoreInfo }> =>
+    isOffline()
+      ? devMocks.adminUpdateStoreOrderingMode(storeId, orderingMode)
+      : fetchApi<{ store: StoreInfo }>(
+          `/admin/stores/${storeId}/ordering-mode`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ orderingMode }),
+          }
+        ),
 
   // Payment: Viva payment
   getVivaCheckoutUrl: (
