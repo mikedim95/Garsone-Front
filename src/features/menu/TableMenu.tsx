@@ -224,6 +224,7 @@ export default function TableMenu() {
   const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
   const preferGreek = i18n.language?.toLowerCase().startsWith("el");
+  const showActiveOrders = false; // Temporarily hide the Active Orders UI
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -1435,7 +1436,7 @@ export default function TableMenu() {
           </AnimatePresence>
         </div>
 
-        {activeOrdersOpen && !categorySelected && (
+        {showActiveOrders && activeOrdersOpen && !categorySelected && (
           <div className="max-w-6xl mx-auto px-4 w-full my-6">
             <div className="rounded-[28px] border border-border/60 bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden">
               <div className="flex items-center justify-between px-6 py-5 border-b border-border/60">
@@ -1567,7 +1568,7 @@ export default function TableMenu() {
           </div>
         )}
 
-        {!activeOrdersOpen && placedOrders.length > 0 && (
+        {showActiveOrders && !activeOrdersOpen && placedOrders.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}

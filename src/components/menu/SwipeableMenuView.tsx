@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useEmblaCarousel from 'embla-carousel-react';
 import type { MenuItem, MenuCategory } from '@/types';
@@ -9,10 +9,20 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogHeader, DialogFooter } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { useCartStore } from '@/store/cartStore';
 import { ModifierDialog } from './ModifierDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
 
 interface Props {
   categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
@@ -76,6 +86,11 @@ export const SwipeableMenuView = ({
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isRinging, setIsRinging] = useState(false);
+  const [bellDialogOpen, setBellDialogOpen] = useState(false);
+  
+  // Ref for category tabs container to scroll active tab into view
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
@@ -116,6 +131,20 @@ export const SwipeableMenuView = ({
       contentEmblaApi.scrollTo(targetIndex);
     }
   }, [selectedCategory, contentEmblaApi, allCategories]);
+
+  // Scroll active tab into view when category changes
+  useEffect(() => {
+    const activeTab = tabRefs.current.get(selectedCategory);
+    if (activeTab && tabsContainerRef.current) {
+      const container = tabsContainerRef.current;
+      const tabRect = activeTab.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      
+      // Calculate scroll position to center the active tab
+      const scrollLeft = activeTab.offsetLeft - container.offsetWidth / 2 + activeTab.offsetWidth / 2;
+      container.scrollTo({ left: Math.max(0, scrollLeft), behavior: 'smooth' });
+    }
+  }, [selectedCategory]);
 
   const editingCartItem = editingItemIndex !== null ? cartItems[editingItemIndex] : null;
 
@@ -189,7 +218,12 @@ export const SwipeableMenuView = ({
     }
   }, [orderPlacedSignal]);
 
-  const handleInitiateCall = () => {
+  const handleBellClick = () => {
+    setBellDialogOpen(true);
+  };
+
+  const handleConfirmCall = () => {
+    setBellDialogOpen(false);
     setIsRinging(true);
     onCallClick?.();
     setTimeout(() => {
@@ -231,15 +265,15 @@ export const SwipeableMenuView = ({
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="relative mb-6"
       >
-        {/* Decorative line */}
-        <div className="absolute left-0 right-0 top-1/2 h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
-        
-        <div className="relative flex gap-2 overflow-x-auto pb-2 items-center scrollbar-hide">
+        <div 
+          ref={tabsContainerRef}
+          className="relative flex gap-2 overflow-x-auto pb-2 items-center scrollbar-hide scroll-smooth"
+        >
           <Button
             variant="ghost"
             size="icon"
             onClick={onBack}
-            className="shrink-0 h-11 w-11 rounded-full bg-card/90 backdrop-blur-md border border-border/30 shadow-lg hover:shadow-xl hover:border-primary/40 transition-all duration-300"
+            className="shrink-0 h-10 w-10 rounded-full bg-card/80 backdrop-blur-md border border-border/20 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -249,15 +283,18 @@ export const SwipeableMenuView = ({
               key={cat.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05, duration: 0.3 }}
+              transition={{ delay: idx * 0.03, duration: 0.25 }}
             >
               <Button
+                ref={(el) => {
+                  if (el) tabRefs.current.set(cat.id, el);
+                }}
                 variant={selectedCategory === cat.id ? "default" : "ghost"}
                 onClick={() => onCategoryChange(cat.id)}
-                className={`shrink-0 rounded-full h-11 px-6 text-sm tracking-wide transition-all duration-400 ${
+                className={`shrink-0 rounded-full h-9 px-5 text-sm tracking-wide transition-all duration-300 whitespace-nowrap ${
                   selectedCategory === cat.id
-                    ? 'shadow-xl shadow-primary/30 font-semibold'
-                    : 'bg-card/70 backdrop-blur-md border border-border/20 hover:bg-card hover:border-primary/30 font-medium'
+                    ? 'shadow-md shadow-primary/20 font-medium'
+                    : 'bg-card/60 backdrop-blur-md border border-border/15 hover:bg-card/80 hover:border-primary/20 font-normal text-muted-foreground'
                 }`}
               >
                 {cat.title}
@@ -368,69 +405,81 @@ export const SwipeableMenuView = ({
         </div>
       </div>
 
-      {/* Luxury Floating Action Bar */}
-      <div className="fixed bottom-6 left-4 right-4 z-50 flex justify-center">
+      {/* Delicate Floating Action Bar */}
+      <div className="fixed bottom-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
         <motion.div
-          initial={{ y: 100, opacity: 0 }}
+          initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 25, delay: 0.2 }}
-          className="relative flex items-center gap-4 px-4 py-3 rounded-2xl bg-card/90 backdrop-blur-2xl border border-border/40 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.4)]"
+          transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
+          className="pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full bg-card/70 backdrop-blur-xl border border-border/20 shadow-lg"
         >
-          {/* Subtle glow effect */}
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/5 via-transparent to-primary/5 pointer-events-none" />
-          
-          {/* Call Waiter Button */}
+          {/* Call Waiter Button - Minimal */}
           <motion.button
             type="button"
-            onClick={handleInitiateCall}
+            onClick={handleBellClick}
             disabled={callStatus === 'pending'}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
-            className={`relative flex items-center justify-center h-12 w-12 rounded-xl transition-all duration-300 ${
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`relative flex items-center justify-center h-10 w-10 rounded-full transition-all duration-300 ${
               callStatus === 'pending' 
-                ? 'bg-primary/20 text-primary cursor-wait' 
-                : 'bg-muted/80 hover:bg-primary/15 text-foreground hover:text-primary border border-border/30'
+                ? 'bg-primary/15 text-primary cursor-wait' 
+                : 'bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground'
             }`}
           >
             {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
-              <span className="absolute inset-0 rounded-xl bg-primary/20 animate-ping" />
+              <span className="absolute inset-0 rounded-full bg-primary/15 animate-ping" />
             )}
-            <Bell className={`h-5 w-5 relative ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
+            <Bell className={`h-4 w-4 relative ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
           </motion.button>
 
-          {/* Elegant Divider */}
-          <div className="w-px h-10 bg-gradient-to-b from-transparent via-border/60 to-transparent" />
-
-          {/* Cart Button - Premium styling */}
+          {/* Cart Button - Compact */}
           <motion.button
             onClick={() => setCartOpen(true)}
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="relative flex items-center gap-3 h-12 px-6 rounded-xl bg-primary text-primary-foreground font-medium transition-all duration-300 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/35"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="relative flex items-center gap-2 h-10 pl-3 pr-4 rounded-full bg-primary text-primary-foreground font-medium transition-all duration-300 shadow-sm hover:shadow-md"
           >
             <div className="relative">
-              <ShoppingCart className="h-5 w-5" />
+              <ShoppingCart className="h-4 w-4" />
               {cartItems.length > 0 && (
                 <motion.span 
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center shadow-lg ring-2 ring-primary"
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center ring-1 ring-primary"
                 >
                   {cartItems.length}
                 </motion.span>
               )}
             </div>
             {cartItems.length > 0 ? (
-              <div className="flex flex-col items-start leading-tight">
-                <span className="text-sm font-bold tracking-tight">{formatPrice(cartTotal)}</span>
-                <span className="text-[10px] opacity-75 font-medium">{itemCountLabel}</span>
-              </div>
+              <span className="text-sm font-semibold tracking-tight">{formatPrice(cartTotal)}</span>
             ) : (
-              <span className="text-sm font-medium tracking-wide">{t('menu.cart', { defaultValue: 'Cart' })}</span>
+              <span className="text-sm font-medium">{t('menu.cart', { defaultValue: 'Cart' })}</span>
             )}
           </motion.button>
         </motion.div>
       </div>
+
+      {/* Call Waiter Confirmation Dialog */}
+      <AlertDialog open={bellDialogOpen} onOpenChange={setBellDialogOpen}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-primary" />
+              {t('menu.call_waiter', { defaultValue: 'Call Waiter' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('menu.call_waiter_description', { defaultValue: 'This will notify a waiter that you need assistance at your table. They will come to you shortly.' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCall}>
+              {t('menu.yes_call', { defaultValue: 'Yes, Call Waiter' })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Cart Modal */}
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>

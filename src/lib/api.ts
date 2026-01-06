@@ -695,6 +695,11 @@ export const api = {
         })
       : fetchApi(`/payment/viva/checkout-url`, {
           method: "POST",
-          body: JSON.stringify({ tableId, amount, description }),
+          body: JSON.stringify({
+            tableId,
+            amount,
+            amountCents: Math.round(amount * 100),
+            description,
+          }),
         }),
 };
