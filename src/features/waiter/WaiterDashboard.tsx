@@ -5,20 +5,20 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useOrdersStore } from '@/store/ordersStore';
 import { Order, OrderStatus, OrderingMode, Table } from '@/types';
-import { OrderCard } from '@/components/waiter/OrderCard';
+import { OrderCardPro } from '@/components/waiter/OrderCardPro';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Clock, LayoutGrid, List } from 'lucide-react';
+import { Clock, LayoutGrid, List, UtensilsCrossed } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
 import { TableCardView } from '@/components/waiter/TableCardView';
 import { getStoredStoreSlug, setStoredStoreSlug } from '@/lib/storeSlug';
-import { StatusCarousel } from '@/components/waiter/StatusCarousel';
+import { StatusFilter } from '@/components/waiter/StatusFilter';
 import { TimeRangePicker } from '@/components/waiter/TimeRangePicker';
 import { WaiterMenuTab } from './WaiterMenuTab';
 
@@ -234,6 +234,8 @@ export default function WaiterDashboard() {
       return '';
     }
   });
+  const waiterPrinterTopic =
+    user?.waiterType?.printerTopic ?? null;
   const [storeOrderingMode, setStoreOrderingMode] = useState<OrderingMode>('qr');
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
   
@@ -762,6 +764,26 @@ export default function WaiterDashboard() {
     { key: 'ALL', label: t('status.ALL') },
   ];
 
+  // Compute order counts per status for the filter badges
+  const orderCounts = useMemo(() => {
+    const baseList = ordersAll.filter((o) => shouldShowTable(o.tableId) && withinShift(o) && withinDateFilter(o));
+    const counts: Record<StatusKey, number> = {
+      PLACED: 0,
+      PREPARING: 0,
+      READY: 0,
+      SERVED: 0,
+      PAID: 0,
+      CANCELLED: 0,
+      ALL: baseList.length,
+    };
+    baseList.forEach((o) => {
+      if (counts[o.status] !== undefined) {
+        counts[o.status]++;
+      }
+    });
+    return counts;
+  }, [ordersAll, shouldShowTable, withinShift, withinDateFilter]);
+
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
     const key = `${status}:${orderId}`;
     setActingIds((s) => new Set(s).add(key));
@@ -835,26 +857,43 @@ export default function WaiterDashboard() {
         />
 
         <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 flex-1 w-full">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1 shadow-sm">
-              <Button
-                size="sm"
-                variant={activeTab === 'orders' ? 'default' : 'ghost'}
-                className="rounded-full"
+          {/* Main Navigation - Orders / Menu */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-sm border border-border/50 shadow-sm">
+              <button
                 onClick={() => setActiveTab('orders')}
+                className={clsx(
+                  'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
+                  activeTab === 'orders'
+                    ? 'bg-card text-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                )}
               >
-                {t('waiter.orders')}
-              </Button>
-              <Button
-                size="sm"
-                variant={activeTab === 'menu' ? 'default' : 'ghost'}
-                className="rounded-full"
+                <List className="w-4 h-4" />
+                <span>{t('waiter.orders')}</span>
+                {orderCounts.PLACED + orderCounts.PREPARING + orderCounts.READY > 0 && (
+                  <span className={clsx(
+                    'min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold flex items-center justify-center',
+                    activeTab === 'orders' ? 'bg-primary text-primary-foreground' : 'bg-muted-foreground/20'
+                  )}>
+                    {orderCounts.PLACED + orderCounts.PREPARING + orderCounts.READY}
+                  </span>
+                )}
+              </button>
+              <button
                 onClick={() => setActiveTab('menu')}
+                className={clsx(
+                  'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
+                  activeTab === 'menu'
+                    ? 'bg-card text-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                )}
               >
-                {t('menu.title')}
-              </Button>
+                <UtensilsCrossed className="w-4 h-4" />
+                <span>{t('menu.title')}</span>
+              </button>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground px-2">
               {storeOrderingMode === 'waiter'
                 ? t('waiter.waiter_only_mode', { defaultValue: 'Waiter-led ordering' })
                 : t('waiter.hybrid_mode', { defaultValue: 'Hybrid (QR + waiter)' })}
@@ -869,6 +908,7 @@ export default function WaiterDashboard() {
                 storeSlug={storeSlug}
                 assignedTables={assignedTablesList}
                 orderingMode={storeOrderingMode}
+                printerTopic={waiterPrinterTopic}
                 onOrderCreated={handleMenuOrderCreated}
               />
             )
@@ -921,12 +961,13 @@ export default function WaiterDashboard() {
                   />
                 </div>
 
-                {/* Status filter carousel - mobile optimized swipeable tabs */}
+                {/* Status filter - professional minimal design */}
                 {viewMode === 'orders' && (
-                  <StatusCarousel
+                  <StatusFilter
                     options={statusButtons}
                     selected={statusFilter}
                     onSelect={(key) => setStatusFilter(key)}
+                    orderCounts={orderCounts}
                   />
                 )}
               </div>
@@ -963,9 +1004,9 @@ export default function WaiterDashboard() {
                   )}
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {orders.map((order) => (
-                    <OrderCard
+                    <OrderCardPro
                       key={order.id}
                       order={order}
                       onUpdateStatus={handleUpdateStatus}

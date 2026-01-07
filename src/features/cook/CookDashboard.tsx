@@ -22,6 +22,9 @@ import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+const normalizePrinterTopicValue = (value?: string | null) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
 const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
   const record = isRecord(raw) ? raw : {};
   const quantityCandidate = record.quantity ?? record.qty;
@@ -45,6 +48,12 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
     (typeof record.itemId === 'string' && record.itemId) ||
     (typeof record.id === 'string' && record.id) ||
     `${name}-${idx}`;
+  const printerTopic =
+    typeof record.printerTopic === 'string'
+      ? record.printerTopic
+      : isRecord(record.item) && typeof record.item.printerTopic === 'string'
+        ? record.item.printerTopic
+        : null;
   return {
     item: {
       id: itemId,
@@ -53,6 +62,7 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
       price,
       image: typeof record.image === 'string' ? record.image : '',
       category: typeof record.category === 'string' ? record.category : '',
+      printerTopic,
       available: record.available !== false,
     },
     quantity,
@@ -60,7 +70,11 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
   };
 };
 
-const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
+const normalizeOrder = (
+  raw: unknown,
+  fallbackIndex: number,
+  printerTopic?: string | null
+): Order | null => {
   if (!isRecord(raw)) return null;
   const id =
     typeof raw.id === 'string' && raw.id
@@ -90,6 +104,17 @@ const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
       : new Date().toISOString();
   const itemsArray = Array.isArray(raw.items) ? raw.items : [];
   const items = itemsArray.map((item, index) => normalizeOrderItem(item, index));
+  const normalizedTopic = normalizePrinterTopicValue(printerTopic);
+  const filteredItems = normalizedTopic
+    ? items.filter(
+        (item) =>
+          normalizePrinterTopicValue(item.item?.printerTopic) ===
+          normalizedTopic
+      )
+    : items;
+  if (normalizedTopic && filteredItems.length === 0) {
+    return null;
+  }
   return {
     id,
     tableId,
@@ -98,7 +123,7 @@ const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
     note,
     total,
     createdAt,
-    items,
+    items: filteredItems,
   };
 };
 
@@ -119,6 +144,7 @@ export default function CookDashboard() {
   const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const cookPrinterTopic = user?.cookType?.printerTopic ?? null;
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -190,7 +216,7 @@ export default function CookDashboard() {
         }
         const data = await api.getOrders();
         const mapped = (data.orders ?? [])
-          .map((order, index) => normalizeOrder(order, index))
+          .map((order, index) => normalizeOrder(order, index, cookPrinterTopic))
           .filter((order): order is Order => Boolean(order));
         setOrdersLocal(mapped);
       } catch (error) {
@@ -200,7 +226,7 @@ export default function CookDashboard() {
       }
     };
     init();
-  }, [setOrdersLocal]);
+  }, [cookPrinterTopic, setOrdersLocal]);
 
   // Realtime (WSS): listen for newly placed orders
   useEffect(() => {
@@ -218,7 +244,8 @@ export default function CookDashboard() {
           status: 'PLACED',
           items: payload.items,
         },
-        Date.now()
+        Date.now(),
+        cookPrinterTopic
       );
       if (normalized) upsertOrder(normalized);
     };
@@ -227,7 +254,7 @@ export default function CookDashboard() {
     return () => {
       realtimeService.unsubscribe(topic, handler);
     };
-  }, [storeSlug, upsertOrder]);
+  }, [storeSlug, cookPrinterTopic, upsertOrder]);
 
   // Incoming orders: priority based on createdAt (older first => priority 1)
   const incoming = useMemo(

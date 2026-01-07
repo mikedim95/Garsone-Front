@@ -23,6 +23,7 @@ export interface MenuItem {
   isAvailable?: boolean;
   displayName?: string;
   displayDescription?: string;
+  printerTopic?: string | null;
   modifiers?: Modifier[];
 }
 
@@ -86,6 +87,10 @@ export interface User {
   displayName: string;
   storeId?: string;
   storeSlug?: string;
+  cookTypeId?: string | null;
+  waiterTypeId?: string | null;
+  cookType?: StaffType | null;
+  waiterType?: StaffType | null;
 }
 
 export interface Table {
@@ -192,7 +197,27 @@ export interface WaiterSummary {
   id: string;
   email: string;
   displayName: string;
+  waiterTypeId?: string | null;
+  waiterType?: StaffType | null;
 }
+
+export interface CookSummary {
+  id: string;
+  email: string;
+  displayName: string;
+  cookTypeId?: string | null;
+  cookType?: StaffType | null;
+}
+
+export interface StaffType {
+  id: string;
+  slug: string;
+  title: string;
+  printerTopic?: string | null;
+}
+
+export type CookType = StaffType;
+export type WaiterType = StaffType;
 
 export interface WaiterTableAssignment {
   waiterId: string;

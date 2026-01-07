@@ -33,7 +33,7 @@ const ModifierDialog = lazy(() =>
 
 type CategorySummary = Pick<
   MenuCategory,
-  "id" | "title" | "titleEn" | "titleEl"
+  "id" | "title" | "titleEn" | "titleEl" | "printerTopic"
 >;
 type MenuModifierLink = {
   itemId: string;
@@ -52,14 +52,22 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const mapCategories = (
-  categories?: Array<{ id?: string; title?: string }>
+  categories?: Array<{ id?: string; title?: string; printerTopic?: string | null }>
 ): CategorySummary[] =>
   (categories ?? []).reduce<CategorySummary[]>((acc, category, index) => {
     if (!category) return acc;
     const id = category.id ?? `cat-${index}`;
     const title = category.title ?? "";
     if (!title) return acc;
-    acc.push({ id, title });
+    acc.push({
+      id,
+      title,
+      printerTopic:
+        typeof (category as { printerTopic?: string | null }).printerTopic ===
+        "string"
+          ? (category as { printerTopic?: string | null }).printerTopic
+          : null,
+    });
     return acc;
   }, []);
 
@@ -70,6 +78,7 @@ const buildMenuState = (
       title?: string;
       titleEn?: string;
       titleEl?: string;
+      printerTopic?: string | null;
     }>;
     items?: MenuItem[];
   } = {},
@@ -126,10 +135,39 @@ const buildMenuState = (
   };
 };
 
+const normalizePrinterTopicValue = (value?: string | null) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const filterMenuByPrinterTopic = (
+  data: MenuStateData,
+  topic?: string | null
+): MenuStateData => {
+  const normalized = normalizePrinterTopicValue(topic);
+  if (!normalized) return data;
+  const allowedCategoryIds = new Set(
+    data.categories
+      .filter(
+        (category) =>
+          normalizePrinterTopicValue(category.printerTopic) === normalized
+      )
+      .map((category) => category.id)
+  );
+  return {
+    ...data,
+    categories: data.categories.filter((category) =>
+      allowedCategoryIds.has(category.id)
+    ),
+    items: data.items.filter(
+      (item) => !item.categoryId || allowedCategoryIds.has(item.categoryId)
+    ),
+  };
+};
+
 type WaiterMenuTabProps = {
   storeSlug?: string;
   assignedTables: Array<{ id: string; label: string }>;
   orderingMode: OrderingMode;
+  printerTopic?: string | null;
   onOrderCreated: (order: Order) => void;
 };
 
@@ -137,6 +175,7 @@ export function WaiterMenuTab({
   storeSlug,
   assignedTables,
   orderingMode,
+  printerTopic,
   onOrderCreated,
 }: WaiterMenuTabProps) {
   const { t, i18n } = useTranslation();
@@ -188,18 +227,17 @@ export function WaiterMenuTab({
       })
       .then((res) => {
         if (cancelled) return;
-        setMenuData(
-          buildMenuState(
-            {
-              categories: res.menu.categories,
-              items: res.menu.items,
-              modifiers: res.menu.modifiers || [],
-              modifierOptions: (res.menu as any).modifierOptions || [],
-              itemModifiers: res.menu.itemModifiers || [],
-            },
-            preferGreek
-          )
+        const built = buildMenuState(
+          {
+            categories: res.menu.categories,
+            items: res.menu.items,
+            modifiers: res.menu.modifiers || [],
+            modifierOptions: (res.menu as any).modifierOptions || [],
+            itemModifiers: res.menu.itemModifiers || [],
+          },
+          preferGreek
         );
+        setMenuData(filterMenuByPrinterTopic(built, printerTopic));
       })
       .catch((error) => {
         if (cancelled) return;
@@ -220,7 +258,7 @@ export function WaiterMenuTab({
     return () => {
       cancelled = true;
     };
-  }, [selectedTable, storeSlug, preferGreek, t, menuReload]);
+  }, [selectedTable, storeSlug, preferGreek, printerTopic, t, menuReload]);
 
   const currentTableLabel = useMemo(
     () => assignedTables.find((t) => t.id === selectedTable)?.label,

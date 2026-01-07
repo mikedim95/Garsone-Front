@@ -13,6 +13,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useOrdersStore } from "@/store/ordersStore";
 import type {
   CartItem,
+  CookSummary,
+  CookType,
   ManagerItemSummary,
   ManagerTableSummary,
   MenuCategory,
@@ -24,6 +26,7 @@ import type {
   Table,
   WaiterSummary,
   WaiterTableAssignment,
+  WaiterType,
 } from "@/types";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -111,7 +114,14 @@ type ManagerMode = "basic" | "pro";
 type ManagerTab = "economics" | "orders" | "personnel" | "menu";
 type EconRange = "today" | "last24h" | "week" | "month" | "custom";
 type MenuCategoryMode = "units" | "share";
-type ActiveWaiter = WaiterSummary & { originalDisplayName?: string };
+type ActiveWaiter = WaiterSummary & {
+  originalDisplayName?: string;
+  originalWaiterTypeId?: string | null;
+};
+type ActiveCook = CookSummary & {
+  originalDisplayName?: string;
+  originalCookTypeId?: string | null;
+};
 type TableSummary = {
   id: string;
   label: string;
@@ -125,6 +135,17 @@ interface WaiterForm {
   email: string;
   displayName: string;
   password: string;
+  waiterTypeId?: string | null;
+}
+interface CookForm {
+  email: string;
+  displayName: string;
+  password: string;
+  cookTypeId?: string | null;
+}
+interface StaffTypeForm {
+  title: string;
+  printerTopic: string;
 }
 type WaiterAssignedTable = { id: string; label: string; active: boolean };
 
@@ -340,8 +361,13 @@ export default function ManagerDashboard() {
 
   const [assignments, setAssignments] = useState<WaiterTableAssignment[]>([]);
   const [waiters, setWaiters] = useState<WaiterSummary[]>([]);
+  const [cooks, setCooks] = useState<CookSummary[]>([]);
+  const [cookTypes, setCookTypes] = useState<CookType[]>([]);
+  const [waiterTypes, setWaiterTypes] = useState<WaiterType[]>([]);
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loadingWaiters, setLoadingWaiters] = useState(true);
+  const [loadingCooks, setLoadingCooks] = useState(true);
+  const [loadingTypes, setLoadingTypes] = useState(true);
   const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -360,20 +386,51 @@ export default function ManagerDashboard() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
+  const [editCookModalOpen, setEditCookModalOpen] = useState(false);
+  const [activeCook, setActiveCook] = useState<ActiveCook | null>(null);
   const [initialTableSelection, setInitialTableSelection] = useState<
     Set<string>
   >(new Set());
   const [tableSelection, setTableSelection] = useState<Set<string>>(new Set());
   const [savingWaiter, setSavingWaiter] = useState(false);
+  const [savingCook, setSavingCook] = useState(false);
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newWaiter, setNewWaiter] = useState<WaiterForm>({
     email: "",
     displayName: "",
     password: "",
+    waiterTypeId: null,
   });
   const [addingWaiter, setAddingWaiter] = useState(false);
   const [deletingWaiterId, setDeletingWaiterId] = useState<string | null>(null);
+  const [addCookModalOpen, setAddCookModalOpen] = useState(false);
+  const [newCook, setNewCook] = useState<CookForm>({
+    email: "",
+    displayName: "",
+    password: "",
+    cookTypeId: null,
+  });
+  const [addingCook, setAddingCook] = useState(false);
+  const [deletingCookId, setDeletingCookId] = useState<string | null>(null);
+  const [addCookTypeModalOpen, setAddCookTypeModalOpen] = useState(false);
+  const [newCookType, setNewCookType] = useState<StaffTypeForm>({
+    title: "",
+    printerTopic: "",
+  });
+  const [addingCookType, setAddingCookType] = useState(false);
+  const [deletingCookTypeId, setDeletingCookTypeId] = useState<string | null>(
+    null
+  );
+  const [addWaiterTypeModalOpen, setAddWaiterTypeModalOpen] = useState(false);
+  const [newWaiterType, setNewWaiterType] = useState<StaffTypeForm>({
+    title: "",
+    printerTopic: "",
+  });
+  const [addingWaiterType, setAddingWaiterType] = useState(false);
+  const [deletingWaiterTypeId, setDeletingWaiterTypeId] = useState<
+    string | null
+  >(null);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [tableForm, setTableForm] = useState<{
     id?: string;
@@ -556,6 +613,34 @@ export default function ManagerDashboard() {
     }
   };
 
+  const loadCookData = async () => {
+    setLoadingCooks(true);
+    try {
+      const data = await api.listCooks();
+      setCooks(data.cooks ?? []);
+    } catch (error) {
+      console.error("Failed to load cook data", error);
+    } finally {
+      setLoadingCooks(false);
+    }
+  };
+
+  const loadStaffTypes = async () => {
+    setLoadingTypes(true);
+    try {
+      const [cookRes, waiterRes] = await Promise.all([
+        api.listCookTypes(),
+        api.listWaiterTypes(),
+      ]);
+      setCookTypes(cookRes.types ?? []);
+      setWaiterTypes(waiterRes.types ?? []);
+    } catch (error) {
+      console.error("Failed to load staff types", error);
+    } finally {
+      setLoadingTypes(false);
+    }
+  };
+
   const loadManagerTables = async () => {
     setLoadingTables(true);
     try {
@@ -627,6 +712,8 @@ export default function ManagerDashboard() {
   useEffect(() => {
     if (isAuthenticated() && isManagerRole) {
       loadWaiterData();
+      loadCookData();
+      loadStaffTypes();
       loadManagerTables();
     }
   }, [isAuthenticated, isManagerRole]);
@@ -728,10 +815,23 @@ export default function ManagerDashboard() {
     const assignedIds = assigned
       .map((table) => table.id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
-    setActiveWaiter({ ...waiter, originalDisplayName: waiter.displayName });
+    setActiveWaiter({
+      ...waiter,
+      originalDisplayName: waiter.displayName,
+      originalWaiterTypeId: waiter.waiterTypeId ?? null,
+    });
     setTableSelection(new Set(assignedIds));
     setInitialTableSelection(new Set(assignedIds));
     setEditModalOpen(true);
+  };
+
+  const openEditCook = (cook: CookSummary) => {
+    setActiveCook({
+      ...cook,
+      originalDisplayName: cook.displayName,
+      originalCookTypeId: cook.cookTypeId ?? null,
+    });
+    setEditCookModalOpen(true);
   };
 
   const tablesById = useMemo(() => {
@@ -2087,6 +2187,13 @@ export default function ManagerDashboard() {
     }
   };
 
+  const closeEditCookModal = (open: boolean) => {
+    setEditCookModalOpen(open);
+    if (!open) {
+      setActiveCook(null);
+    }
+  };
+
   const handleToggleTable = (tableId: string, checked: boolean) => {
     setTableSelection((prev) => {
       const next = new Set(prev);
@@ -2112,10 +2219,17 @@ export default function ManagerDashboard() {
       const ops: Array<Promise<unknown>> = [];
       const trimmedName = (activeWaiter.displayName || "").trim();
       const originalName = activeWaiter.originalDisplayName || "";
+      const selectedTypeId = activeWaiter.waiterTypeId ?? null;
+      const originalTypeId = activeWaiter.originalWaiterTypeId ?? null;
+      const updatePayload: Record<string, unknown> = {};
       if (trimmedName && trimmedName !== originalName) {
-        ops.push(
-          api.updateWaiter(activeWaiter.id, { displayName: trimmedName })
-        );
+        updatePayload.displayName = trimmedName;
+      }
+      if (selectedTypeId !== originalTypeId) {
+        updatePayload.waiterTypeId = selectedTypeId;
+      }
+      if (Object.keys(updatePayload).length > 0) {
+        ops.push(api.updateWaiter(activeWaiter.id, updatePayload));
       }
       toAdd.forEach((tableId) =>
         ops.push(api.assignWaiterTable(activeWaiter.id, tableId))
@@ -2154,14 +2268,159 @@ export default function ManagerDashboard() {
     setAddingWaiter(true);
     try {
       const displayName = newWaiter.displayName.trim() || newWaiter.email;
-      await api.createWaiter(newWaiter.email, newWaiter.password, displayName);
-      setNewWaiter({ email: "", displayName: "", password: "" });
+      await api.createWaiter(
+        newWaiter.email,
+        newWaiter.password,
+        displayName,
+        newWaiter.waiterTypeId
+      );
+      setNewWaiter({
+        email: "",
+        displayName: "",
+        password: "",
+        waiterTypeId: null,
+      });
       setAddModalOpen(false);
       await loadWaiterData();
     } catch (error) {
       console.error("Failed to create waiter", error);
     } finally {
       setAddingWaiter(false);
+    }
+  };
+
+  const handleSaveCook = async () => {
+    if (!activeCook) return;
+    setSavingCook(true);
+    try {
+      const trimmedName = (activeCook.displayName || "").trim();
+      const originalName = activeCook.originalDisplayName || "";
+      const selectedTypeId = activeCook.cookTypeId ?? null;
+      const originalTypeId = activeCook.originalCookTypeId ?? null;
+      const updatePayload: Record<string, unknown> = {};
+      if (trimmedName && trimmedName !== originalName) {
+        updatePayload.displayName = trimmedName;
+      }
+      if (selectedTypeId !== originalTypeId) {
+        updatePayload.cookTypeId = selectedTypeId;
+      }
+      if (Object.keys(updatePayload).length > 0) {
+        await api.updateCook(activeCook.id, updatePayload);
+      }
+      await loadCookData();
+      setEditCookModalOpen(false);
+      setActiveCook(null);
+    } catch (error) {
+      console.error("Failed to save cook changes", error);
+    } finally {
+      setSavingCook(false);
+    }
+  };
+
+  const handleDeleteCook = async (cookId: string) => {
+    if (!window.confirm("Delete this cook account?")) return;
+    setDeletingCookId(cookId);
+    try {
+      await api.deleteCook(cookId);
+      await loadCookData();
+    } catch (error) {
+      console.error("Failed to delete cook", error);
+    } finally {
+      setDeletingCookId(null);
+    }
+  };
+
+  const handleCreateCook = async () => {
+    if (!newCook.email || !newCook.password) return;
+    setAddingCook(true);
+    try {
+      const displayName = newCook.displayName.trim() || newCook.email;
+      await api.createCook(
+        newCook.email,
+        newCook.password,
+        displayName,
+        newCook.cookTypeId
+      );
+      setNewCook({
+        email: "",
+        displayName: "",
+        password: "",
+        cookTypeId: null,
+      });
+      setAddCookModalOpen(false);
+      await loadCookData();
+    } catch (error) {
+      console.error("Failed to create cook", error);
+    } finally {
+      setAddingCook(false);
+    }
+  };
+
+  const handleCreateCookType = async () => {
+    if (!newCookType.title.trim()) return;
+    setAddingCookType(true);
+    try {
+      await api.createCookType({
+        title: newCookType.title.trim(),
+        ...(newCookType.printerTopic.trim().length > 0
+          ? { printerTopic: newCookType.printerTopic.trim() }
+          : {}),
+      });
+      setNewCookType({ title: "", printerTopic: "" });
+      setAddCookTypeModalOpen(false);
+      await loadStaffTypes();
+    } catch (error) {
+      console.error("Failed to create cook type", error);
+    } finally {
+      setAddingCookType(false);
+    }
+  };
+
+  const handleDeleteCookType = async (typeId: string) => {
+    if (!window.confirm("Delete this cook type?")) return;
+    setDeletingCookTypeId(typeId);
+    try {
+      await api.deleteCookType(typeId);
+      await loadStaffTypes();
+      await loadCookData();
+    } catch (error) {
+      console.error("Failed to delete cook type", error);
+    } finally {
+      setDeletingCookTypeId(null);
+    }
+  };
+
+  const handleCreateWaiterType = async () => {
+    if (!newWaiterType.title.trim()) return;
+    setAddingWaiterType(true);
+    try {
+      await api.createWaiterType({
+        title: newWaiterType.title.trim(),
+        ...(newWaiterType.printerTopic.trim().length > 0
+          ? { printerTopic: newWaiterType.printerTopic.trim() }
+          : {}),
+      });
+      setNewWaiterType({ title: "", printerTopic: "" });
+      setAddWaiterTypeModalOpen(false);
+      await loadStaffTypes();
+    } catch (error) {
+      console.error("Failed to create waiter type", error);
+    } finally {
+      setAddingWaiterType(false);
+    }
+  };
+
+  const handleDeleteWaiterType = async (typeId: string) => {
+    if (!window.confirm("Delete this waiter type?")) return;
+    setDeletingWaiterTypeId(typeId);
+    try {
+      await api.deleteWaiterType(typeId);
+      await loadStaffTypes();
+      await loadWaiterData();
+    } catch (error) {
+      console.error("Failed to delete waiter type", error);
+    } finally {
+      setDeletingWaiterTypeId(null);
     }
   };
 
@@ -3368,6 +3627,10 @@ export default function ManagerDashboard() {
                                 <Badge variant="outline">
                                   {detail.assignedTables.length} tables
                                 </Badge>
+                                <Badge variant="secondary">
+                                  {detail.waiter.waiterType?.title ||
+                                    "No type"}
+                                </Badge>
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2">
@@ -3426,6 +3689,197 @@ export default function ManagerDashboard() {
                                 Delete
                               </Button>
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="p-4 sm:p-6 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Kitchen
+                        </p>
+                        <h3 className="text-lg font-semibold">
+                          Active cooks
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2 self-start md:self-auto">
+                        <Button
+                          onClick={() => setAddCookModalOpen(true)}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" /> Add cook
+                        </Button>
+                      </div>
+                    </div>
+                    {loadingCooks ? (
+                      <DashboardGridSkeleton
+                        count={4}
+                        className="grid md:grid-cols-2"
+                      />
+                    ) : cooks.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No cooks yet. Add your first cook to get started.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {cooks.map((cook) => (
+                          <div
+                            key={cook.id}
+                            className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="font-semibold text-foreground">
+                                  {cook.displayName || cook.email}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {cook.email}
+                                </p>
+                              </div>
+                              <Badge variant="secondary">
+                                {cook.cookType?.title || "No type"}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEditCook(cook)}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />{" "}
+                                {t("actions.edit")}
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteCook(cook.id)}
+                                disabled={deletingCookId === cook.id}
+                              >
+                                {deletingCookId === cook.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                )}
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="p-4 sm:p-6 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Specialties
+                        </p>
+                        <h3 className="text-lg font-semibold">Cook types</h3>
+                      </div>
+                      <div className="flex items-center gap-2 self-start md:self-auto">
+                        <Button
+                          onClick={() => setAddCookTypeModalOpen(true)}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" /> Add cook type
+                        </Button>
+                      </div>
+                    </div>
+                    {loadingTypes ? (
+                      <DashboardGridSkeleton count={3} className="grid" />
+                    ) : cookTypes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No cook types yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {cookTypes.map((type) => (
+                          <div
+                            key={type.id}
+                            className="border border-border/60 rounded-xl p-4 bg-card flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                          >
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {type.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Printer topic: {type.printerTopic || "none"}
+                              </p>
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteCookType(type.id)}
+                              disabled={deletingCookTypeId === type.id}
+                            >
+                              {deletingCookTypeId === type.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 mr-2" />
+                              )}
+                              Delete
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="p-4 sm:p-6 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Specialties
+                        </p>
+                        <h3 className="text-lg font-semibold">Waiter types</h3>
+                      </div>
+                      <div className="flex items-center gap-2 self-start md:self-auto">
+                        <Button
+                          onClick={() => setAddWaiterTypeModalOpen(true)}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" /> Add waiter type
+                        </Button>
+                      </div>
+                    </div>
+                    {loadingTypes ? (
+                      <DashboardGridSkeleton count={3} className="grid" />
+                    ) : waiterTypes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No waiter types yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {waiterTypes.map((type) => (
+                          <div
+                            key={type.id}
+                            className="border border-border/60 rounded-xl p-4 bg-card flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                          >
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {type.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Printer topic: {type.printerTopic || "none"}
+                              </p>
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteWaiterType(type.id)}
+                              disabled={deletingWaiterTypeId === type.id}
+                            >
+                              {deletingWaiterTypeId === type.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 mr-2" />
+                              )}
+                              Delete
+                            </Button>
                           </div>
                         ))}
                       </div>
@@ -4625,6 +5079,40 @@ export default function ManagerDashboard() {
                   />
                 </div>
                 <div className="grid gap-2">
+                  <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
+                  <Select
+                    value={activeWaiter.waiterTypeId ?? "none"}
+                    onValueChange={(value) =>
+                      setActiveWaiter((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              waiterTypeId: value === "none" ? null : value,
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t("manager.select_type", {
+                          defaultValue: "Select type",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        {t("manager.no_type", { defaultValue: "No type" })}
+                      </SelectItem>
+                      {waiterTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
                   <Label>
                     {t("manager.assigned_tables", {
                       defaultValue: "Assigned tables",
@@ -4686,12 +5174,82 @@ export default function ManagerDashboard() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={editCookModalOpen} onOpenChange={closeEditCookModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit cook</DialogTitle>
+            </DialogHeader>
+            {activeCook ? (
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="cook-name">Display name</Label>
+                  <Input
+                    id="cook-name"
+                    value={activeCook.displayName}
+                    onChange={(e) =>
+                      setActiveCook((prev) =>
+                        prev ? { ...prev, displayName: e.target.value } : prev
+                      )
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Type</Label>
+                  <Select
+                    value={activeCook.cookTypeId ?? "none"}
+                    onValueChange={(value) =>
+                      setActiveCook((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              cookTypeId: value === "none" ? null : value,
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No type</SelectItem>
+                      {cookTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => closeEditCookModal(false)}>
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleSaveCook}
+                disabled={savingCook}
+                className="inline-flex items-center gap-2"
+              >
+                {savingCook && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t("actions.save_changes")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog
           open={addModalOpen}
           onOpenChange={(open) => {
             setAddModalOpen(open);
             if (!open) {
-              setNewWaiter({ email: "", displayName: "", password: "" });
+              setNewWaiter({
+                email: "",
+                displayName: "",
+                password: "",
+                waiterTypeId: null,
+              });
             }
           }}
         >
@@ -4727,6 +5285,36 @@ export default function ManagerDashboard() {
                 />
               </div>
               <div className="grid gap-2">
+                <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
+                <Select
+                  value={newWaiter.waiterTypeId ?? "none"}
+                  onValueChange={(value) =>
+                    setNewWaiter((prev) => ({
+                      ...prev,
+                      waiterTypeId: value === "none" ? null : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("manager.select_type", {
+                        defaultValue: "Select type",
+                      })}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {t("manager.no_type", { defaultValue: "No type" })}
+                    </SelectItem>
+                    {waiterTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        {type.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="new-waiter-password">Password</Label>
                 <Input
                   id="new-waiter-password"
@@ -4754,6 +5342,226 @@ export default function ManagerDashboard() {
               >
                 {addingWaiter && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t("actions.create_waiter")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={addCookModalOpen}
+          onOpenChange={(open) => {
+            setAddCookModalOpen(open);
+            if (!open) {
+              setNewCook({
+                email: "",
+                displayName: "",
+                password: "",
+                cookTypeId: null,
+              });
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add cook</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="new-cook-email">Email</Label>
+                <Input
+                  id="new-cook-email"
+                  type="email"
+                  value={newCook.email}
+                  onChange={(e) =>
+                    setNewCook((prev) => ({ ...prev, email: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="new-cook-name">Display name</Label>
+                <Input
+                  id="new-cook-name"
+                  value={newCook.displayName}
+                  onChange={(e) =>
+                    setNewCook((prev) => ({
+                      ...prev,
+                      displayName: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Type</Label>
+                <Select
+                  value={newCook.cookTypeId ?? "none"}
+                  onValueChange={(value) =>
+                    setNewCook((prev) => ({
+                      ...prev,
+                      cookTypeId: value === "none" ? null : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No type</SelectItem>
+                    {cookTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        {type.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="new-cook-password">Password</Label>
+                <Input
+                  id="new-cook-password"
+                  type="password"
+                  value={newCook.password}
+                  onChange={(e) =>
+                    setNewCook((prev) => ({
+                      ...prev,
+                      password: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddCookModalOpen(false)}>
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleCreateCook}
+                disabled={addingCook || !newCook.email || !newCook.password}
+                className="inline-flex items-center gap-2"
+              >
+                {addingCook && <Loader2 className="h-4 w-4 animate-spin" />}
+                Create cook
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={addCookTypeModalOpen}
+          onOpenChange={(open) => {
+            setAddCookTypeModalOpen(open);
+            if (!open) {
+              setNewCookType({ title: "", printerTopic: "" });
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add cook type</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="cook-type-title">Title</Label>
+                <Input
+                  id="cook-type-title"
+                  value={newCookType.title}
+                  onChange={(e) =>
+                    setNewCookType((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="cook-type-topic">Printer topic</Label>
+                <Input
+                  id="cook-type-topic"
+                  value={newCookType.printerTopic}
+                  onChange={(e) =>
+                    setNewCookType((prev) => ({
+                      ...prev,
+                      printerTopic: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAddCookTypeModalOpen(false)}
+              >
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleCreateCookType}
+                disabled={addingCookType || !newCookType.title.trim()}
+                className="inline-flex items-center gap-2"
+              >
+                {addingCookType && <Loader2 className="h-4 w-4 animate-spin" />}
+                Create type
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={addWaiterTypeModalOpen}
+          onOpenChange={(open) => {
+            setAddWaiterTypeModalOpen(open);
+            if (!open) {
+              setNewWaiterType({ title: "", printerTopic: "" });
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add waiter type</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="waiter-type-title">Title</Label>
+                <Input
+                  id="waiter-type-title"
+                  value={newWaiterType.title}
+                  onChange={(e) =>
+                    setNewWaiterType((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="waiter-type-topic">Printer topic</Label>
+                <Input
+                  id="waiter-type-topic"
+                  value={newWaiterType.printerTopic}
+                  onChange={(e) =>
+                    setNewWaiterType((prev) => ({
+                      ...prev,
+                      printerTopic: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAddWaiterTypeModalOpen(false)}
+              >
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleCreateWaiterType}
+                disabled={addingWaiterType || !newWaiterType.title.trim()}
+                className="inline-flex items-center gap-2"
+              >
+                {addingWaiterType && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Create type
               </Button>
             </DialogFooter>
           </DialogContent>

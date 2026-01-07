@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Copy, Loader2, Plus, QrCode, RefreshCcw, Trash2, Search, Link as LinkIcon } from 'lucide-react';
+import { Check, Copy, Loader2, Plus, QrCode, RefreshCcw, Trash2, Search, Link as LinkIcon, Settings, Grid3X3, Printer } from 'lucide-react';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +13,9 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
-import { api, ApiError, API_BASE } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import type { ManagerTableSummary, OrderingMode, QRTile, StoreInfo } from '@/types';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
@@ -26,7 +27,7 @@ const formatDate = (value?: string) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 export default function ArchitectQrTiles() {
@@ -45,7 +46,6 @@ export default function ArchitectQrTiles() {
   const [refreshing, setRefreshing] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [count, setCount] = useState<string>('12');
-  const [labelPrefix, setLabelPrefix] = useState<string>(''); // unused now, kept for compatibility
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
   const [updatingMode, setUpdatingMode] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -90,7 +90,6 @@ export default function ArchitectQrTiles() {
       setLoadingStores(false);
     }
 
-    // Fallback to current store if admin endpoint is empty
     try {
       const fallback = await api.getStore();
       if (fallback?.store?.id) {
@@ -104,7 +103,7 @@ export default function ArchitectQrTiles() {
         setPrinters((store as any)?.printers ?? []);
       }
     } catch {
-      // ignore, already surfaced toast
+      // ignore
     }
   }, [selectedStoreId, toast]);
 
@@ -309,411 +308,479 @@ export default function ArchitectQrTiles() {
     return tiles.filter((tile) => tile.publicCode.toLowerCase().includes(term));
   }, [tiles, codeSearch]);
 
-  const headerStoreTitle =
-    storeName ||
-    (() => {
-      try {
-        return localStorage.getItem('STORE_NAME');
-      } catch {
-        return null;
-      }
-    })() ||
-    'QR Tile Architect';
+  const handleModeChange = (val: string) => {
+    const next = val as OrderingMode;
+    if (!selectedStoreId) return;
+    setUpdatingMode(true);
+    api
+      .adminUpdateStoreOrderingMode(selectedStoreId, next)
+      .then(() => {
+        setStoreOrderingMode(next);
+        setStores((prev) =>
+          prev.map((s) =>
+            s.id === selectedStoreId ? { ...s, orderingMode: next } : s
+          )
+        );
+        toast({
+          title: 'Venue mode updated',
+          description:
+            next === 'waiter'
+              ? 'Guests can browse; waiters place orders.'
+              : 'Guests can place their own orders.',
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to update ordering mode', error);
+        toast({
+          variant: 'destructive',
+          title: 'Update failed',
+          description: error instanceof ApiError ? error.message : 'Try again.',
+        });
+      })
+      .finally(() => setUpdatingMode(false));
+  };
 
   return (
     <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
-        supertitle="QR Tile Architect"
-        title={headerStoreTitle}
+        supertitle="Admin"
+        title="QR Architect"
         subtitle={storeName ? `Managing ${storeName}` : 'Generate & assign QR tiles'}
-        icon="🎛️"
+        icon="🏗️"
         tone="secondary"
         rightContent={
-          <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline" className="bg-secondary/40 border-secondary/50">
-              {isArchitect ? 'Architect' : 'Manager'}
-            </Badge>
-            {selectedStoreId && (
-              <span className="font-medium text-foreground/80">Store ID: {selectedStoreId.slice(0, 8)}…</span>
-            )}
-          </div>
+          storesLoading ? (
+            <div className="h-9 w-48 bg-muted/50 rounded animate-pulse" />
+          ) : (
+            <Select
+              value={selectedStoreId}
+              onValueChange={(value) => setSelectedStoreId(value)}
+              disabled={loadingStores || stores.length === 0}
+            >
+              <SelectTrigger className="w-48 h-9 text-sm bg-card border-border/50">
+                <SelectValue placeholder="Select store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
         }
         burgerActions={
-          <div className="flex items-center gap-2 text-xs">
-            <Button variant="outline" size="sm" onClick={() => selectedStoreId && refreshTiles(selectedStoreId)} disabled={refreshing}>
-              {refreshing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="mr-2 h-3.5 w-3.5" />}
-              Refresh
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => selectedStoreId && refreshTiles(selectedStoreId)}
+              disabled={refreshing}
+            >
+              {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+              Refresh data
             </Button>
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Button
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => setDialogOpen(true)}
+            >
               <Plus className="mr-2 h-4 w-4" />
-              Generate QR tiles
+              Generate tiles
             </Button>
           </div>
         }
       />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <QrCode className="h-5 w-5 text-primary" />
-                Store scope
-              </CardTitle>
-              <CardDescription>Choose a venue to inspect and manage its QR tiles.</CardDescription>
-            </div>
-            {storesLoading ? (
-              <DashboardGridSkeleton count={2} className="w-full grid sm:grid-cols-2" />
-            ) : (
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                <div className="flex items-center gap-2">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search code"
-                    value={codeSearch}
-                    onChange={(e) => setCodeSearch(e.target.value)}
-                    className="w-44"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="store-select">Store</Label>
-                  <Select
-                    value={selectedStoreId}
-                    onValueChange={(value) => setSelectedStoreId(value)}
-                    disabled={loadingStores || stores.length === 0}
-                  >
-                    <SelectTrigger id="store-select" className="w-64">
-                      <SelectValue placeholder="Select store" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {stores.map((store) => (
-                        <SelectItem key={store.id} value={store.id}>
-                          {store.name} {store.slug ? `(${store.slug})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button variant="outline" onClick={loadStores} disabled={loadingStores}>
-                  {loadingStores ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-                  Reload stores
-                </Button>
-                <Button onClick={() => setDialogOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Generate QR tiles
-                </Button>
-              </div>
-            )}
-          </CardHeader>
-        </Card>
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <Tabs defaultValue="tiles" className="space-y-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <TabsList className="bg-muted/50 p-1">
+              <TabsTrigger value="tiles" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Grid3X3 className="h-4 w-4" />
+                QR Tiles
+                {tiles.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                    {tiles.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Settings className="h-4 w-4" />
+                Settings
+              </TabsTrigger>
+            </TabsList>
 
-        <Card>
-          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <CardTitle>Venue mode</CardTitle>
-              <CardDescription>
-                Choose whether guests can place orders from their phones or browse-only while waiters submit orders.
-              </CardDescription>
-            </div>
-            <div className="space-y-2 sm:space-y-0 sm:flex sm:items-center sm:gap-3">
-              <Label className="text-xs text-muted-foreground">Mode</Label>
-              <Select
-                value={storeOrderingMode}
-                onValueChange={(val) => {
-                  const next = val as OrderingMode;
-                  if (!selectedStoreId) return;
-                  setUpdatingMode(true);
-                  api
-                    .adminUpdateStoreOrderingMode(selectedStoreId, next)
-                    .then(() => {
-                      setStoreOrderingMode(next);
-                      setStores((prev) =>
-                        prev.map((s) =>
-                          s.id === selectedStoreId ? { ...s, orderingMode: next } : s
-                        )
-                      );
-                      toast({
-                        title: 'Venue mode updated',
-                        description:
-                          next === 'waiter'
-                            ? 'Guests can browse; waiters place orders.'
-                            : 'Guests can place their own orders.',
-                      });
-                    })
-                    .catch((error) => {
-                      console.error('Failed to update ordering mode', error);
-                      toast({
-                        variant: 'destructive',
-                        title: 'Update failed',
-                        description: error instanceof ApiError ? error.message : 'Try again.',
-                      });
-                    })
-                    .finally(() => setUpdatingMode(false));
-                }}
-                disabled={!selectedStoreId || updatingMode}
-              >
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="qr">Customer self-order</SelectItem>
-                  <SelectItem value="waiter">Browse-only (waiter submits)</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <CardTitle>Printers</CardTitle>
-              <CardDescription>Set the printer topics available for this venue.</CardDescription>
-            </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPrinters((prev) => [...prev, ''])} disabled={!selectedStoreId}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add printer
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => selectedStoreId && refreshTiles(selectedStoreId)}
+                disabled={refreshing}
+              >
+                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               </Button>
-              <Button onClick={handleSavePrinters} disabled={!selectedStoreId || savingPrinters}>
-                {savingPrinters ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Save
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Generate
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {printers.length === 0 && (
-              <p className="text-sm text-muted-foreground">No printers defined yet. Add printer topics for routing orders.</p>
-            )}
-            <div className="space-y-2">
-              {printers.map((p, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    value={p}
-                    onChange={(e) =>
-                      setPrinters((prev) => prev.map((val, i) => (i === idx ? e.target.value : val)))
-                    }
-                    placeholder={`printer_${idx + 1}`}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setPrinters((prev) => prev.filter((_, i) => i !== idx))}
-                    aria-label="Remove printer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              These values appear as printer choices when managers assign categories.
-            </p>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>QR tiles</CardTitle>
-            <CardDescription>Copy, assign, deactivate, or delete tiles.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tilesLoading ? (
-              <DashboardGridSkeleton count={6} className="grid md:grid-cols-2" />
-            ) : (
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40">
-                      <TableHead className="w-[180px]">Public code</TableHead>
-                      <TableHead className="w-[220px]">Assigned table</TableHead>
-                      <TableHead className="w-[260px]">URL</TableHead>
-                      <TableHead className="w-[160px] text-center">QR</TableHead>
-                      <TableHead className="w-[120px] text-center">Active</TableHead>
-                      <TableHead className="w-[190px] text-right">Created</TableHead>
-                      <TableHead className="w-[80px] text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTiles.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                          No QR tiles yet. Generate a batch to get started.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredTiles.map((tile) => (
-                        <TableRow key={tile.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-sm">{tile.publicCode}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => copyTileCode(tile.publicCode)}
-                                aria-label={`Copy ${tile.publicCode}`}
+          {/* QR Tiles Tab */}
+          <TabsContent value="tiles" className="space-y-4 mt-0">
+            {/* Search bar */}
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by code..."
+                  value={codeSearch}
+                  onChange={(e) => setCodeSearch(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
+              <span className="text-sm text-muted-foreground">
+                {filteredTiles.length} tile{filteredTiles.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Recent tiles panel */}
+            {recentTiles.length > 0 && (
+              <Card className="border-primary/20 bg-primary/5">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <QrCode className="h-4 w-4 text-primary" />
+                      <CardTitle className="text-base">Just generated</CardTitle>
+                      <Badge variant="secondary" className="text-xs">{recentTiles.length} new</Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => copyRecentAsCsv(false)}>
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        Codes
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => copyRecentAsCsv(true)}>
+                        CSV
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <ScrollArea className="h-32">
+                    <div className="flex flex-wrap gap-2">
+                      {recentTiles.map((tile) => (
+                        <button
+                          key={tile.id}
+                          onClick={() => copyTileCode(tile.publicCode)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-background border border-border/50 text-sm font-mono hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                        >
+                          {tile.publicCode}
+                          {copiedCode === tile.publicCode ? (
+                            <Check className="h-3 w-3 text-green-600" />
+                          ) : (
+                            <Copy className="h-3 w-3 text-muted-foreground" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Tiles table */}
+            <Card>
+              <CardContent className="p-0">
+                {tilesLoading ? (
+                  <div className="p-6">
+                    <DashboardGridSkeleton count={4} className="grid gap-3" />
+                  </div>
+                ) : filteredTiles.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <QrCode className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
+                    <p className="text-muted-foreground">No QR tiles found</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">Generate a batch to get started</p>
+                    <Button className="mt-4" onClick={() => setDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Generate tiles
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableHead className="font-medium">Code</TableHead>
+                          <TableHead className="font-medium">Table</TableHead>
+                          <TableHead className="font-medium hidden md:table-cell">QR</TableHead>
+                          <TableHead className="font-medium text-center w-20">Active</TableHead>
+                          <TableHead className="font-medium text-right hidden sm:table-cell">Created</TableHead>
+                          <TableHead className="w-12"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTiles.map((tile) => (
+                          <TableRow key={tile.id} className="group">
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <code className="text-sm font-semibold text-foreground bg-muted/50 px-2 py-0.5 rounded">
+                                  {tile.publicCode}
+                                </code>
+                                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => copyTileCode(tile.publicCode)}
+                                  >
+                                    {copiedCode === tile.publicCode ? (
+                                      <Check className="h-3.5 w-3.5 text-green-600" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => copyTileUrl(tile.publicCode)}
+                                  >
+                                    <LinkIcon className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={tile.tableId ?? 'unassigned'}
+                                onValueChange={(value) =>
+                                  handleUpdateTile(tile.id, { tableId: value === 'unassigned' ? null : value })
+                                }
                               >
-                                {copiedCode === tile.publicCode ? (
-                                  <Check className="h-4 w-4 text-green-600" />
-                                ) : (
-                                  <Copy className="h-4 w-4" />
-                                )}
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={tile.tableId ?? 'unassigned'}
-                              onValueChange={(value) =>
-                                handleUpdateTile(tile.id, { tableId: value === 'unassigned' ? null : value })
-                              }
-                            >
-                              <SelectTrigger className="w-[200px]">
-                                <SelectValue>
-                                  {tile.tableLabel ?? 'Unassigned'}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="unassigned">Unassigned</SelectItem>
-                                {tables.map((table) => (
-                                  <SelectItem key={table.id} value={table.id}>
-                                    {table.label} {table.isActive ? '' : '(inactive)'}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs break-all">{buildPublicUrl(tile.publicCode)}</span>
-                              <Button variant="ghost" size="icon" onClick={() => copyTileUrl(tile.publicCode)} aria-label="Copy URL">
-                                {copiedCode === tile.publicCode ? <Check className="h-4 w-4 text-green-600" /> : <LinkIcon className="h-4 w-4" />}
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setPreviewQr({
-                                  code: tile.publicCode,
-                                  url: buildPublicUrl(tile.publicCode),
-                                })
-                              }
-                              className="inline-block rounded border border-border bg-card p-1 transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                            >
-                              <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                                  buildPublicUrl(tile.publicCode)
-                                )}`}
-                                alt={`QR for ${tile.publicCode}`}
-                                className="h-20 w-20"
-                                loading="lazy"
-                              />
-                            </button>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex items-center justify-center">
+                                <SelectTrigger className="w-40 h-8 text-sm">
+                                  <SelectValue>
+                                    {tile.tableLabel ?? <span className="text-muted-foreground">Unassigned</span>}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                                  {tables.map((table) => (
+                                    <SelectItem key={table.id} value={table.id}>
+                                      {table.label} {table.isActive ? '' : '(inactive)'}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewQr({
+                                    code: tile.publicCode,
+                                    url: buildPublicUrl(tile.publicCode),
+                                  })
+                                }
+                                className="block rounded border border-border/50 bg-white p-0.5 hover:border-primary/50 hover:shadow-sm transition-all"
+                              >
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
+                                    buildPublicUrl(tile.publicCode)
+                                  )}`}
+                                  alt={`QR for ${tile.publicCode}`}
+                                  className="h-10 w-10"
+                                  loading="lazy"
+                                />
+                              </button>
+                            </TableCell>
+                            <TableCell className="text-center">
                               <Switch
                                 checked={tile.isActive}
                                 onCheckedChange={(checked) => handleUpdateTile(tile.id, { isActive: checked })}
                                 disabled={updatingTileId === tile.id}
                               />
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right text-sm text-muted-foreground">
-                            {formatDate(tile.createdAt || tile.updatedAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteTile(tile.id)}
-                              aria-label="Delete tile"
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                            </TableCell>
+                            <TableCell className="text-right text-sm text-muted-foreground hidden sm:table-cell">
+                              {formatDate(tile.createdAt || tile.updatedAt)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDeleteTile(tile.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {recentTiles.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recently generated</CardTitle>
-              <CardDescription>Quick copy panel for printing and labeling.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => copyRecentAsCsv(false)}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy codes
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => copyRecentAsCsv(true)}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy CSV
-                  </Button>
+          {/* Settings Tab */}
+          <TabsContent value="settings" className="space-y-4 mt-0">
+            {/* Ordering Mode */}
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Settings className="h-4 w-4 text-primary" />
+                      Ordering Mode
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Control how guests interact with the menu
+                    </CardDescription>
+                  </div>
+                  <Select
+                    value={storeOrderingMode}
+                    onValueChange={handleModeChange}
+                    disabled={!selectedStoreId || updatingMode}
+                  >
+                    <SelectTrigger className="w-52">
+                      <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="qr">
+                        <span className="flex flex-col items-start">
+                          <span>Self-order</span>
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="waiter">
+                        <span className="flex flex-col items-start">
+                          <span>Browse-only</span>
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="hybrid">
+                        <span className="flex flex-col items-start">
+                          <span>Hybrid</span>
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Badge variant="secondary">{recentTiles.length} new</Badge>
-              </div>
-              <Separator className="my-3" />
-              <ScrollArea className="h-[200px] rounded-md border">
-                <div className="divide-y divide-border">
-                  {recentTiles.map((tile) => (
-                    <div key={tile.id} className="flex items-center justify-between px-4 py-3">
-                      <div>
-                        <p className="font-mono text-sm text-foreground">{tile.publicCode}</p>
-                        <p className="text-xs text-muted-foreground">URL: {buildPublicUrl(tile.publicCode)}</p>
-                        <p className="text-xs text-muted-foreground">Table: {tile.tableLabel || 'Unassigned'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => copyTileCode(tile.publicCode)}>
-                          {copiedCode === tile.publicCode ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => copyTileUrl(tile.publicCode)}>
-                          {copiedCode === tile.publicCode ? <Check className="h-4 w-4" /> : <LinkIcon className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex gap-4 text-sm">
+                  <div className={`flex-1 p-3 rounded-lg border transition-colors ${storeOrderingMode === 'qr' ? 'bg-primary/5 border-primary/30' : 'bg-muted/30 border-transparent'}`}>
+                    <p className="font-medium">Self-order</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">Guests order directly from their phone</p>
+                  </div>
+                  <div className={`flex-1 p-3 rounded-lg border transition-colors ${storeOrderingMode === 'waiter' ? 'bg-primary/5 border-primary/30' : 'bg-muted/30 border-transparent'}`}>
+                    <p className="font-medium">Browse-only</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">Guests browse, waiters submit orders</p>
+                  </div>
+                  <div className={`flex-1 p-3 rounded-lg border transition-colors ${storeOrderingMode === 'hybrid' ? 'bg-primary/5 border-primary/30' : 'bg-muted/30 border-transparent'}`}>
+                    <p className="font-medium">Hybrid</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">Both modes available</p>
+                  </div>
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+
+            {/* Printers */}
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Printer className="h-4 w-4 text-primary" />
+                      Printers
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Configure printer topics for order routing
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPrinters((prev) => [...prev, ''])}
+                      disabled={!selectedStoreId}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSavePrinters}
+                      disabled={!selectedStoreId || savingPrinters}
+                    >
+                      {savingPrinters && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {printers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Printer className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">No printers configured</p>
+                    <p className="text-xs mt-0.5">Add printer topics for routing orders</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {printers.map((p, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          value={p}
+                          onChange={(e) =>
+                            setPrinters((prev) => prev.map((val, i) => (i === idx ? e.target.value : val)))
+                          }
+                          placeholder={`printer_${idx + 1}`}
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                          onClick={() => setPrinters((prev) => prev.filter((_, i) => i !== idx))}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
+      {/* Generate Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Generate QR tiles</DialogTitle>
-            <DialogDescription>Create a batch of QR codes ready for printing and later assignment.</DialogDescription>
+            <DialogDescription>Create a batch of QR codes for printing</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="tile-count">How many tiles?</Label>
-              <Input
-                id="tile-count"
-                type="number"
-                min={1}
-                max={500}
-                value={count}
-                onChange={(e) => setCount(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Limit 500 per batch.</p>
-            </div>
+          <div className="py-4">
+            <Label htmlFor="tile-count" className="text-sm font-medium">
+              Number of tiles
+            </Label>
+            <Input
+              id="tile-count"
+              type="number"
+              min={1}
+              max={500}
+              value={count}
+              onChange={(e) => setCount(e.target.value)}
+              className="mt-2"
+            />
+            <p className="text-xs text-muted-foreground mt-2">Maximum 500 per batch</p>
           </div>
-          <DialogFooter className="mt-4">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
@@ -725,28 +792,32 @@ export default function ArchitectQrTiles() {
         </DialogContent>
       </Dialog>
 
+      {/* QR Preview Dialog */}
       <Dialog open={Boolean(previewQr)} onOpenChange={(open) => !open && setPreviewQr(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>QR for {previewQr?.code}</DialogTitle>
-            <DialogDescription>{previewQr?.url}</DialogDescription>
+            <DialogTitle className="font-mono">{previewQr?.code}</DialogTitle>
+            <DialogDescription className="text-xs break-all">{previewQr?.url}</DialogDescription>
           </DialogHeader>
-          <div className="w-full flex items-center justify-center py-4">
-            {previewQr ? (
+          <div className="flex justify-center py-6">
+            {previewQr && (
               <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(
                   previewQr.url
                 )}`}
                 alt={`QR for ${previewQr.code}`}
-                className="h-64 w-64 rounded border border-border bg-card p-2"
+                className="h-56 w-56 rounded-lg border border-border bg-white p-2"
               />
-            ) : null}
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => copyTileUrl(previewQr?.code || '')}>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => copyTileUrl(previewQr?.code || '')}>
+              <Copy className="mr-2 h-4 w-4" />
               Copy URL
             </Button>
-            <Button onClick={() => setPreviewQr(null)}>Close</Button>
+            <Button className="flex-1" onClick={() => setPreviewQr(null)}>
+              Done
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
