@@ -235,13 +235,15 @@ export const ManagerMenuPanel = () => {
           titleEl: mod.titleEl || mod.title || '',
           required: links.find((l) => l.modifierId === mod.id)?.isRequired ?? mod.minSelect > 0,
           isAvailable: mod.isAvailable ?? true,
-          options: (mod.options ?? []).map((opt) => ({
+          options: (mod.options || (mod as any).modifierOptions || []).map((opt: any) => ({
             id: opt.id,
             titleEn: opt.titleEn || opt.title || opt.label || '',
             titleEl: opt.titleEl || opt.title || opt.label || '',
             price: ((opt.priceDeltaCents ?? opt.priceDelta ?? 0) / 100).toFixed(2),
           })),
-          originalOptionIds: (mod.options ?? []).map((o) => o.id || '').filter(Boolean),
+          originalOptionIds: (mod.options || (mod as any).modifierOptions || [])
+            .map((o: any) => o.id || '')
+            .filter(Boolean),
         }))
       );
     } catch (error) {
