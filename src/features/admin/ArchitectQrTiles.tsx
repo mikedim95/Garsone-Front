@@ -20,7 +20,7 @@ import type { ManagerTableSummary, OrderingMode, QRTile, StoreInfo } from '@/typ
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { PageTransition } from '@/components/ui/page-transition';
 
-type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug' | 'orderingMode'>;
+type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug' | 'orderingMode' | 'printers'>;
 
 const formatDate = (value?: string) => {
   if (!value) return '—';
@@ -53,6 +53,8 @@ export default function ArchitectQrTiles() {
   const [previewQr, setPreviewQr] = useState<{ code: string; url: string } | null>(null);
   const [publicResolverBase, setPublicResolverBase] = useState<string>('');
   const [storeOrderingMode, setStoreOrderingMode] = useState<OrderingMode>('qr');
+  const [printers, setPrinters] = useState<string[]>([]);
+  const [savingPrinters, setSavingPrinters] = useState(false);
 
   const isArchitect = user?.role === 'architect';
   const isAllowed = isArchitect;
@@ -74,6 +76,7 @@ export default function ArchitectQrTiles() {
           setSelectedStoreId(list[0].id);
         }
         setStoreOrderingMode((list[0] as StoreOption | undefined)?.orderingMode ?? 'qr');
+        setPrinters((list[0] as any)?.printers ?? []);
         return;
       }
     } catch (error) {
@@ -98,6 +101,7 @@ export default function ArchitectQrTiles() {
         };
         setStores([store]);
         setSelectedStoreId(store.id);
+        setPrinters((store as any)?.printers ?? []);
       }
     } catch {
       // ignore, already surfaced toast
@@ -151,6 +155,8 @@ export default function ArchitectQrTiles() {
     }
     const mode = stores.find((s) => s.id === selectedStoreId)?.orderingMode ?? 'qr';
     setStoreOrderingMode(mode as OrderingMode);
+    const selectedStore = stores.find((s) => s.id === selectedStoreId) as any;
+    setPrinters(selectedStore?.printers ?? []);
   }, [selectedStoreId, refreshTiles, stores]);
 
   useEffect(() => {
@@ -245,6 +251,30 @@ export default function ArchitectQrTiles() {
     if (ok) {
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 1200);
+    }
+  };
+
+  const handleSavePrinters = async () => {
+    if (!selectedStoreId) return;
+    const cleaned = Array.from(new Set(printers.map((p) => p.trim()).filter(Boolean)));
+    setSavingPrinters(true);
+    try {
+      const res = await api.adminUpdateStorePrinters(selectedStoreId, cleaned);
+      const updatedPrinters = (res.store as any)?.printers ?? [];
+      setPrinters(updatedPrinters);
+      setStores((prev) =>
+        prev.map((s) => (s.id === selectedStoreId ? { ...s, printers: updatedPrinters } : s))
+      );
+      toast({ title: 'Printers saved', description: 'Updated printer topics for this venue.' });
+    } catch (error) {
+      console.error('Failed to save printers', error);
+      toast({
+        variant: 'destructive',
+        title: 'Save failed',
+        description: error instanceof ApiError ? error.message : 'Try again.',
+      });
+    } finally {
+      setSavingPrinters(false);
     }
   };
 
@@ -433,6 +463,54 @@ export default function ArchitectQrTiles() {
               </Select>
             </div>
           </CardHeader>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle>Printers</CardTitle>
+              <CardDescription>Set the printer topics available for this venue.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPrinters((prev) => [...prev, ''])} disabled={!selectedStoreId}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add printer
+              </Button>
+              <Button onClick={handleSavePrinters} disabled={!selectedStoreId || savingPrinters}>
+                {savingPrinters ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {printers.length === 0 && (
+              <p className="text-sm text-muted-foreground">No printers defined yet. Add printer topics for routing orders.</p>
+            )}
+            <div className="space-y-2">
+              {printers.map((p, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    value={p}
+                    onChange={(e) =>
+                      setPrinters((prev) => prev.map((val, i) => (i === idx ? e.target.value : val)))
+                    }
+                    placeholder={`printer_${idx + 1}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPrinters((prev) => prev.filter((_, i) => i !== idx))}
+                    aria-label="Remove printer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              These values appear as printer choices when managers assign categories.
+            </p>
+          </CardContent>
         </Card>
 
         <Card>

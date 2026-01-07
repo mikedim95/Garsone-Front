@@ -35,7 +35,7 @@ type QRTileRecord = {
 };
 
 type Db = {
-  store: { id: string; name: string; slug?: string; orderingMode?: OrderingMode };
+  store: { id: string; name: string; slug?: string; orderingMode?: OrderingMode; printers?: string[] };
   categories: Category[];
   items: Item[];
   modifiers: Modifier[];
@@ -441,6 +441,7 @@ export const devMocks = {
           name: db.store.name,
           slug: db.store.slug || 'local-store',
           orderingMode: db.store.orderingMode || 'qr',
+          printers: db.store.printers || [],
         },
       ],
     });
@@ -458,6 +459,23 @@ export const devMocks = {
         name: db.store.name,
         slug: db.store.slug || 'local-store',
         orderingMode: db.store.orderingMode,
+        printers: db.store.printers || [],
+      },
+    });
+  },
+  adminUpdateStorePrinters(storeId: string, printers: string[]) {
+    const db = snapshot();
+    if (db.store.id !== storeId) return Promise.reject(new Error('Store not found'));
+    const cleaned = Array.from(new Set((printers || []).map((p) => p.trim()).filter(Boolean)));
+    db.store.printers = cleaned;
+    save(db);
+    return Promise.resolve({
+      store: {
+        id: db.store.id,
+        name: db.store.name,
+        slug: db.store.slug || 'local-store',
+        orderingMode: db.store.orderingMode || 'qr',
+        printers: db.store.printers || [],
       },
     });
   },

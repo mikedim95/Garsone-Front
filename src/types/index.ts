@@ -167,6 +167,7 @@ export interface StoreInfo {
   currencySymbol?: string;
   timezone?: string;
   orderingMode?: OrderingMode;
+   printers?: string[];
 }
 
 export interface LandingStoreLink {

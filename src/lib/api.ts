@@ -688,6 +688,16 @@ export const api = {
             body: JSON.stringify({ orderingMode }),
           }
         ),
+  adminUpdateStorePrinters: (
+    storeId: string,
+    printers: string[]
+  ): Promise<{ store: StoreInfo }> =>
+    isOffline()
+      ? devMocks.adminUpdateStorePrinters(storeId, printers)
+      : fetchApi<{ store: StoreInfo }>(`/admin/stores/${storeId}/printers`, {
+          method: "PATCH",
+          body: JSON.stringify({ printers }),
+        }),
 
   // Payment: Viva payment
   getVivaCheckoutUrl: (
