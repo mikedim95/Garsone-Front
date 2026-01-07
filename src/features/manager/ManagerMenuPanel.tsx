@@ -68,25 +68,11 @@ export const ManagerMenuPanel = () => {
     printerChoice: '',
   });
   const [savingCategory, setSavingCategory] = useState(false);
+  const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('edit');
 
-  const choosePrinterTopic = (initial?: string | null) => {
-    if (!printerTopics.length) {
-      const input = window.prompt('Printer topic for this category (optional)', initial ?? '') ?? '';
-      const trimmed = input.trim();
-      return trimmed.length ? trimmed : null;
-    }
-    const options = printerTopics.map((p, i) => `${i + 1}) ${p}`).join('\n');
-    const input =
-      window.prompt(
-        `Select printer topic (enter number) or type a custom topic:\n${options}`,
-        initial ?? printerTopics[0]
-      ) ?? '';
-    const trimmed = input.trim();
-    const idx = Number(trimmed);
-    if (Number.isInteger(idx) && idx >= 1 && idx <= printerTopics.length) {
-      return printerTopics[idx - 1];
-    }
-    return trimmed.length ? trimmed : null;
+  const getPrinterOptions = (selected?: string) => {
+    if (!selected || printerTopics.includes(selected)) return printerTopics;
+    return [selected, ...printerTopics];
   };
 
   const load = useCallback(async () => {
@@ -103,24 +89,23 @@ export const ManagerMenuPanel = () => {
           title: c.title || c.titleEn || c.titleEl || '',
         }))
       );
-      const categoryPrinters =
-        (categoriesRes.categories ?? [])
-          .map((c) => (typeof c.printerTopic === 'string' ? c.printerTopic.trim() : ''))
-          .filter(Boolean) ?? [];
-      const printers =
-        ((storeRes as any)?.store?.settings?.printers as string[]) ||
-        ((storeRes as any)?.store?.settingsJson?.printers as string[]) ||
+      const rawPrinters =
+        (storeRes as any)?.store?.settings?.printers ??
+        (storeRes as any)?.store?.settingsJson?.printers ??
+        (storeRes as any)?.store?.printers ??
         [];
-      if (Array.isArray(printers)) {
+      if (Array.isArray(rawPrinters)) {
         setPrinterTopics(
           Array.from(
             new Set(
-              [...printers, ...categoryPrinters].map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean)
+              rawPrinters
+                .map((printer) => (typeof printer === 'string' ? printer.trim() : ''))
+                .filter(Boolean)
             )
           )
         );
-      } else if (categoryPrinters.length) {
-        setPrinterTopics(Array.from(new Set(categoryPrinters)));
+      } else {
+        setPrinterTopics([]);
       }
       if (storeRes?.store?.slug) setStoreSlug(storeRes.store.slug);
     } catch (error) {
@@ -151,21 +136,29 @@ export const ManagerMenuPanel = () => {
     load();
   }, [load]);
 
+  const openCategoryCreate = () => {
+    const fallbackPrinter = printerTopics[0] ?? '';
+    setCategoryForm({ title: '', printerChoice: fallbackPrinter });
+    setEditingCategory(null);
+    setCategoryDialogMode('create');
+    setCategoryDialogOpen(true);
+  };
+
   const openCategoryEdit = (cat: MenuCategory) => {
     const printer = cat.printerTopic || '';
-    const hasPrinters = printerTopics.length > 0;
-    const fallbackPrinter = hasPrinters ? printerTopics[0] : '';
+    const fallbackPrinter = printerTopics[0] ?? '';
     setCategoryForm({
       title: cat.title || '',
       printerChoice: printer || fallbackPrinter || '',
     });
     setEditingCategory(cat);
+    setCategoryDialogMode('edit');
     setCategoryDialogOpen(true);
   };
 
   const saveCategoryEdit = async () => {
-    if (!editingCategory) return;
-    const title = categoryForm.title.trim() || editingCategory.title || '';
+    const fallbackTitle = editingCategory?.title || '';
+    const title = categoryForm.title.trim() || fallbackTitle;
     if (!title) {
       toast({ title: 'Title required', description: 'Category title cannot be empty' });
       return;
@@ -173,18 +166,25 @@ export const ManagerMenuPanel = () => {
     const effectivePrinter = (categoryForm.printerChoice || '').trim();
     setSavingCategory(true);
     try {
-      await api.updateCategory(editingCategory.id, {
-        titleEn: title,
-        titleEl: title,
-        printerTopic: effectivePrinter || null,
-      });
+      if (categoryDialogMode === 'create') {
+        await api.createCategory(title, title, undefined, effectivePrinter || null);
+        toast({ title: 'Category added', description: title });
+      } else if (editingCategory) {
+        await api.updateCategory(editingCategory.id, {
+          titleEn: title,
+          titleEl: title,
+          printerTopic: effectivePrinter || null,
+        });
+        toast({ title: 'Category updated', description: title });
+      }
       await load();
-      toast({ title: 'Category updated', description: title });
       setCategoryDialogOpen(false);
       setEditingCategory(null);
+      setCategoryDialogMode('edit');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update category';
-      toast({ title: 'Update failed', description: message });
+      const failureTitle = categoryDialogMode === 'create' ? 'Create failed' : 'Update failed';
+      toast({ title: failureTitle, description: message });
     } finally {
       setSavingCategory(false);
     }
@@ -266,20 +266,9 @@ export const ManagerMenuPanel = () => {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Manage Menu Items</h2>
         <div className="flex gap-2">
-          <Button size="sm" className="gap-2" onClick={async ()=>{
-            const title = window.prompt('Add new category');
-            const t = (title || '').trim();
-            if (!t) return;
-            const printerTopic = choosePrinterTopic(t.toLowerCase().replace(/\s+/g, '-'));
-            try {
-              await api.createCategory(t, t, undefined, printerTopic);
-              await load();
-              toast({ title: 'Category added', description: t });
-            } catch (error) {
-              const message = error instanceof Error ? error.message : 'Could not create category';
-              toast({ title: 'Create failed', description: message });
-            }
-          }}><Plus className="h-4 w-4"/> Add Category</Button>
+          <Button size="sm" className="gap-2" onClick={openCategoryCreate}>
+            <Plus className="h-4 w-4" /> Add Category
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -438,12 +427,13 @@ export const ManagerMenuPanel = () => {
           if (!open) {
             setEditingCategory(null);
             setCategoryForm({ title: '', printerChoice: '' });
+            setCategoryDialogMode('edit');
           }
         }}
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Edit category</DialogTitle>
+            <DialogTitle>{categoryDialogMode === 'create' ? 'Add category' : 'Edit category'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Input
@@ -451,30 +441,27 @@ export const ManagerMenuPanel = () => {
               value={categoryForm.title}
               onChange={(e) => setCategoryForm((prev) => ({ ...prev, title: e.target.value }))}
             />
-            {printerTopics.length > 0 ? (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Printer topic</label>
-                <select
-                  className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={categoryForm.printerChoice}
-                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, printerChoice: e.target.value }))}
-                >
-                  <option value="">No printer</option>
-                  {printerTopics.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <Input
-                placeholder="Printer topic (optional)"
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Printer topic</label>
+              <select
+                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 value={categoryForm.printerChoice}
                 onChange={(e) => setCategoryForm((prev) => ({ ...prev, printerChoice: e.target.value }))}
-              />
-            )}
-            <p className="text-xs text-muted-foreground">Choose where this category prints (per venue printer list).</p>
+              >
+                <option value="">No printer</option>
+                {getPrinterOptions(categoryForm.printerChoice).map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              {printerTopics.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No printers configured in Architect settings.
+                </p>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">Choose where this category prints.</p>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>
@@ -484,7 +471,7 @@ export const ManagerMenuPanel = () => {
               {savingCategory && (
                 <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
               )}
-              Save
+              {categoryDialogMode === 'create' ? 'Create' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -266,6 +266,12 @@ function load(): Db {
       const qrTiles = Array.isArray(parsed.qrTiles)
         ? parsed.qrTiles.map((tile) => normalizeQrTileRecord(tile, storeId))
         : [];
+      const storePrintersRaw = (parsed.store as any)?.printers;
+      const storePrinters = Array.isArray(storePrintersRaw)
+        ? storePrintersRaw
+            .map((printer) => (typeof printer === 'string' ? printer.trim() : ''))
+            .filter(Boolean)
+        : ['kitchen', 'bar'];
       const store =
         parsed.store && isRecord(parsed.store)
         ? {
@@ -273,8 +279,15 @@ function load(): Db {
             name: (parsed.store as any).name || 'Garsone Offline Demo',
             slug: (parsed.store as any).slug || 'local-store',
             orderingMode: normalizeOrderingMode((parsed.store as any).orderingMode),
+            printers: storePrinters,
           }
-        : { id: storeId, name: 'Garsone Offline Demo', slug: 'local-store', orderingMode: 'qr' as OrderingMode };
+        : {
+            id: storeId,
+            name: 'Garsone Offline Demo',
+            slug: 'local-store',
+            orderingMode: 'qr' as OrderingMode,
+            printers: storePrinters,
+          };
       const db: Db = {
         store,
         cookTypes,
@@ -356,7 +369,13 @@ function load(): Db {
   };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
   const db: Db = {
-    store: { id: 'store_1', name: 'Garsone Offline Demo', slug: 'local-store', orderingMode: 'qr' },
+    store: {
+      id: 'store_1',
+      name: 'Garsone Offline Demo',
+      slug: 'local-store',
+      orderingMode: 'qr',
+      printers: ['kitchen', 'bar'],
+    },
     cookTypes: [cookTypeBar, cookTypeKitchen],
     waiterTypes: [waiterTypeFloor, waiterTypeBar],
     categories: [catCoffee, catPastry],

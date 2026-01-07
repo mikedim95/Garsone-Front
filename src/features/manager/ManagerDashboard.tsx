@@ -147,6 +147,11 @@ interface StaffTypeForm {
   title: string;
   printerTopic: string;
 }
+type EditableCookType = {
+  id: string;
+  title: string;
+  printerTopic: string;
+};
 type WaiterAssignedTable = { id: string; label: string; active: boolean };
 
 const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
@@ -154,6 +159,7 @@ const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
   PREPARING: 15,
   READY: 8,
 };
+const NO_PRINTER_VALUE = "__none__";
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
@@ -163,6 +169,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const pickLabel = (value?: unknown) =>
   isNonEmptyString(value) ? value.trim() : null;
+
+const buildPrinterOptions = (base: string[], selected?: string | null) => {
+  if (!selected || base.includes(selected)) return base;
+  return [selected, ...base];
+};
 
 const normalizeTableSummary = (
   table: Partial<Table> & { id?: string; label?: string }
@@ -379,6 +390,7 @@ export default function ManagerDashboard() {
       return null;
     }
   });
+  const [printerTopics, setPrinterTopics] = useState<string[]>([]);
   const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
   const [loadingQrTiles, setLoadingQrTiles] = useState(false);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
@@ -422,6 +434,11 @@ export default function ManagerDashboard() {
   const [deletingCookTypeId, setDeletingCookTypeId] = useState<string | null>(
     null
   );
+  const [editCookTypeModalOpen, setEditCookTypeModalOpen] = useState(false);
+  const [activeCookType, setActiveCookType] = useState<EditableCookType | null>(
+    null
+  );
+  const [savingCookType, setSavingCookType] = useState(false);
   const [addWaiterTypeModalOpen, setAddWaiterTypeModalOpen] = useState(false);
   const [newWaiterType, setNewWaiterType] = useState<StaffTypeForm>({
     title: "",
@@ -521,6 +538,25 @@ export default function ManagerDashboard() {
           try {
             localStorage.setItem("STORE_NAME", res.store.name);
           } catch {}
+        }
+        const rawPrinters =
+          (res as any)?.store?.settings?.printers ??
+          (res as any)?.store?.settingsJson?.printers ??
+          (res as any)?.store?.printers ??
+          [];
+        if (Array.isArray(rawPrinters)) {
+          const cleaned = Array.from(
+            new Set(
+              rawPrinters
+                .map((printer) =>
+                  typeof printer === "string" ? printer.trim() : ""
+                )
+                .filter(Boolean)
+            )
+          );
+          setPrinterTopics(cleaned);
+        } else {
+          setPrinterTopics([]);
         }
       } catch (error) {
         console.error("Failed to load store info", error);
@@ -2360,11 +2396,10 @@ export default function ManagerDashboard() {
     if (!newCookType.title.trim()) return;
     setAddingCookType(true);
     try {
+      const printerTopic = newCookType.printerTopic.trim();
       await api.createCookType({
         title: newCookType.title.trim(),
-        ...(newCookType.printerTopic.trim().length > 0
-          ? { printerTopic: newCookType.printerTopic.trim() }
-          : {}),
+        ...(printerTopic.length > 0 ? { printerTopic } : {}),
       });
       setNewCookType({ title: "", printerTopic: "" });
       setAddCookTypeModalOpen(false);
@@ -2373,6 +2408,37 @@ export default function ManagerDashboard() {
       console.error("Failed to create cook type", error);
     } finally {
       setAddingCookType(false);
+    }
+  };
+
+  const openEditCookType = (type: CookType) => {
+    setActiveCookType({
+      id: type.id,
+      title: type.title,
+      printerTopic: type.printerTopic ?? "",
+    });
+    setEditCookTypeModalOpen(true);
+  };
+
+  const handleUpdateCookType = async () => {
+    if (!activeCookType) return;
+    const title = activeCookType.title.trim();
+    if (!title) return;
+    setSavingCookType(true);
+    try {
+      const printerTopic = activeCookType.printerTopic.trim();
+      await api.updateCookType(activeCookType.id, {
+        title,
+        printerTopic: printerTopic.length > 0 ? printerTopic : null,
+      });
+      setEditCookTypeModalOpen(false);
+      setActiveCookType(null);
+      await loadStaffTypes();
+      await loadCookData();
+    } catch (error) {
+      console.error("Failed to update cook type", error);
+    } finally {
+      setSavingCookType(false);
     }
   };
 
@@ -3810,19 +3876,30 @@ export default function ManagerDashboard() {
                                 Printer topic: {type.printerTopic || "none"}
                               </p>
                             </div>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteCookType(type.id)}
-                              disabled={deletingCookTypeId === type.id}
-                            >
-                              {deletingCookTypeId === type.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4 mr-2" />
-                              )}
-                              Delete
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEditCookType(type)}
+                                className="inline-flex items-center gap-2"
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteCookType(type.id)}
+                                disabled={deletingCookTypeId === type.id}
+                              >
+                                {deletingCookTypeId === type.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                )}
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -5473,17 +5550,33 @@ export default function ManagerDashboard() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="cook-type-topic">Printer topic</Label>
-                <Input
-                  id="cook-type-topic"
-                  value={newCookType.printerTopic}
-                  onChange={(e) =>
+                <Label>Printer topic</Label>
+                <Select
+                  value={newCookType.printerTopic || NO_PRINTER_VALUE}
+                  onValueChange={(value) =>
                     setNewCookType((prev) => ({
                       ...prev,
-                      printerTopic: e.target.value,
+                      printerTopic: value === NO_PRINTER_VALUE ? "" : value,
                     }))
                   }
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select printer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                    {printerTopics.map((topic) => (
+                      <SelectItem key={topic} value={topic}>
+                        {topic}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {printerTopics.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No printers configured in Architect settings.
+                  </p>
+                ) : null}
               </div>
             </div>
             <DialogFooter>
@@ -5500,6 +5593,93 @@ export default function ManagerDashboard() {
               >
                 {addingCookType && <Loader2 className="h-4 w-4 animate-spin" />}
                 Create type
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={editCookTypeModalOpen}
+          onOpenChange={(open) => {
+            setEditCookTypeModalOpen(open);
+            if (!open) {
+              setActiveCookType(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit cook type</DialogTitle>
+            </DialogHeader>
+            {activeCookType ? (
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-cook-type-title">Title</Label>
+                  <Input
+                    id="edit-cook-type-title"
+                    value={activeCookType.title}
+                    onChange={(e) =>
+                      setActiveCookType((prev) =>
+                        prev ? { ...prev, title: e.target.value } : prev
+                      )
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Printer topic</Label>
+                  <Select
+                    value={activeCookType.printerTopic || NO_PRINTER_VALUE}
+                    onValueChange={(value) =>
+                      setActiveCookType((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              printerTopic:
+                                value === NO_PRINTER_VALUE ? "" : value,
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select printer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                      {buildPrinterOptions(
+                        printerTopics,
+                        activeCookType.printerTopic
+                      ).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {printerTopics.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No printers configured in Architect settings.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditCookTypeModalOpen(false)}
+              >
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleUpdateCookType}
+                disabled={savingCookType || !activeCookType?.title.trim()}
+                className="inline-flex items-center gap-2"
+              >
+                {savingCookType && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {t("actions.save_changes")}
               </Button>
             </DialogFooter>
           </DialogContent>
