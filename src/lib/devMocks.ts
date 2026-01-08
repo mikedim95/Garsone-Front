@@ -13,7 +13,7 @@ type Category = {
   sortOrder: number;
   printerTopic?: string | null;
 };
-type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string };
+type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string; printerTopic?: string | null };
 type ModifierOption = { id: Id; title: string; titleEn?: string; titleEl?: string; label: string; priceDeltaCents: number; sortOrder: number };
 type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; name: string; minSelect: number; maxSelect: number | null; isAvailable?: boolean; options: ModifierOption[] };
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
@@ -271,7 +271,7 @@ function load(): Db {
         ? storePrintersRaw
             .map((printer) => (typeof printer === 'string' ? printer.trim() : ''))
             .filter(Boolean)
-        : ['kitchen', 'bar'];
+        : ['printer_1', 'printer_2'];
       const store =
         parsed.store && isRecord(parsed.store)
         ? {
@@ -315,37 +315,37 @@ function load(): Db {
     id: uid('cat'),
     title: 'Coffee',
     sortOrder: 0,
-    printerTopic: normalizePrinterTopic('coffee') || 'coffee',
+    printerTopic: 'printer_1',
   };
   const catPastry: Category = {
     id: uid('cat'),
     title: 'Pastries',
     sortOrder: 1,
-    printerTopic: normalizePrinterTopic('pastries') || 'pastries',
+    printerTopic: 'printer_2',
   };
   const cookTypeBar: StaffType = {
     id: uid('cooktype'),
     slug: 'bar',
     title: 'Bar Station',
-    printerTopic: 'bar',
+    printerTopic: 'printer_1',
   };
   const cookTypeKitchen: StaffType = {
     id: uid('cooktype'),
     slug: 'kitchen',
     title: 'Kitchen',
-    printerTopic: 'kitchen',
+    printerTopic: 'printer_2',
   };
   const waiterTypeFloor: StaffType = {
     id: uid('waitertype'),
     slug: 'floor',
     title: 'Floor',
-    printerTopic: 'kitchen',
+    printerTopic: 'printer_2',
   };
   const waiterTypeBar: StaffType = {
     id: uid('waitertype'),
     slug: 'bar',
     title: 'Bar Service',
-    printerTopic: 'bar',
+    printerTopic: 'printer_1',
   };
   const modMilk: Modifier = { id: uid('mod'), title: 'Milk', name: 'Milk', minSelect: 0, maxSelect: 1, options: [
     { id: uid('opt'), title: 'Whole', label: 'Whole', priceDeltaCents: 0, sortOrder: 0 },
@@ -357,7 +357,7 @@ function load(): Db {
     { id: uid('opt'), title: '1 tsp', label: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
     { id: uid('opt'), title: '2 tsp', label: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
   ]};
-  const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true };
+  const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true, printerTopic: catCoffee.printerTopic ?? null };
   const itemCap: Item = {
     id: uid('item'),
     title: 'Cappuccino',
@@ -366,15 +366,16 @@ function load(): Db {
     categoryId: catCoffee.id,
     isAvailable: true,
     imageUrl: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/local-store/Cup-Of-Creamy-Coffee.png',
+    printerTopic: catCoffee.printerTopic ?? null,
   };
-  const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true };
+  const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true, printerTopic: catPastry.printerTopic ?? null };
   const db: Db = {
     store: {
       id: 'store_1',
       name: 'Garsone Offline Demo',
       slug: 'local-store',
       orderingMode: 'qr',
-      printers: ['kitchen', 'bar'],
+      printers: ['printer_1', 'printer_2'],
     },
     cookTypes: [cookTypeBar, cookTypeKitchen],
     waiterTypes: [waiterTypeFloor, waiterTypeBar],
@@ -452,7 +453,7 @@ function enrichOrder(db: Db, order: Order): any {
       quantity,
       categoryId: item?.categoryId,
       categoryTitle: category?.title,
-      printerTopic: category?.printerTopic || null,
+      printerTopic: item?.printerTopic ?? null,
       modifiers: orderItem.modifiers || [],
     };
   });
@@ -485,14 +486,14 @@ function composeMenu() {
 function seedStaffTypesIfEmpty(db: Db) {
   if (!db.cookTypes || db.cookTypes.length === 0) {
     db.cookTypes = [
-      { id: uid('cooktype'), slug: 'kitchen', title: 'Kitchen', printerTopic: 'kitchen' },
-      { id: uid('cooktype'), slug: 'bar', title: 'Bar Station', printerTopic: 'bar' },
+      { id: uid('cooktype'), slug: 'kitchen', title: 'Kitchen', printerTopic: 'printer_2' },
+      { id: uid('cooktype'), slug: 'bar', title: 'Bar Station', printerTopic: 'printer_1' },
     ];
   }
   if (!db.waiterTypes || db.waiterTypes.length === 0) {
     db.waiterTypes = [
-      { id: uid('waitertype'), slug: 'floor', title: 'Floor', printerTopic: 'kitchen' },
-      { id: uid('waitertype'), slug: 'bar', title: 'Bar Service', printerTopic: 'bar' },
+      { id: uid('waitertype'), slug: 'floor', title: 'Floor', printerTopic: 'printer_2' },
+      { id: uid('waitertype'), slug: 'bar', title: 'Bar Service', printerTopic: 'printer_1' },
     ];
   }
   const defaultCookTypeId = db.cookTypes[0]?.id ?? null;
@@ -1031,11 +1032,12 @@ export const devMocks = {
     if (db.cookTypes.some((t) => t.slug === slug)) {
       return Promise.reject(new Error('Cook type already exists'));
     }
+    const fallbackPrinter = Array.isArray(db.store.printers) ? db.store.printers[0] : undefined;
     const type: StaffType = {
       id: uid('cooktype'),
       slug,
       title,
-      printerTopic: normalizePrinterTopic(data.printerTopic || title) || null,
+      printerTopic: normalizePrinterTopic(data.printerTopic || fallbackPrinter || title) || null,
     };
     db.cookTypes.push(type);
     save(db);
@@ -1079,11 +1081,12 @@ export const devMocks = {
     if (db.waiterTypes.some((t) => t.slug === slug)) {
       return Promise.reject(new Error('Waiter type already exists'));
     }
+    const fallbackPrinter = Array.isArray(db.store.printers) ? db.store.printers[0] : undefined;
     const type: StaffType = {
       id: uid('waitertype'),
       slug,
       title,
-      printerTopic: normalizePrinterTopic(data.printerTopic || title) || null,
+      printerTopic: normalizePrinterTopic(data.printerTopic || fallbackPrinter || title) || null,
     };
     db.waiterTypes.push(type);
     save(db);
@@ -1235,11 +1238,30 @@ export const devMocks = {
   // Manager: items
   listItems() { const db = snapshot(); return Promise.resolve({ items: db.items }); },
   createItem(data: Partial<Item>) {
-    const db = snapshot(); const it: Item = { id: uid('item'), title: data.titleEn || data.title || 'Item', titleEn: data.titleEn || data.title || 'Item', titleEl: (data as any).titleEl || data.title || 'Item', description: (data as any).descriptionEn || data.description, descriptionEn: (data as any).descriptionEn, descriptionEl: (data as any).descriptionEl, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl };
+    const db = snapshot();
+    const rawPrinter = (data as any).printerTopic;
+    const fallbackPrinter = Array.isArray(db.store.printers) ? db.store.printers[0] : undefined;
+    const printerTopic = normalizePrinterTopic(
+      typeof rawPrinter === 'string' && rawPrinter.trim().length > 0 ? rawPrinter : fallbackPrinter
+    ) || null;
+    const it: Item = { id: uid('item'), title: data.titleEn || data.title || 'Item', titleEn: data.titleEn || data.title || 'Item', titleEl: (data as any).titleEl || data.title || 'Item', description: (data as any).descriptionEn || data.description, descriptionEn: (data as any).descriptionEn, descriptionEl: (data as any).descriptionEl, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl, printerTopic };
     db.items.push(it); save(db); return Promise.resolve({ item: it });
   },
   updateItem(id: Id, data: Partial<Item>) {
-    const db = snapshot(); const it = db.items.find(x=>x.id===id); if (it) Object.assign(it, data); save(db); return Promise.resolve({ item: it });
+    const db = snapshot();
+    const it = db.items.find(x=>x.id===id);
+    if (it) {
+      const payload: Partial<Item> = { ...data };
+      if (data.printerTopic !== undefined) {
+        payload.printerTopic =
+          data.printerTopic === null
+            ? null
+            : normalizePrinterTopic(data.printerTopic) || null;
+      }
+      Object.assign(it, payload);
+    }
+    save(db);
+    return Promise.resolve({ item: it });
   },
   deleteItem(id: Id) { const db = snapshot(); db.items = db.items.filter(i=>i.id!==id); save(db); return Promise.resolve({ ok: true }); },
 
