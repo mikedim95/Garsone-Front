@@ -1,80 +1,96 @@
-# OrderFlow - Modern Restaurant Ordering System
+# OrderFlow Frontend (Garsone-Front)
 
-A production-quality restaurant ordering system with real-time MQTT alerts, multi-role dashboards, and PWA support.
+Customer ordering experience and staff dashboards for the OrderFlow restaurant
+system. Real-time updates are delivered via the backend WebSocket gateway; the
+backend also publishes the same topics to MQTT for non-browser clients.
 
-## 🚀 Features
+## Features
 
-- **Customer Experience**: Scan QR → Browse menu → Order → Get notified when ready
-- **Waiter Dashboard**: Real-time order management, call-waiter alerts, table assignments
-- **Manager Dashboard**: KPIs, order history, CSV export, menu editor
-- **Multi-language**: English & Greek (i18n)
-- **PWA Ready**: Works offline, installable
-- **Real-time**: Backend-bridged MQTT for instant notifications
+- QR/table ordering and menu browsing
+- Staff dashboards: waiter, cook, manager, architect (QR tiles)
+- Real-time order status and call-waiter alerts via WebSocket topics
+- Viva Smart Checkout redirect flow
+- Multi-language UI (English, Greek)
+- Optional offline/demo mode (VITE_OFFLINE or localStorage OFFLINE=1)
+- Web app manifest and icons included (no service worker/offline caching yet)
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 ### Frontend
 - React 18 + TypeScript
-- Vite
-- Tailwind CSS v4
+- Vite + React SWC
+- Tailwind CSS v3
+- Radix UI primitives
 - React Router
 - TanStack Query
-- Zustand (state)
-- react-i18next
+- Zustand
+- React Hook Form
+- i18next (react-i18next)
 - qrcode.react
+- Recharts
+- Framer Motion
 
-### Backend (Separate Service - Not Included)
+### Backend (separate service)
 - Fastify + TypeScript
-- Drizzle ORM
+- Prisma ORM
 - PostgreSQL
-- EMQX (MQTT broker)
-- JWT auth
+- MQTT broker + WebSocket gateway for realtime
+- Viva Smart Checkout integration
 
-## 📦 Installation
+## Installation
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 🔐 Demo Credentials
+Dev server defaults to `http://localhost:8080` (see `vite.config.ts`).
 
-- **Waiter**: waiter1@demo.local / changeme
-- **Manager**: manager@demo.local / changeme
+## Routes
 
-## 🎯 Routes
-
-- `/` - Landing page with demo QR codes
+- `/` - Landing page
 - `/login` - Staff authentication
-- `/:tableId` - Customer menu (production)
-- `/waiter` - Waiter dashboard
-- `/manager` - Manager dashboard
+- `/:tableId` - Customer menu
 - `/order/:orderId/thanks` - Order confirmation
+- `/payment-complete` - Payment redirect landing
+- `/payment-success` - Payment success
+- `/payment-failed` - Payment failure
+- `/publiccode/:publicCode` - Public QR redirect
+- `/waiter` - Waiter dashboard
+- `/cook` - Cook dashboard
+- `/manager` - Manager dashboard
+- `/GarsoneAdmin` - Architect QR tiles
+- `/architect` - Redirect to architect QR tiles
 
-## 🌐 Deployment
+## Environment Variables
 
-### Frontend (Static Site)
-```bash
-npm run build
-# Deploy dist/ to Render/Vercel/Netlify
-```
-
-### Environment Variables
-```
+```env
+# API base. If set to localhost/127.*, the app falls back to the current host.
 VITE_API_URL=https://api.yourapp.com
+
+# Optional UI-only offline mode and demo data.
+VITE_OFFLINE=true
+
+# Public origin used to build table URLs and QR links (supports {storeSlug}).
+VITE_PUBLIC_BASE_ORIGIN=https://{storeSlug}.yourapp.com
+
+# Override QR code base URL (defaults to /publiccode on the current origin).
+VITE_PUBLIC_CODE_BASE=https://qr.yourapp.com/publiccode
+
+# Login helpers
+VITE_DEFAULT_EMAIL_DOMAIN=demo.local
+VITE_ENABLE_DEBUG_LOGIN=true
 ```
-The frontend now proxies all realtime traffic through the backend, so no MQTT credentials are required in browser builds.
 
-## 📱 PWA Setup
+## Realtime Topics (WebSocket/MQTT)
 
-The app is PWA-ready with offline caching. Users can install it to their home screen for an app-like experience.
+- `{storeSlug}/orders/placed`
+- `{storeSlug}/orders/preparing`
+- `{storeSlug}/orders/ready`
+- `{storeSlug}/orders/served`
+- `{storeSlug}/orders/paid`
+- `{storeSlug}/orders/canceled` (legacy: `cancelled`)
+- `{storeSlug}/waiter/call`
 
-## 🔔 MQTT Topics (handled by backend)
-
-- `{storeSlug}/orders/*` - Order lifecycle events (placed, preparing, ready, cancelled, served)
-- `{storeSlug}/waiter/call` - Call waiter alerts + acknowledgements
-- `stores/{slug}/menu/updated` - Manager-driven menu changes
-
-## 📄 License
-
-MIT
+No MQTT credentials are required in the browser; the backend publishes the
+same topics over WebSocket for UI clients.
