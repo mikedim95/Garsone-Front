@@ -33,7 +33,7 @@ const ModifierDialog = lazy(() =>
 
 type CategorySummary = Pick<
   MenuCategory,
-  "id" | "title" | "titleEn" | "titleEl" | "printerTopic"
+  "id" | "title" | "titleEn" | "titleEl"
 >;
 type MenuModifierLink = {
   itemId: string;
@@ -52,22 +52,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const mapCategories = (
-  categories?: Array<{ id?: string; title?: string; printerTopic?: string | null }>
+  categories?: Array<{ id?: string; title?: string }>
 ): CategorySummary[] =>
   (categories ?? []).reduce<CategorySummary[]>((acc, category, index) => {
     if (!category) return acc;
     const id = category.id ?? `cat-${index}`;
     const title = category.title ?? "";
     if (!title) return acc;
-    acc.push({
-      id,
-      title,
-      printerTopic:
-        typeof (category as { printerTopic?: string | null }).printerTopic ===
-        "string"
-          ? (category as { printerTopic?: string | null }).printerTopic
-          : null,
-    });
+    acc.push({ id, title });
     return acc;
   }, []);
 
@@ -144,22 +136,20 @@ const filterMenuByPrinterTopic = (
 ): MenuStateData => {
   const normalized = normalizePrinterTopicValue(topic);
   if (!normalized) return data;
+  const filteredItems = data.items.filter(
+    (item) => normalizePrinterTopicValue(item.printerTopic) === normalized
+  );
   const allowedCategoryIds = new Set(
-    data.categories
-      .filter(
-        (category) =>
-          normalizePrinterTopicValue(category.printerTopic) === normalized
-      )
-      .map((category) => category.id)
+    filteredItems
+      .map((item) => item.categoryId)
+      .filter((id): id is string => Boolean(id))
   );
   return {
     ...data,
     categories: data.categories.filter((category) =>
       allowedCategoryIds.has(category.id)
     ),
-    items: data.items.filter(
-      (item) => !item.categoryId || allowedCategoryIds.has(item.categoryId)
-    ),
+    items: filteredItems,
   };
 };
 

@@ -248,6 +248,7 @@ export interface ManagerItemSummary {
   isAvailable?: boolean;
   imageUrl?: string;
   image?: string;
+  printerTopic?: string | null;
 }
 
 export interface ManagerItemPayload {
@@ -259,6 +260,7 @@ export interface ManagerItemPayload {
   categoryId: string;
   isAvailable?: boolean;
   imageUrl?: string;
+  printerTopic?: string | null;
 }
 
 export interface ModifierInput {

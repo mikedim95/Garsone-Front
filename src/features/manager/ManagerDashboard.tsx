@@ -170,9 +170,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const pickLabel = (value?: unknown) =>
   isNonEmptyString(value) ? value.trim() : null;
 
-const buildPrinterOptions = (base: string[], selected?: string | null) => {
-  if (!selected || base.includes(selected)) return base;
-  return [selected, ...base];
+const buildPrinterOptions = (base: string[]) => base;
+
+const resolvePrinterValue = (value: string | null | undefined, printers: string[]) => {
+  if (!value) return NO_PRINTER_VALUE;
+  return printers.includes(value) ? value : NO_PRINTER_VALUE;
 };
 
 const normalizeTableSummary = (
@@ -2412,10 +2414,14 @@ export default function ManagerDashboard() {
   };
 
   const openEditCookType = (type: CookType) => {
+    const printerTopic =
+      type.printerTopic && printerTopics.includes(type.printerTopic)
+        ? type.printerTopic
+        : "";
     setActiveCookType({
       id: type.id,
       title: type.title,
-      printerTopic: type.printerTopic ?? "",
+      printerTopic,
     });
     setEditCookTypeModalOpen(true);
   };
@@ -3232,25 +3238,30 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                         {ordersTimeline.length ? (
-                          <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={ordersTimeline}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="label" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip />
-                                <Line
-                                  type="monotone"
-                                  dataKey="count"
-                                  stroke="hsl(var(--primary))"
-                                  strokeWidth={2}
-                                  name="Orders"
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
+                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
+                            <div className="h-full w-full max-w-3xl mx-auto">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart 
+                                  data={ordersTimeline}
+                                  margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={35} />
+                                  <Tooltip />
+                                  <Line
+                                    type="monotone"
+                                    dataKey="count"
+                                    stroke="hsl(var(--primary))"
+                                    strokeWidth={2}
+                                    name="Orders"
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground text-center py-8">
                             {t("manager.no_orders_timeline", {
                               defaultValue: "No orders recorded yet.",
                             })}
@@ -3275,30 +3286,35 @@ export default function ManagerDashboard() {
                             </div>
                           </div>
                           {totalOrders ? (
-                            <div className="h-72">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={ordersByStatus}>
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="status" />
-                                  <YAxis allowDecimals={false} />
-                                  <Tooltip />
-                                  <Bar dataKey="count">
-                                    {ordersByStatus.map((entry, idx) => (
-                                      <Cell
-                                        key={`c-${idx}`}
-                                        fill={
-                                          entry.atRisk
-                                            ? "hsl(var(--destructive))"
-                                            : "hsl(var(--primary))"
-                                        }
-                                      />
-                                    ))}
-                                  </Bar>
-                                </BarChart>
-                              </ResponsiveContainer>
+                            <div className="h-56 sm:h-64 w-full flex items-center justify-center">
+                              <div className="h-full w-full max-w-md mx-auto">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart 
+                                    data={ordersByStatus}
+                                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                                  >
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="status" tick={{ fontSize: 10 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                    <Tooltip />
+                                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                      {ordersByStatus.map((entry, idx) => (
+                                        <Cell
+                                          key={`c-${idx}`}
+                                          fill={
+                                            entry.atRisk
+                                              ? "hsl(var(--destructive))"
+                                              : "hsl(var(--primary))"
+                                          }
+                                        />
+                                      ))}
+                                    </Bar>
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-muted-foreground text-center py-8">
                               {t("manager.no_statuses_yet", {
                                 defaultValue:
                                   "Statuses will appear once orders arrive.",
@@ -3319,22 +3335,28 @@ export default function ManagerDashboard() {
                             </div>
                           </div>
                           {serveDurationsMinutes.length ? (
-                            <div className="h-72">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={throughputHistogram}>
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="label" />
-                                  <YAxis allowDecimals={false} />
-                                  <Tooltip />
-                                  <Bar
-                                    dataKey="count"
-                                    fill="hsl(var(--primary))"
-                                  />
-                                </BarChart>
-                              </ResponsiveContainer>
+                            <div className="h-56 sm:h-64 w-full flex items-center justify-center">
+                              <div className="h-full w-full max-w-md mx-auto">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart 
+                                    data={throughputHistogram}
+                                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                                  >
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                    <Tooltip />
+                                    <Bar
+                                      dataKey="count"
+                                      fill="hsl(var(--primary))"
+                                      radius={[4, 4, 0, 0]}
+                                    />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-muted-foreground text-center py-8">
                               {t("manager.need_one_served_for_throughput", {
                                 defaultValue:
                                   "Need at least one served order to measure throughput.",
@@ -3360,25 +3382,28 @@ export default function ManagerDashboard() {
                                 <ProBadge />
                               </div>
                               {prepDurationsMinutes.length ? (
-                                <div className="h-72">
-                                  <ResponsiveContainer
-                                    width="100%"
-                                    height="100%"
-                                  >
-                                    <BarChart data={prepHistogram}>
-                                      <CartesianGrid strokeDasharray="3 3" />
-                                      <XAxis dataKey="label" />
-                                      <YAxis allowDecimals={false} />
-                                      <Tooltip />
-                                      <Bar
-                                        dataKey="count"
-                                        fill="hsl(var(--primary))"
-                                      />
-                                    </BarChart>
-                                  </ResponsiveContainer>
+                                <div className="h-56 sm:h-64 w-full flex items-center justify-center">
+                                  <div className="h-full w-full max-w-md mx-auto">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <BarChart 
+                                        data={prepHistogram}
+                                        margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                                      >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                        <Tooltip />
+                                        <Bar
+                                          dataKey="count"
+                                          fill="hsl(var(--primary))"
+                                          radius={[4, 4, 0, 0]}
+                                        />
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
                                 </div>
                               ) : (
-                                <p className="text-sm text-muted-foreground">
+                                <p className="text-sm text-muted-foreground text-center py-8">
                                   {t("manager.no_data_yet", {
                                     defaultValue: "No data yet.",
                                   })}
@@ -3634,335 +3659,294 @@ export default function ManagerDashboard() {
 
                 <TabsContent value="personnel" className="space-y-6">
                   <DateRangeHeader />
-                  <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Frontline
-                        </p>
-                        <h3 className="text-lg font-semibold">
-                          Active waiters
-                        </h3>
+
+                  {/* Team Card - Merged Waiters & Cooks */}
+                  <Card className="p-4 sm:p-6">
+                    <Tabs defaultValue="waiters" className="w-full">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Team</p>
+                          <h3 className="text-lg font-semibold">Staff Members</h3>
+                        </div>
+                        <TabsList className="grid w-full sm:w-auto grid-cols-2 h-9">
+                          <TabsTrigger value="waiters" className="text-xs sm:text-sm px-3">
+                            Waiters ({waiterDetails.length})
+                          </TabsTrigger>
+                          <TabsTrigger value="cooks" className="text-xs sm:text-sm px-3">
+                            Cooks ({cooks.length})
+                          </TabsTrigger>
+                        </TabsList>
                       </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <Button
-                          onClick={() => setAddModalOpen(true)}
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
-                        </Button>
-                      </div>
-                    </div>
-                    {loadingWaiters ? (
-                      <DashboardGridSkeleton
-                        count={4}
-                        className="grid md:grid-cols-2"
-                      />
-                    ) : waiterDetails.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        {t("manager.no_waiters", {
-                          defaultValue:
-                            "No waiters yet. Add your first waiter to get started.",
-                        })}
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {waiterDetails.map((detail) => (
-                          <div
-                            key={detail.waiter.id}
-                            className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
+
+                      <TabsContent value="waiters" className="mt-0 space-y-4">
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={() => setAddModalOpen(true)}
+                            size="sm"
+                            className="inline-flex items-center gap-2"
                           >
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <p className="font-semibold text-foreground">
-                                  {detail.waiter.displayName ||
-                                    detail.waiter.email}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {detail.waiter.email}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={
-                                    detail.shiftOn ? "secondary" : "outline"
-                                  }
-                                >
-                                  {detail.shiftOn ? "On shift" : "Off shift"}
-                                </Badge>
-                                <Badge variant="outline">
-                                  {detail.assignedTables.length} tables
-                                </Badge>
-                                <Badge variant="secondary">
-                                  {detail.waiter.waiterType?.title ||
-                                    "No type"}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {detail.assignedTables.length ? (
-                                detail.assignedTables.map((table) => (
-                                  <Badge
-                                    key={table.id ?? table.label}
-                                    variant={
-                                      table.active ? "secondary" : "outline"
-                                    }
-                                    className={
-                                      !table.active
-                                        ? "opacity-75 border-dashed"
-                                        : ""
-                                    }
-                                  >
-                                    {t("manager.table", {
-                                      defaultValue: "Table",
-                                    })}{" "}
-                                    {table.label}
-                                    {!table.active
-                                      ? ` (${t("manager.inactive", {
-                                          defaultValue: "Inactive",
-                                        })})`
-                                      : ""}
+                            <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
+                          </Button>
+                        </div>
+                        {loadingWaiters ? (
+                          <DashboardGridSkeleton count={4} className="grid md:grid-cols-2" />
+                        ) : waiterDetails.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-8 text-center">
+                            {t("manager.no_waiters", {
+                              defaultValue: "No waiters yet. Add your first waiter to get started.",
+                            })}
+                          </p>
+                        ) : (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {waiterDetails.map((detail) => (
+                              <div
+                                key={detail.waiter.id}
+                                className="border border-border/60 rounded-lg p-3 sm:p-4 bg-card/50 space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-foreground truncate">
+                                      {detail.waiter.displayName || detail.waiter.email}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {detail.waiter.email}
+                                    </p>
+                                  </div>
+                                  <Badge variant={detail.shiftOn ? "secondary" : "outline"} className="shrink-0 text-xs">
+                                    {detail.shiftOn ? "On" : "Off"}
                                   </Badge>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  No tables assigned
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openEditWaiter(detail.waiter)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />{" "}
-                                {t("actions.edit")}
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() =>
-                                  handleDeleteWaiter(detail.waiter.id)
-                                }
-                                disabled={deletingWaiterId === detail.waiter.id}
-                              >
-                                {deletingWaiterId === detail.waiter.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                )}
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Kitchen
-                        </p>
-                        <h3 className="text-lg font-semibold">
-                          Active cooks
-                        </h3>
-                      </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <Button
-                          onClick={() => setAddCookModalOpen(true)}
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" /> Add cook
-                        </Button>
-                      </div>
-                    </div>
-                    {loadingCooks ? (
-                      <DashboardGridSkeleton
-                        count={4}
-                        className="grid md:grid-cols-2"
-                      />
-                    ) : cooks.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No cooks yet. Add your first cook to get started.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {cooks.map((cook) => (
-                          <div
-                            key={cook.id}
-                            className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <p className="font-semibold text-foreground">
-                                  {cook.displayName || cook.email}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {cook.email}
-                                </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                  <Badge variant="outline" className="text-xs">
+                                    {detail.assignedTables.length} tables
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {detail.waiter.waiterType?.title || "No type"}
+                                  </Badge>
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 h-8 text-xs"
+                                    onClick={() => openEditWaiter(detail.waiter)}
+                                  >
+                                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="h-8 text-xs px-2"
+                                    onClick={() => handleDeleteWaiter(detail.waiter.id)}
+                                    disabled={deletingWaiterId === detail.waiter.id}
+                                  >
+                                    {deletingWaiterId === detail.waiter.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
                               </div>
-                              <Badge variant="secondary">
-                                {cook.cookType?.title || "No type"}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openEditCook(cook)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />{" "}
-                                {t("actions.edit")}
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteCook(cook.id)}
-                                disabled={deletingCookId === cook.id}
-                              >
-                                {deletingCookId === cook.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                )}
-                                Delete
-                              </Button>
-                            </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
+                        )}
+                      </TabsContent>
 
-                  <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Specialties
-                        </p>
-                        <h3 className="text-lg font-semibold">Cook types</h3>
-                      </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <Button
-                          onClick={() => setAddCookTypeModalOpen(true)}
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" /> Add cook type
-                        </Button>
-                      </div>
-                    </div>
-                    {loadingTypes ? (
-                      <DashboardGridSkeleton count={3} className="grid" />
-                    ) : cookTypes.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No cook types yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {cookTypes.map((type) => (
-                          <div
-                            key={type.id}
-                            className="border border-border/60 rounded-xl p-4 bg-card flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                      <TabsContent value="cooks" className="mt-0 space-y-4">
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={() => setAddCookModalOpen(true)}
+                            size="sm"
+                            className="inline-flex items-center gap-2"
                           >
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {type.title}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Printer topic: {type.printerTopic || "none"}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openEditCookType(type)}
-                                className="inline-flex items-center gap-2"
+                            <Plus className="h-4 w-4" /> Add cook
+                          </Button>
+                        </div>
+                        {loadingCooks ? (
+                          <DashboardGridSkeleton count={4} className="grid md:grid-cols-2" />
+                        ) : cooks.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-8 text-center">
+                            No cooks yet. Add your first cook to get started.
+                          </p>
+                        ) : (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {cooks.map((cook) => (
+                              <div
+                                key={cook.id}
+                                className="border border-border/60 rounded-lg p-3 sm:p-4 bg-card/50 space-y-2"
                               >
-                                <Pencil className="h-4 w-4" />
-                                Edit
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteCookType(type.id)}
-                                disabled={deletingCookTypeId === type.id}
-                              >
-                                {deletingCookTypeId === type.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                )}
-                                Delete
-                              </Button>
-                            </div>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-foreground truncate">
+                                      {cook.displayName || cook.email}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {cook.email}
+                                    </p>
+                                  </div>
+                                  <Badge variant="secondary" className="shrink-0 text-xs">
+                                    {cook.cookType?.title || "No type"}
+                                  </Badge>
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 h-8 text-xs"
+                                    onClick={() => openEditCook(cook)}
+                                  >
+                                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="h-8 text-xs px-2"
+                                    onClick={() => handleDeleteCook(cook.id)}
+                                    disabled={deletingCookId === cook.id}
+                                  >
+                                    {deletingCookId === cook.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
+                      </TabsContent>
+                    </Tabs>
                   </Card>
 
-                  <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Specialties
-                        </p>
-                        <h3 className="text-lg font-semibold">Waiter types</h3>
+                  {/* Staff Types Card - Merged Cook Types & Waiter Types */}
+                  <Card className="p-4 sm:p-6">
+                    <Tabs defaultValue="cook-types" className="w-full">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Specialties</p>
+                          <h3 className="text-lg font-semibold">Staff Types</h3>
+                        </div>
+                        <TabsList className="grid w-full sm:w-auto grid-cols-2 h-9">
+                          <TabsTrigger value="cook-types" className="text-xs sm:text-sm px-3">
+                            Cook ({cookTypes.length})
+                          </TabsTrigger>
+                          <TabsTrigger value="waiter-types" className="text-xs sm:text-sm px-3">
+                            Waiter ({waiterTypes.length})
+                          </TabsTrigger>
+                        </TabsList>
                       </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <Button
-                          onClick={() => setAddWaiterTypeModalOpen(true)}
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" /> Add waiter type
-                        </Button>
-                      </div>
-                    </div>
-                    {loadingTypes ? (
-                      <DashboardGridSkeleton count={3} className="grid" />
-                    ) : waiterTypes.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No waiter types yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {waiterTypes.map((type) => (
-                          <div
-                            key={type.id}
-                            className="border border-border/60 rounded-xl p-4 bg-card flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+
+                      <TabsContent value="cook-types" className="mt-0 space-y-4">
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={() => setAddCookTypeModalOpen(true)}
+                            size="sm"
+                            className="inline-flex items-center gap-2"
                           >
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {type.title}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Printer topic: {type.printerTopic || "none"}
-                              </p>
-                            </div>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteWaiterType(type.id)}
-                              disabled={deletingWaiterTypeId === type.id}
-                            >
-                              {deletingWaiterTypeId === type.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4 mr-2" />
-                              )}
-                              Delete
-                            </Button>
+                            <Plus className="h-4 w-4" /> Add type
+                          </Button>
+                        </div>
+                        {loadingTypes ? (
+                          <DashboardGridSkeleton count={3} className="grid" />
+                        ) : cookTypes.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-6 text-center">
+                            No cook types yet.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {cookTypes.map((type) => (
+                              <div
+                                key={type.id}
+                                className="border border-border/60 rounded-lg p-3 bg-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-foreground">{type.title}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => openEditCookType(type)}
+                                  >
+                                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="h-8 text-xs px-2"
+                                    onClick={() => handleDeleteCookType(type.id)}
+                                    disabled={deletingCookTypeId === type.id}
+                                  >
+                                    {deletingCookTypeId === type.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="waiter-types" className="mt-0 space-y-4">
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={() => setAddWaiterTypeModalOpen(true)}
+                            size="sm"
+                            className="inline-flex items-center gap-2"
+                          >
+                            <Plus className="h-4 w-4" /> Add type
+                          </Button>
+                        </div>
+                        {loadingTypes ? (
+                          <DashboardGridSkeleton count={3} className="grid" />
+                        ) : waiterTypes.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-6 text-center">
+                            No waiter types yet.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {waiterTypes.map((type) => (
+                              <div
+                                key={type.id}
+                                className="border border-border/60 rounded-lg p-3 bg-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-foreground">{type.title}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                  </p>
+                                </div>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-8 text-xs px-2 self-start sm:self-auto"
+                                  onClick={() => handleDeleteWaiterType(type.id)}
+                                  disabled={deletingWaiterTypeId === type.id}
+                                >
+                                  {deletingWaiterTypeId === type.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
                   </Card>
 
+                  {/* Workload Distribution Card */}
                   <Card className="p-4 sm:p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
@@ -3977,41 +3961,48 @@ export default function ManagerDashboard() {
                       </div>
                     </div>
                     {workloadDistribution.length ? (
-                      <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={workloadDistribution}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis
-                              domain={[0, 100]}
-                              tickFormatter={(value) => `${value}%`}
-                            />
-                            <Tooltip
-                              formatter={(
-                                value: ValueType,
-                                _name: NameType,
-                                ctx?: TooltipPayload<ValueType, NameType>
-                              ) => {
-                                const numericValue =
-                                  typeof value === "number"
-                                    ? value
-                                    : Number(value ?? 0);
-                                const count =
-                                  typeof ctx?.payload?.count === "number"
-                                    ? ctx.payload.count
-                                    : 0;
-                                return [
-                                  `${numericValue}% (${count})`,
-                                  "Orders",
-                                ];
-                              }}
-                            />
-                            <Bar dataKey="percent" fill="hsl(var(--primary))" />
-                          </BarChart>
-                        </ResponsiveContainer>
+                      <div className="h-64 sm:h-72 w-full flex items-center justify-center">
+                        <div className="h-full w-full max-w-2xl mx-auto">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart 
+                              data={workloadDistribution}
+                              margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                              <YAxis
+                                domain={[0, 100]}
+                                tickFormatter={(value) => `${value}%`}
+                                tick={{ fontSize: 12 }}
+                                width={40}
+                              />
+                              <Tooltip
+                                formatter={(
+                                  value: ValueType,
+                                  _name: NameType,
+                                  ctx?: TooltipPayload<ValueType, NameType>
+                                ) => {
+                                  const numericValue =
+                                    typeof value === "number"
+                                      ? value
+                                      : Number(value ?? 0);
+                                  const count =
+                                    typeof ctx?.payload?.count === "number"
+                                      ? ctx.payload.count
+                                      : 0;
+                                  return [
+                                    `${numericValue}% (${count})`,
+                                    "Orders",
+                                  ];
+                                }}
+                              />
+                              <Bar dataKey="percent" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground text-center py-8">
                         {t("manager.need_orders_for_workload", {
                           defaultValue:
                             "Need order history to calculate workload.",
@@ -4033,32 +4024,28 @@ export default function ManagerDashboard() {
                         })}
                       </h3>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                      <table className="w-full text-sm min-w-[480px]">
                         <thead>
                           <tr className="text-left text-xs text-muted-foreground border-b">
-                            <th className="py-2">
-                              {t("manager.waiter", { defaultValue: "Waiter" })}
+                            <th className="py-2 px-4 sm:px-2">
+                              {t("manager.waiter", { defaultValue: "Staff" })}
                             </th>
-                            <th className="py-2">
-                              {t("manager.avg_serve_min", {
-                                defaultValue: "Avg Serve (min)",
-                              })}
+                            <th className="py-2 px-2 text-right">
+                              <span className="hidden sm:inline">{t("manager.avg_serve_min", { defaultValue: "Avg Serve" })}</span>
+                              <span className="sm:hidden">Avg</span>
                             </th>
-                            <th className="py-2">
-                              {t("manager.p90_serve_min", {
-                                defaultValue: "P90 Serve (min)",
-                              })}
+                            <th className="py-2 px-2 text-right">
+                              <span className="hidden sm:inline">{t("manager.p90_serve_min", { defaultValue: "P90 Serve" })}</span>
+                              <span className="sm:hidden">P90</span>
                             </th>
-                            <th className="py-2">
-                              {t("manager.orders_handled", {
-                                defaultValue: "Orders handled",
-                              })}
+                            <th className="py-2 px-2 text-right">
+                              <span className="hidden sm:inline">{t("manager.orders_handled", { defaultValue: "Orders" })}</span>
+                              <span className="sm:hidden">#</span>
                             </th>
-                            <th className="py-2">
-                              {t("manager.ready_served", {
-                                defaultValue: "Ready → Served",
-                              })}
+                            <th className="py-2 px-4 sm:px-2 text-right">
+                              <span className="hidden sm:inline">{t("manager.ready_served", { defaultValue: "Ready→Served" })}</span>
+                              <span className="sm:hidden">%</span>
                             </th>
                           </tr>
                         </thead>
@@ -4066,20 +4053,21 @@ export default function ManagerDashboard() {
                           {waiterDetails.map((detail) => (
                             <tr
                               key={detail.waiter.id}
-                              className="border-b last:border-b-0"
+                              className="border-b last:border-b-0 hover:bg-muted/30"
                             >
-                              <td className="py-2">
-                                {detail.waiter.displayName ||
-                                  detail.waiter.email}
+                              <td className="py-2.5 px-4 sm:px-2 font-medium">
+                                <span className="truncate max-w-[120px] sm:max-w-none block">
+                                  {detail.waiter.displayName || detail.waiter.email}
+                                </span>
                               </td>
-                              <td className="py-2">
+                              <td className="py-2.5 px-2 text-right tabular-nums">
                                 {formatMinutesValue(detail.avgServe)}
                               </td>
-                              <td className="py-2">
+                              <td className="py-2.5 px-2 text-right tabular-nums">
                                 {formatMinutesValue(detail.p90Serve)}
                               </td>
-                              <td className="py-2">{detail.ordersHandled}</td>
-                              <td className="py-2">
+                              <td className="py-2.5 px-2 text-right tabular-nums">{detail.ordersHandled}</td>
+                              <td className="py-2.5 px-4 sm:px-2 text-right tabular-nums">
                                 {detail.readyServedPercent != null
                                   ? `${detail.readyServedPercent}%`
                                   : "—"}
@@ -4089,7 +4077,7 @@ export default function ManagerDashboard() {
                           {waiterDetails.length === 0 && (
                             <tr>
                               <td
-                                className="py-2 text-muted-foreground"
+                                className="py-6 px-4 text-muted-foreground text-center"
                                 colSpan={5}
                               >
                                 {t("manager.no_waiter_data", {
@@ -4561,54 +4549,56 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                         {categoryUnits.some((entry) => entry.units > 0) ? (
-                          <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Tooltip
-                                  formatter={(
-                                    value: ValueType,
-                                    _name: NameType,
-                                    ctx?: TooltipPayload<ValueType, NameType>
-                                  ) => {
-                                    const numericValue =
-                                      typeof value === "number"
-                                        ? value
-                                        : Number(value ?? 0);
-                                    const label =
-                                      typeof ctx?.payload?.name === "string"
-                                        ? ctx.payload.name
-                                        : "";
-                                    return menuCategoryMode === "share"
-                                      ? [`${numericValue.toFixed(1)}%`, label]
-                                      : [numericValue.toString(), label];
-                                  }}
-                                />
-                                <Legend />
-                                <Pie
-                                  data={categoryUnits.map((c) => ({
-                                    name: c.category,
-                                    value:
-                                      menuCategoryMode === "share"
-                                        ? c.share
-                                        : c.units,
-                                  }))}
-                                  dataKey="value"
-                                  nameKey="name"
-                                  outerRadius={100}
-                                  label
-                                >
-                                  {categoryUnits.map((_, idx) => (
-                                    <Cell
-                                      key={`slice-${idx}`}
-                                      fill={PIE_COLORS[idx % PIE_COLORS.length]}
-                                    />
-                                  ))}
-                                </Pie>
-                              </PieChart>
-                            </ResponsiveContainer>
+                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
+                            <div className="h-full w-full max-w-xs sm:max-w-sm mx-auto">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Tooltip
+                                    formatter={(
+                                      value: ValueType,
+                                      _name: NameType,
+                                      ctx?: TooltipPayload<ValueType, NameType>
+                                    ) => {
+                                      const numericValue =
+                                        typeof value === "number"
+                                          ? value
+                                          : Number(value ?? 0);
+                                      const label =
+                                        typeof ctx?.payload?.name === "string"
+                                          ? ctx.payload.name
+                                          : "";
+                                      return menuCategoryMode === "share"
+                                        ? [`${numericValue.toFixed(1)}%`, label]
+                                        : [numericValue.toString(), label];
+                                    }}
+                                  />
+                                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                                  <Pie
+                                    data={categoryUnits.map((c) => ({
+                                      name: c.category,
+                                      value:
+                                        menuCategoryMode === "share"
+                                          ? c.share
+                                          : c.units,
+                                    }))}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    outerRadius={80}
+                                    label
+                                  >
+                                    {categoryUnits.map((_, idx) => (
+                                      <Cell
+                                        key={`slice-${idx}`}
+                                        fill={PIE_COLORS[idx % PIE_COLORS.length]}
+                                      />
+                                    ))}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground text-center py-8">
                             {t("manager.no_menu_sales", {
                               defaultValue: "No menu items sold yet.",
                             })}
@@ -4633,49 +4623,51 @@ export default function ManagerDashboard() {
                           <ProBadge />
                         </div>
                         {daypartMix.some((entry) => entry.count > 0) ? (
-                          <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Tooltip
-                                  formatter={(
-                                    value: ValueType,
-                                    _name: NameType,
-                                    ctx?: TooltipPayload<ValueType, NameType>
-                                  ) => {
-                                    const numericValue =
-                                      typeof value === "number"
-                                        ? value
-                                        : Number(value ?? 0);
-                                    const label =
-                                      typeof ctx?.payload?.name === "string"
-                                        ? ctx.payload.name
-                                        : "";
-                                    return [numericValue.toString(), label];
-                                  }}
-                                />
-                                <Legend />
-                                <Pie
-                                  data={daypartMix.map((d) => ({
-                                    name: d.daypart,
-                                    value: d.count,
-                                  }))}
-                                  dataKey="value"
-                                  nameKey="name"
-                                  outerRadius={100}
-                                  label
-                                >
-                                  {daypartMix.map((_, idx) => (
-                                    <Cell
-                                      key={`slice-dp-${idx}`}
-                                      fill={PIE_COLORS[idx % PIE_COLORS.length]}
-                                    />
-                                  ))}
-                                </Pie>
-                              </PieChart>
-                            </ResponsiveContainer>
+                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
+                            <div className="h-full w-full max-w-xs sm:max-w-sm mx-auto">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Tooltip
+                                    formatter={(
+                                      value: ValueType,
+                                      _name: NameType,
+                                      ctx?: TooltipPayload<ValueType, NameType>
+                                    ) => {
+                                      const numericValue =
+                                        typeof value === "number"
+                                          ? value
+                                          : Number(value ?? 0);
+                                      const label =
+                                        typeof ctx?.payload?.name === "string"
+                                          ? ctx.payload.name
+                                          : "";
+                                      return [numericValue.toString(), label];
+                                    }}
+                                  />
+                                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                                  <Pie
+                                    data={daypartMix.map((d) => ({
+                                      name: d.daypart,
+                                      value: d.count,
+                                    }))}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    outerRadius={80}
+                                    label
+                                  >
+                                    {daypartMix.map((_, idx) => (
+                                      <Cell
+                                        key={`slice-dp-${idx}`}
+                                        fill={PIE_COLORS[idx % PIE_COLORS.length]}
+                                      />
+                                    ))}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground text-center py-8">
                             {t("manager.no_daypart_data", {
                               defaultValue:
                                 "Daypart data will appear once orders are placed.",
@@ -5628,7 +5620,7 @@ export default function ManagerDashboard() {
                 <div className="grid gap-2">
                   <Label>Printer topic</Label>
                   <Select
-                    value={activeCookType.printerTopic || NO_PRINTER_VALUE}
+                    value={resolvePrinterValue(activeCookType.printerTopic, printerTopics)}
                     onValueChange={(value) =>
                       setActiveCookType((prev) =>
                         prev
@@ -5646,10 +5638,7 @@ export default function ManagerDashboard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
-                      {buildPrinterOptions(
-                        printerTopics,
-                        activeCookType.printerTopic
-                      ).map((topic) => (
+                      {buildPrinterOptions(printerTopics).map((topic) => (
                         <SelectItem key={topic} value={topic}>
                           {topic}
                         </SelectItem>
@@ -5714,16 +5703,32 @@ export default function ManagerDashboard() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="waiter-type-topic">Printer topic</Label>
-                <Input
-                  id="waiter-type-topic"
-                  value={newWaiterType.printerTopic}
-                  onChange={(e) =>
+                <Select
+                  value={newWaiterType.printerTopic || NO_PRINTER_VALUE}
+                  onValueChange={(value) =>
                     setNewWaiterType((prev) => ({
                       ...prev,
-                      printerTopic: e.target.value,
+                      printerTopic: value === NO_PRINTER_VALUE ? "" : value,
                     }))
                   }
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select printer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                    {printerTopics.map((topic) => (
+                      <SelectItem key={topic} value={topic}>
+                        {topic}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {printerTopics.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No printers configured in Architect settings.
+                  </p>
+                ) : null}
               </div>
             </div>
             <DialogFooter>

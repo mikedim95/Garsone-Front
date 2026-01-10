@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption } from '@/types';
+import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption, StaffType } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
@@ -21,6 +21,7 @@ type ItemForm = {
   categoryId: string;
   newCategoryTitle: string;
   isAvailable: boolean;
+  printerTopic: string;
 };
 
 export const ManagerMenuPanel = () => {
@@ -31,6 +32,8 @@ export const ManagerMenuPanel = () => {
 
   const [storeSlug, setStoreSlug] = useState<string>('');
   const [printerTopics, setPrinterTopics] = useState<string[]>([]);
+  const [cookTypes, setCookTypes] = useState<StaffType[]>([]);
+  const [waiterTypes, setWaiterTypes] = useState<StaffType[]>([]);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -45,6 +48,7 @@ export const ManagerMenuPanel = () => {
     categoryId: '',
     newCategoryTitle: '',
     isAvailable: true,
+    printerTopic: '',
   });
   const [savingItem, setSavingItem] = useState(false);
 
@@ -63,24 +67,64 @@ export const ManagerMenuPanel = () => {
   // Category edit modal
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
-  const [categoryForm, setCategoryForm] = useState<{ title: string; printerChoice: string }>({
+  const [categoryForm, setCategoryForm] = useState<{ title: string }>({
     title: '',
-    printerChoice: '',
   });
   const [savingCategory, setSavingCategory] = useState(false);
   const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('edit');
 
-  const getPrinterOptions = (selected?: string) => {
-    if (!selected || printerTopics.includes(selected)) return printerTopics;
-    return [selected, ...printerTopics];
+  const getPrinterOptions = () => printerTopics;
+
+  const resolveItemPrinter = (value?: string | null) => {
+    const trimmed = (value ?? '').trim();
+    if (trimmed && printerTopics.includes(trimmed)) return trimmed;
+    return printerTopics[0] ?? '';
+  };
+
+  const normalizePrinterTopicValue = (value?: string | null) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+  const printerUsage = useMemo(() => {
+    const map = new Map<string, { cooks: string[]; waiters: string[] }>();
+    const addUsage = (
+      topic: string | null | undefined,
+      label: string | null | undefined,
+      bucket: 'cooks' | 'waiters'
+    ) => {
+      const normalized = normalizePrinterTopicValue(topic);
+      if (!normalized || !label) return;
+      const entry = map.get(normalized) ?? { cooks: [], waiters: [] };
+      if (!entry[bucket].includes(label)) entry[bucket].push(label);
+      map.set(normalized, entry);
+    };
+    cookTypes.forEach((type) => addUsage(type.printerTopic ?? null, type.title ?? '', 'cooks'));
+    waiterTypes.forEach((type) => addUsage(type.printerTopic ?? null, type.title ?? '', 'waiters'));
+    return map;
+  }, [cookTypes, waiterTypes]);
+
+  const formatPrinterLabel = (topic: string) => {
+    const normalized = normalizePrinterTopicValue(topic);
+    const usage = printerUsage.get(normalized);
+    if (!usage) return topic;
+    const parts: string[] = [];
+    if (usage.cooks.length > 0) {
+      parts.push(`Cook: ${usage.cooks.join(', ')}`);
+    }
+    if (usage.waiters.length > 0) {
+      parts.push(`Waiter: ${usage.waiters.join(', ')}`);
+    }
+    if (parts.length === 0) return topic;
+    return `${topic} (${parts.join('; ')})`;
   };
 
   const load = useCallback(async () => {
     try {
-      const [itemsRes, categoriesRes, storeRes] = await Promise.all([
+      const [itemsRes, categoriesRes, storeRes, cookTypesRes, waiterTypesRes] = await Promise.all([
         api.listItems(),
         api.listCategories(),
         api.getStore(),
+        api.listCookTypes(),
+        api.listWaiterTypes(),
       ]);
       setItems(itemsRes.items ?? []);
       setCategories(
@@ -89,6 +133,8 @@ export const ManagerMenuPanel = () => {
           title: c.title || c.titleEn || c.titleEl || '',
         }))
       );
+      setCookTypes(cookTypesRes.types ?? []);
+      setWaiterTypes(waiterTypesRes.types ?? []);
       const rawPrinters =
         (storeRes as any)?.store?.settings?.printers ??
         (storeRes as any)?.store?.settingsJson?.printers ??
@@ -137,19 +183,15 @@ export const ManagerMenuPanel = () => {
   }, [load]);
 
   const openCategoryCreate = () => {
-    const fallbackPrinter = printerTopics[0] ?? '';
-    setCategoryForm({ title: '', printerChoice: fallbackPrinter });
+    setCategoryForm({ title: '' });
     setEditingCategory(null);
     setCategoryDialogMode('create');
     setCategoryDialogOpen(true);
   };
 
   const openCategoryEdit = (cat: MenuCategory) => {
-    const printer = cat.printerTopic || '';
-    const fallbackPrinter = printerTopics[0] ?? '';
     setCategoryForm({
       title: cat.title || '',
-      printerChoice: printer || fallbackPrinter || '',
     });
     setEditingCategory(cat);
     setCategoryDialogMode('edit');
@@ -163,17 +205,15 @@ export const ManagerMenuPanel = () => {
       toast({ title: 'Title required', description: 'Category title cannot be empty' });
       return;
     }
-    const effectivePrinter = (categoryForm.printerChoice || '').trim();
     setSavingCategory(true);
     try {
       if (categoryDialogMode === 'create') {
-        await api.createCategory(title, title, undefined, effectivePrinter || null);
+        await api.createCategory(title, title, undefined);
         toast({ title: 'Category added', description: title });
       } else if (editingCategory) {
         await api.updateCategory(editingCategory.id, {
           titleEn: title,
           titleEl: title,
-          printerTopic: effectivePrinter || null,
         });
         toast({ title: 'Category updated', description: title });
       }
@@ -203,6 +243,7 @@ export const ManagerMenuPanel = () => {
       categoryId: fallbackCategory,
       newCategoryTitle: '',
       isAvailable: true,
+      printerTopic: resolveItemPrinter(),
     });
     setCustomMods([]);
     setOriginalModifierIds(new Set());
@@ -211,6 +252,7 @@ export const ManagerMenuPanel = () => {
 
   const openEdit = async (item: ManagerItemSummary) => {
     setEditing(item);
+    const selectedPrinter = resolveItemPrinter(item.printerTopic);
     setForm({
       titleEn: item.titleEn ?? item.title ?? item.name ?? '',
       titleEl: item.titleEl ?? item.title ?? item.name ?? '',
@@ -222,6 +264,7 @@ export const ManagerMenuPanel = () => {
       categoryId: item.categoryId ?? '',
       newCategoryTitle: '',
       isAvailable: item.isAvailable ?? true,
+      printerTopic: selectedPrinter,
     });
     try {
       const detail = await api.getItemDetail(item.id);
@@ -426,7 +469,7 @@ export const ManagerMenuPanel = () => {
           setCategoryDialogOpen(open);
           if (!open) {
             setEditingCategory(null);
-            setCategoryForm({ title: '', printerChoice: '' });
+            setCategoryForm({ title: '' });
             setCategoryDialogMode('edit');
           }
         }}
@@ -441,27 +484,7 @@ export const ManagerMenuPanel = () => {
               value={categoryForm.title}
               onChange={(e) => setCategoryForm((prev) => ({ ...prev, title: e.target.value }))}
             />
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Printer topic</label>
-              <select
-                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                value={categoryForm.printerChoice}
-                onChange={(e) => setCategoryForm((prev) => ({ ...prev, printerChoice: e.target.value }))}
-              >
-                <option value="">No printer</option>
-                {getPrinterOptions(categoryForm.printerChoice).map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              {printerTopics.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No printers configured in Architect settings.
-                </p>
-              ) : null}
-            </div>
-            <p className="text-xs text-muted-foreground">Choose where this category prints.</p>
+            <p className="text-xs text-muted-foreground">Set the category name.</p>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>
@@ -520,6 +543,26 @@ export const ManagerMenuPanel = () => {
                   Category: <span className="font-medium text-foreground">{categories.find((category)=>category.id===form.categoryId)?.title || '—'}</span>
                 </div>
               )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Printer</label>
+              <select
+                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                value={form.printerTopic}
+                onChange={(e)=>setForm({...form, printerTopic: e.target.value})}
+              >
+                {printerTopics.length === 0 ? (
+                  <option value="">No printers configured</option>
+                ) : null}
+                {getPrinterOptions().map((p) => (
+                  <option key={p} value={p}>
+                    {formatPrinterLabel(p)}
+                  </option>
+                ))}
+              </select>
+              {printerTopics.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Add printers in Architect settings first.</p>
+              ) : null}
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.isAvailable} onChange={(e)=>setForm({...form, isAvailable: e.target.checked})}/>
@@ -592,7 +635,8 @@ export const ManagerMenuPanel = () => {
                 cm.options.some((opt) => !opt.titleEn.trim() || !opt.titleEl.trim())
               );
               const hasModifierValidationError = modifierMissingTitle || modifierMissingOptionLabel;
-              const canSave = form.titleEn.trim().length > 0 && form.titleEl.trim().length > 0 && Number.isFinite(priceNum) && !hasModifierValidationError;
+              const printerSelected = form.printerTopic.trim().length > 0;
+              const canSave = form.titleEn.trim().length > 0 && form.titleEl.trim().length > 0 && Number.isFinite(priceNum) && printerSelected && !hasModifierValidationError;
               return (
                 <Button
                   onClick={async ()=>{
@@ -610,6 +654,7 @@ export const ManagerMenuPanel = () => {
                         categoryId,
                         isAvailable: form.isAvailable,
                         imageUrl: form.imageUrl.trim() || undefined,
+                        printerTopic: form.printerTopic.trim() || null,
                       };
                       const typedImageUrl = form.imageUrl.trim();
 
