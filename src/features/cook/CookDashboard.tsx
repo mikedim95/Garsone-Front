@@ -230,7 +230,10 @@ export default function CookDashboard() {
 
   // Realtime (WSS): listen for newly placed orders
   useEffect(() => {
-    const topic = `${storeSlug}/orders/placed`;
+    const normalizedCookTopic = normalizePrinterTopicValue(cookPrinterTopic);
+    const topic = normalizedCookTopic
+      ? `${storeSlug}/orders/placed/${normalizedCookTopic}`
+      : `${storeSlug}/orders/placed`;
     const handler = (payload: unknown) => {
       if (!isOrderPlacedPayload(payload)) return;
       const normalized = normalizeOrder(
