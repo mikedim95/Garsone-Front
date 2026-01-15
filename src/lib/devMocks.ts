@@ -1276,8 +1276,9 @@ export const devMocks = {
       })) 
     }); 
   },
-  createModifier(data: { titleEn: string; titleEl: string; minSelect: number; maxSelect: number|null; isAvailable?: boolean }) {
-    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.titleEn, titleEn: data.titleEn, titleEl: data.titleEl, name: data.titleEn, minSelect: data.minSelect, maxSelect: data.maxSelect, isAvailable: data.isAvailable ?? true, options: [] };
+  createModifier(data: { titleEn: string; titleEl: string; minSelect: number; maxSelect?: number|null; isAvailable?: boolean }) {
+    const maxSelect = typeof data.maxSelect === 'number' ? data.maxSelect : null;
+    const db = snapshot(); const m: Modifier = { id: uid('mod'), title: data.titleEn, titleEn: data.titleEn, titleEl: data.titleEl, name: data.titleEn, minSelect: data.minSelect, maxSelect, isAvailable: data.isAvailable ?? true, options: [] };
     db.modifiers.push(m); save(db); 
     return Promise.resolve({ modifier: { ...m, name: m.title, options: m.options.map(opt => ({ ...opt, label: opt.title })) } });
   },

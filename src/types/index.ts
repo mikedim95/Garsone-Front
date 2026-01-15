@@ -267,7 +267,7 @@ export interface ModifierInput {
   titleEn: string;
   titleEl: string;
   minSelect: number;
-  maxSelect: number | null;
+  maxSelect?: number | null;
   isAvailable?: boolean;
 }
 

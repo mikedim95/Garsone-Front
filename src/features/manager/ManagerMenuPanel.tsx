@@ -703,7 +703,6 @@ export const ManagerMenuPanel = () => {
                               titleEn: cm.titleEn.trim(),
                               titleEl: cm.titleEl.trim(),
                               minSelect: cm.required ? 1 : 0,
-                              maxSelect: null,
                               isAvailable: cm.isAvailable,
                             });
                           } else {
@@ -711,7 +710,6 @@ export const ManagerMenuPanel = () => {
                               titleEn: cm.titleEn.trim(),
                               titleEl: cm.titleEl.trim(),
                               minSelect: cm.required ? 1 : 0,
-                              maxSelect: null,
                               isAvailable: cm.isAvailable,
                             });
                             modifierId = createdModifier.modifier.id;
