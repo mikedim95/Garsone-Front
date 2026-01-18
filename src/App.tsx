@@ -37,6 +37,7 @@ const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
 const PaymentFailed = lazy(() => import("./pages/PaymentFailed"));
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
+const ProfileDashboard = lazy(() => import("./pages/ProfileDashboard"));
 const PublicCodeRedirect = () => {
   const location = useLocation();
   const params = useParams<{ publicCode: string }>();
@@ -101,6 +102,7 @@ const BrandedLoadingScreen = () => {
     "waiter",
     "manager",
     "cook",
+    "profile",
     "garsoneadmin",
     "architect",
   ]);
@@ -202,6 +204,7 @@ const AppShell = () => {
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/cook" element={<CookDashboard />} />
+                <Route path="/profile" element={<ProfileDashboard />} />
                 <Route path="/GarsoneAdmin" element={<ArchitectQrTiles />} />
                 <Route
                   path="/architect"

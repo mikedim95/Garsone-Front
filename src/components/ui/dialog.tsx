@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 
@@ -35,25 +36,66 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border/40 bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg max-h-[90dvh] overflow-y-auto",
-        className
-      )}
-      // Prevent closing when clicking outside the dialog
+      asChild
+      // Allow outside-tap close on touch/small screens, keep desktop behavior.
       onInteractOutside={(e) => {
+        if (typeof window !== "undefined") {
+          const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches
+          const isSmall = window.matchMedia("(max-width: 768px)").matches
+          if (isTouch || isSmall) return
+        }
         e.preventDefault()
       }}
       {...props}
     >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+        transition={{ 
+          type: "spring", 
+          stiffness: 350, 
+          damping: 25,
+          mass: 0.8
+        }}
+        className={cn(
+          "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg [translate:-50%_-50%] gap-4 border border-border/40 bg-background p-6 shadow-lg sm:rounded-lg max-h-[90dvh] overflow-y-auto",
+          className
+        )}
+      >
+        {children}
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      </motion.div>
     </DialogPrimitive.Content>
   </DialogPortal>
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
+
+// Animated form field wrapper for staggered animations
+interface DialogFormFieldProps {
+  className?: string;
+  index?: number;
+  children?: React.ReactNode;
+}
+
+const DialogFormField = ({ className, index = 0, children }: DialogFormFieldProps) => (
+  <motion.div
+    initial={{ opacity: 0, x: -10 }}
+    animate={{ opacity: 1, x: 0 }}
+    transition={{ 
+      delay: 0.05 + index * 0.05,
+      duration: 0.2,
+      ease: "easeOut"
+    }}
+    className={cn("grid gap-2", className)}
+  >
+    {children}
+  </motion.div>
+)
+DialogFormField.displayName = "DialogFormField"
 
 const DialogHeader = ({
   className,
@@ -122,4 +164,5 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  DialogFormField,
 }

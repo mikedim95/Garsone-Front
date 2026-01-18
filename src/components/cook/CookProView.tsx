@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Timer,
   Utensils,
+  ListChecks,
 } from "lucide-react";
 
 interface CookProViewProps {
@@ -27,6 +28,7 @@ interface CookProViewProps {
   onAcceptWithPrint: (order: Order) => void;
   onCancel: (id: string) => void;
   onMarkReady: (id: string) => void;
+  onViewModifiers: (order: Order) => void;
 }
 
 const getElapsedMinutes = (createdAt: string) => {
@@ -59,6 +61,7 @@ export const CookProView = ({
   onAcceptWithPrint,
   onCancel,
   onMarkReady,
+  onViewModifiers,
 }: CookProViewProps) => {
   const { t } = useTranslation();
 
@@ -261,6 +264,15 @@ export const CookProView = ({
                       </Button>
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => onViewModifiers(order)}
+                        title={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                        aria-label={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                      >
+                        <ListChecks className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="ghost"
                         className="text-destructive hover:bg-destructive/10"
                         onClick={() => onCancel(order.id)}
@@ -355,20 +367,31 @@ export const CookProView = ({
                     </div>
 
                     {/* Actions */}
-                    <Button
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => onMarkReady(order.id)}
-                      disabled={actingIds.has(`ready:${order.id}`)}
-                    >
-                      {actingIds.has(`ready:${order.id}`) ? (
-                        <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <CheckCircle2 className="h-4 w-4 mr-2" />
-                          {t("actions.mark_ready")}
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => onMarkReady(order.id)}
+                        disabled={actingIds.has(`ready:${order.id}`)}
+                      >
+                        {actingIds.has(`ready:${order.id}`) ? (
+                          <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            {t("actions.mark_ready")}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => onViewModifiers(order)}
+                        title={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                        aria-label={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                      >
+                        <ListChecks className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 );
               })

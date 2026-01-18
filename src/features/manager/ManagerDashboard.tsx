@@ -47,7 +47,10 @@ import {
   ChevronUp,
   RefreshCcw,
   Search,
+  ChefHat,
+  Tag,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ManagerMenuPanel } from "@/features/manager/ManagerMenuPanel";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +87,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFormField,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -805,10 +809,8 @@ export default function ManagerDashboard() {
         (itemsRes?.items ?? []).forEach((item: ManagerItemSummary) => {
           if (!item?.id) return;
           const label =
-            pickLabel(item.category) ??
-            (item.categoryId
-              ? categoriesMap.get(item.categoryId) ?? null
-              : null) ??
+            pickLabel(item.category as unknown) ??
+            (item.categoryId ? categoriesMap.get(item.categoryId) : null) ??
             pickLabel((item as { categoryTitle?: string }).categoryTitle) ??
             pickLabel((item as { categoryName?: string }).categoryName);
           if (label) {
@@ -3660,289 +3662,355 @@ export default function ManagerDashboard() {
                 <TabsContent value="personnel" className="space-y-6">
                   <DateRangeHeader />
 
-                  {/* Team Card - Merged Waiters & Cooks */}
-                  <Card className="p-4 sm:p-6">
+                  {/* Unified Staff Management Card */}
+                  <Card className="p-0 overflow-hidden">
                     <Tabs defaultValue="waiters" className="w-full">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Team</p>
-                          <h3 className="text-lg font-semibold">Staff Members</h3>
+                      {/* Horizontal category navigation */}
+                      <div className="border-b border-border/60 bg-muted/30">
+                        <div className="px-4 sm:px-6 pt-4 pb-0">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-lg font-semibold">Staff Management</h3>
+                            <div className="text-xs text-muted-foreground">
+                              {waiterDetails.length + cooks.length} members · {cookTypes.length + waiterTypes.length} types
+                            </div>
+                          </div>
+                          <TabsList className="w-full justify-start gap-0 h-auto p-0 bg-transparent rounded-none">
+                            <TabsTrigger 
+                              value="waiters" 
+                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                            >
+                              <Users className="h-4 w-4 mr-1.5" />
+                              Waiters
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{waiterDetails.length}</Badge>
+                            </TabsTrigger>
+                            <TabsTrigger 
+                              value="cooks" 
+                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                            >
+                              <ChefHat className="h-4 w-4 mr-1.5" />
+                              Cooks
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{cooks.length}</Badge>
+                            </TabsTrigger>
+                            <div className="h-6 w-px bg-border mx-2 self-center" />
+                            <TabsTrigger 
+                              value="waiter-types" 
+                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                            >
+                              Waiter Types
+                              <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{waiterTypes.length}</Badge>
+                            </TabsTrigger>
+                            <TabsTrigger 
+                              value="cook-types" 
+                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                            >
+                              Cook Types
+                              <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{cookTypes.length}</Badge>
+                            </TabsTrigger>
+                          </TabsList>
                         </div>
-                        <TabsList className="grid w-full sm:w-auto grid-cols-2 h-9">
-                          <TabsTrigger value="waiters" className="text-xs sm:text-sm px-3">
-                            Waiters ({waiterDetails.length})
-                          </TabsTrigger>
-                          <TabsTrigger value="cooks" className="text-xs sm:text-sm px-3">
-                            Cooks ({cooks.length})
-                          </TabsTrigger>
-                        </TabsList>
                       </div>
 
-                      <TabsContent value="waiters" className="mt-0 space-y-4">
-                        <div className="flex justify-end">
-                          <Button
-                            onClick={() => setAddModalOpen(true)}
-                            size="sm"
-                            className="inline-flex items-center gap-2"
-                          >
-                            <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
-                          </Button>
-                        </div>
-                        {loadingWaiters ? (
-                          <DashboardGridSkeleton count={4} className="grid md:grid-cols-2" />
-                        ) : waiterDetails.length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-8 text-center">
-                            {t("manager.no_waiters", {
-                              defaultValue: "No waiters yet. Add your first waiter to get started.",
-                            })}
-                          </p>
-                        ) : (
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {waiterDetails.map((detail) => (
-                              <div
-                                key={detail.waiter.id}
-                                className="border border-border/60 rounded-lg p-3 sm:p-4 bg-card/50 space-y-2"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-foreground truncate">
-                                      {detail.waiter.displayName || detail.waiter.email}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {detail.waiter.email}
-                                    </p>
-                                  </div>
-                                  <Badge variant={detail.shiftOn ? "secondary" : "outline"} className="shrink-0 text-xs">
-                                    {detail.shiftOn ? "On" : "Off"}
-                                  </Badge>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                                  <Badge variant="outline" className="text-xs">
-                                    {detail.assignedTables.length} tables
-                                  </Badge>
-                                  <Badge variant="secondary" className="text-xs">
-                                    {detail.waiter.waiterType?.title || "No type"}
-                                  </Badge>
-                                </div>
-                                <div className="flex gap-2 pt-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-1 h-8 text-xs"
-                                    onClick={() => openEditWaiter(detail.waiter)}
-                                  >
-                                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                                  </Button>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    className="h-8 text-xs px-2"
-                                    onClick={() => handleDeleteWaiter(detail.waiter.id)}
-                                    disabled={deletingWaiterId === detail.waiter.id}
-                                  >
-                                    {deletingWaiterId === detail.waiter.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
+                      {/* Content area */}
+                      <div className="p-4 sm:p-6">
+                        {/* Waiters Tab */}
+                        <TabsContent value="waiters" className="mt-0 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              Manage your front-of-house team and table assignments
+                            </p>
+                            <Button
+                              onClick={() => setAddModalOpen(true)}
+                              size="sm"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
+                            </Button>
                           </div>
-                        )}
-                      </TabsContent>
-
-                      <TabsContent value="cooks" className="mt-0 space-y-4">
-                        <div className="flex justify-end">
-                          <Button
-                            onClick={() => setAddCookModalOpen(true)}
-                            size="sm"
-                            className="inline-flex items-center gap-2"
-                          >
-                            <Plus className="h-4 w-4" /> Add cook
-                          </Button>
-                        </div>
-                        {loadingCooks ? (
-                          <DashboardGridSkeleton count={4} className="grid md:grid-cols-2" />
-                        ) : cooks.length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-8 text-center">
-                            No cooks yet. Add your first cook to get started.
-                          </p>
-                        ) : (
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {cooks.map((cook) => (
-                              <div
-                                key={cook.id}
-                                className="border border-border/60 rounded-lg p-3 sm:p-4 bg-card/50 space-y-2"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-foreground truncate">
-                                      {cook.displayName || cook.email}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {cook.email}
-                                    </p>
-                                  </div>
-                                  <Badge variant="secondary" className="shrink-0 text-xs">
-                                    {cook.cookType?.title || "No type"}
-                                  </Badge>
-                                </div>
-                                <div className="flex gap-2 pt-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-1 h-8 text-xs"
-                                    onClick={() => openEditCook(cook)}
-                                  >
-                                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                                  </Button>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    className="h-8 text-xs px-2"
-                                    onClick={() => handleDeleteCook(cook.id)}
-                                    disabled={deletingCookId === cook.id}
-                                  >
-                                    {deletingCookId === cook.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </TabsContent>
-                    </Tabs>
-                  </Card>
-
-                  {/* Staff Types Card - Merged Cook Types & Waiter Types */}
-                  <Card className="p-4 sm:p-6">
-                    <Tabs defaultValue="cook-types" className="w-full">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Specialties</p>
-                          <h3 className="text-lg font-semibold">Staff Types</h3>
-                        </div>
-                        <TabsList className="grid w-full sm:w-auto grid-cols-2 h-9">
-                          <TabsTrigger value="cook-types" className="text-xs sm:text-sm px-3">
-                            Cook ({cookTypes.length})
-                          </TabsTrigger>
-                          <TabsTrigger value="waiter-types" className="text-xs sm:text-sm px-3">
-                            Waiter ({waiterTypes.length})
-                          </TabsTrigger>
-                        </TabsList>
-                      </div>
-
-                      <TabsContent value="cook-types" className="mt-0 space-y-4">
-                        <div className="flex justify-end">
-                          <Button
-                            onClick={() => setAddCookTypeModalOpen(true)}
-                            size="sm"
-                            className="inline-flex items-center gap-2"
-                          >
-                            <Plus className="h-4 w-4" /> Add type
-                          </Button>
-                        </div>
-                        {loadingTypes ? (
-                          <DashboardGridSkeleton count={3} className="grid" />
-                        ) : cookTypes.length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-6 text-center">
-                            No cook types yet.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {cookTypes.map((type) => (
-                              <div
-                                key={type.id}
-                                className="border border-border/60 rounded-lg p-3 bg-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                              >
-                                <div className="min-w-0">
-                                  <p className="font-medium text-foreground">{type.title}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => openEditCookType(type)}
-                                  >
-                                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                                  </Button>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    className="h-8 text-xs px-2"
-                                    onClick={() => handleDeleteCookType(type.id)}
-                                    disabled={deletingCookTypeId === type.id}
-                                  >
-                                    {deletingCookTypeId === type.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </TabsContent>
-
-                      <TabsContent value="waiter-types" className="mt-0 space-y-4">
-                        <div className="flex justify-end">
-                          <Button
-                            onClick={() => setAddWaiterTypeModalOpen(true)}
-                            size="sm"
-                            className="inline-flex items-center gap-2"
-                          >
-                            <Plus className="h-4 w-4" /> Add type
-                          </Button>
-                        </div>
-                        {loadingTypes ? (
-                          <DashboardGridSkeleton count={3} className="grid" />
-                        ) : waiterTypes.length === 0 ? (
-                          <p className="text-sm text-muted-foreground py-6 text-center">
-                            No waiter types yet.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {waiterTypes.map((type) => (
-                              <div
-                                key={type.id}
-                                className="border border-border/60 rounded-lg p-3 bg-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                              >
-                                <div className="min-w-0">
-                                  <p className="font-medium text-foreground">{type.title}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
-                                  </p>
-                                </div>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  className="h-8 text-xs px-2 self-start sm:self-auto"
-                                  onClick={() => handleDeleteWaiterType(type.id)}
-                                  disabled={deletingWaiterTypeId === type.id}
+                          {loadingWaiters ? (
+                            <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
+                          ) : waiterDetails.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
+                              <Users className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <p className="text-sm text-muted-foreground">
+                                {t("manager.no_waiters", {
+                                  defaultValue: "No waiters yet. Add your first waiter to get started.",
+                                })}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {waiterDetails.map((detail) => (
+                                <div
+                                  key={detail.waiter.id}
+                                  className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
                                 >
-                                  {deletingWaiterTypeId === type.id ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-3 w-3" />
-                                  )}
-                                </Button>
-                              </div>
-                            ))}
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                      <span className="text-sm font-semibold text-primary">
+                                        {(detail.waiter.displayName || detail.waiter.email || "?")[0].toUpperCase()}
+                                      </span>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium text-foreground truncate">
+                                          {detail.waiter.displayName || detail.waiter.email}
+                                        </p>
+                                        <span className={cn(
+                                          "h-2 w-2 rounded-full shrink-0",
+                                          detail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
+                                        )} title={detail.shiftOn ? "On shift" : "Off shift"} />
+                                      </div>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {detail.waiter.email}
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <Badge variant="outline" className="text-[10px] h-5">
+                                          {detail.assignedTables.length} tables
+                                        </Badge>
+                                        {detail.waiter.waiterType?.title && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {detail.waiter.waiterType.title}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="flex-1 h-8 text-xs"
+                                      onClick={() => openEditWaiter(detail.waiter)}
+                                    >
+                                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteWaiter(detail.waiter.id)}
+                                      disabled={deletingWaiterId === detail.waiter.id}
+                                    >
+                                      {deletingWaiterId === detail.waiter.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3 w-3" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        {/* Cooks Tab */}
+                        <TabsContent value="cooks" className="mt-0 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              Manage your kitchen staff and specializations
+                            </p>
+                            <Button
+                              onClick={() => setAddCookModalOpen(true)}
+                              size="sm"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" /> Add cook
+                            </Button>
                           </div>
-                        )}
-                      </TabsContent>
+                          {loadingCooks ? (
+                            <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
+                          ) : cooks.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
+                              <ChefHat className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <p className="text-sm text-muted-foreground">
+                                No cooks yet. Add your first cook to get started.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {cooks.map((cook) => (
+                                <div
+                                  key={cook.id}
+                                  className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                                      <ChefHat className="h-5 w-5 text-orange-600" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium text-foreground truncate">
+                                        {cook.displayName || cook.email}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {cook.email}
+                                      </p>
+                                      {cook.cookType?.title && (
+                                        <Badge variant="secondary" className="text-[10px] h-5 mt-2">
+                                          {cook.cookType.title}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="flex-1 h-8 text-xs"
+                                      onClick={() => openEditCook(cook)}
+                                    >
+                                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteCook(cook.id)}
+                                      disabled={deletingCookId === cook.id}
+                                    >
+                                      {deletingCookId === cook.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3 w-3" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        {/* Waiter Types Tab */}
+                        <TabsContent value="waiter-types" className="mt-0 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              Define waiter roles and their printer routing
+                            </p>
+                            <Button
+                              onClick={() => setAddWaiterTypeModalOpen(true)}
+                              size="sm"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" /> Add type
+                            </Button>
+                          </div>
+                          {loadingTypes ? (
+                            <DashboardGridSkeleton count={3} className="grid" />
+                          ) : waiterTypes.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
+                              <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <p className="text-sm text-muted-foreground">
+                                No waiter types yet. Create types to categorize your waiters.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {waiterTypes.map((type) => (
+                                <div
+                                  key={type.id}
+                                  className="border border-border/60 rounded-lg p-3 bg-card flex items-center justify-between gap-3"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                                      <Users className="h-4 w-4 text-primary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
+                                      <p className="text-[10px] text-muted-foreground">
+                                        Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                    onClick={() => handleDeleteWaiterType(type.id)}
+                                    disabled={deletingWaiterTypeId === type.id}
+                                  >
+                                    {deletingWaiterTypeId === type.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        {/* Cook Types Tab */}
+                        <TabsContent value="cook-types" className="mt-0 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              Define cook specializations and printer routing
+                            </p>
+                            <Button
+                              onClick={() => setAddCookTypeModalOpen(true)}
+                              size="sm"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" /> Add type
+                            </Button>
+                          </div>
+                          {loadingTypes ? (
+                            <DashboardGridSkeleton count={3} className="grid" />
+                          ) : cookTypes.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
+                              <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <p className="text-sm text-muted-foreground">
+                                No cook types yet. Create types to categorize your kitchen staff.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {cookTypes.map((type) => (
+                                <div
+                                  key={type.id}
+                                  className="border border-border/60 rounded-lg p-3 bg-card flex items-center justify-between gap-3"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-8 w-8 rounded bg-orange-500/10 flex items-center justify-center shrink-0">
+                                      <ChefHat className="h-4 w-4 text-orange-600" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
+                                      <p className="text-[10px] text-muted-foreground">
+                                        Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => openEditCookType(type)}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteCookType(type.id)}
+                                      disabled={deletingCookTypeId === type.id}
+                                    >
+                                      {deletingCookTypeId === type.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+                      </div>
                     </Tabs>
                   </Card>
 
@@ -5131,7 +5199,7 @@ export default function ManagerDashboard() {
             </DialogHeader>
             {activeWaiter ? (
               <div className="space-y-6">
-                <div className="grid gap-2">
+                <DialogFormField index={0}>
                   <Label htmlFor="waiter-name">
                     {t("manager.display_name", {
                       defaultValue: "Display name",
@@ -5146,8 +5214,8 @@ export default function ManagerDashboard() {
                       )
                     }
                   />
-                </div>
-                <div className="grid gap-2">
+                </DialogFormField>
+                <DialogFormField index={1}>
                   <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
                   <Select
                     value={activeWaiter.waiterTypeId ?? "none"}
@@ -5180,7 +5248,7 @@ export default function ManagerDashboard() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </DialogFormField>
                 <div className="grid gap-2">
                   <Label>
                     {t("manager.assigned_tables", {
@@ -5250,7 +5318,7 @@ export default function ManagerDashboard() {
             </DialogHeader>
             {activeCook ? (
               <div className="space-y-4">
-                <div className="grid gap-2">
+                <DialogFormField index={0}>
                   <Label htmlFor="cook-name">Display name</Label>
                   <Input
                     id="cook-name"
@@ -5261,8 +5329,8 @@ export default function ManagerDashboard() {
                       )
                     }
                   />
-                </div>
-                <div className="grid gap-2">
+                </DialogFormField>
+                <DialogFormField index={1}>
                   <Label>Type</Label>
                   <Select
                     value={activeCook.cookTypeId ?? "none"}
@@ -5289,7 +5357,7 @@ export default function ManagerDashboard() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </DialogFormField>
               </div>
             ) : null}
             <DialogFooter>
@@ -5327,7 +5395,7 @@ export default function ManagerDashboard() {
               <DialogTitle>{t("actions.add_waiter")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="grid gap-2">
+              <DialogFormField index={0}>
                 <Label htmlFor="new-waiter-email">Email</Label>
                 <Input
                   id="new-waiter-email"
@@ -5337,8 +5405,8 @@ export default function ManagerDashboard() {
                     setNewWaiter((prev) => ({ ...prev, email: e.target.value }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={1}>
                 <Label htmlFor="new-waiter-name">
                   {t("manager.display_name", { defaultValue: "Display name" })}
                 </Label>
@@ -5352,8 +5420,8 @@ export default function ManagerDashboard() {
                     }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={2}>
                 <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
                 <Select
                   value={newWaiter.waiterTypeId ?? "none"}
@@ -5382,8 +5450,8 @@ export default function ManagerDashboard() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={3}>
                 <Label htmlFor="new-waiter-password">Password</Label>
                 <Input
                   id="new-waiter-password"
@@ -5396,7 +5464,7 @@ export default function ManagerDashboard() {
                     }))
                   }
                 />
-              </div>
+              </DialogFormField>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddModalOpen(false)}>
@@ -5435,7 +5503,7 @@ export default function ManagerDashboard() {
               <DialogTitle>Add cook</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="grid gap-2">
+              <DialogFormField index={0}>
                 <Label htmlFor="new-cook-email">Email</Label>
                 <Input
                   id="new-cook-email"
@@ -5445,8 +5513,8 @@ export default function ManagerDashboard() {
                     setNewCook((prev) => ({ ...prev, email: e.target.value }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={1}>
                 <Label htmlFor="new-cook-name">Display name</Label>
                 <Input
                   id="new-cook-name"
@@ -5458,8 +5526,8 @@ export default function ManagerDashboard() {
                     }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={2}>
                 <Label>Type</Label>
                 <Select
                   value={newCook.cookTypeId ?? "none"}
@@ -5482,8 +5550,8 @@ export default function ManagerDashboard() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={3}>
                 <Label htmlFor="new-cook-password">Password</Label>
                 <Input
                   id="new-cook-password"
@@ -5496,7 +5564,7 @@ export default function ManagerDashboard() {
                     }))
                   }
                 />
-              </div>
+              </DialogFormField>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddCookModalOpen(false)}>
@@ -5528,7 +5596,7 @@ export default function ManagerDashboard() {
               <DialogTitle>Add cook type</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="grid gap-2">
+              <DialogFormField index={0}>
                 <Label htmlFor="cook-type-title">Title</Label>
                 <Input
                   id="cook-type-title"
@@ -5540,8 +5608,8 @@ export default function ManagerDashboard() {
                     }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={1}>
                 <Label>Printer topic</Label>
                 <Select
                   value={newCookType.printerTopic || NO_PRINTER_VALUE}
@@ -5569,7 +5637,7 @@ export default function ManagerDashboard() {
                     No printers configured in Architect settings.
                   </p>
                 ) : null}
-              </div>
+              </DialogFormField>
             </div>
             <DialogFooter>
               <Button
@@ -5605,7 +5673,7 @@ export default function ManagerDashboard() {
             </DialogHeader>
             {activeCookType ? (
               <div className="space-y-4">
-                <div className="grid gap-2">
+                <DialogFormField index={0}>
                   <Label htmlFor="edit-cook-type-title">Title</Label>
                   <Input
                     id="edit-cook-type-title"
@@ -5616,8 +5684,8 @@ export default function ManagerDashboard() {
                       )
                     }
                   />
-                </div>
-                <div className="grid gap-2">
+                </DialogFormField>
+                <DialogFormField index={1}>
                   <Label>Printer topic</Label>
                   <Select
                     value={resolvePrinterValue(activeCookType.printerTopic, printerTopics)}
@@ -5650,7 +5718,7 @@ export default function ManagerDashboard() {
                       No printers configured in Architect settings.
                     </p>
                   ) : null}
-                </div>
+                </DialogFormField>
               </div>
             ) : null}
             <DialogFooter>
@@ -5688,7 +5756,7 @@ export default function ManagerDashboard() {
               <DialogTitle>Add waiter type</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="grid gap-2">
+              <DialogFormField index={0}>
                 <Label htmlFor="waiter-type-title">Title</Label>
                 <Input
                   id="waiter-type-title"
@@ -5700,8 +5768,8 @@ export default function ManagerDashboard() {
                     }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
+              </DialogFormField>
+              <DialogFormField index={1}>
                 <Label htmlFor="waiter-type-topic">Printer topic</Label>
                 <Select
                   value={newWaiterType.printerTopic || NO_PRINTER_VALUE}
@@ -5729,7 +5797,7 @@ export default function ManagerDashboard() {
                     No printers configured in Architect settings.
                   </p>
                 ) : null}
-              </div>
+              </DialogFormField>
             </div>
             <DialogFooter>
               <Button

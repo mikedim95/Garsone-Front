@@ -16,7 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
-import { LayoutGrid, List } from "lucide-react";
+import { OrderModifiersDialog } from "@/components/cook/OrderModifiersDialog";
+import { LayoutGrid, List, ListChecks } from "lucide-react";
 import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -25,8 +26,69 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const normalizePrinterTopicValue = (value?: string | null) =>
   typeof value === 'string' ? value.trim().toLowerCase() : '';
 
+const pickOptionId = (value: unknown): string | null => {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const option = value.find((entry) => typeof entry === "string");
+    return typeof option === "string" ? option : null;
+  }
+  if (isRecord(value)) {
+    if (typeof value.id === "string") return value.id;
+  }
+  return null;
+};
+
+const normalizeModifierSelections = (value: unknown): Record<string, string> => {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      return normalizeModifierSelections(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.reduce<Record<string, string>>((acc, entry) => {
+      if (!isRecord(entry)) return acc;
+      const modifierId =
+        typeof entry.modifierId === "string"
+          ? entry.modifierId
+          : typeof entry.id === "string"
+            ? entry.id
+            : null;
+      if (!modifierId) return acc;
+      const optionId = pickOptionId(
+        entry.modifierOptionId ?? entry.optionId ?? entry.optionIds ?? entry.options
+      );
+      if (optionId) acc[modifierId] = optionId;
+      return acc;
+    }, {});
+  }
+  if (isRecord(value)) {
+    if (typeof value.modifierId === "string") {
+      const optionId = pickOptionId(
+        value.modifierOptionId ?? value.optionId ?? value.optionIds ?? value.options
+      );
+      return optionId ? { [value.modifierId]: optionId } : {};
+    }
+    return Object.entries(value).reduce<Record<string, string>>((acc, [modifierId, option]) => {
+      const optionId = pickOptionId(option);
+      if (optionId) acc[modifierId] = optionId;
+      return acc;
+    }, {});
+  }
+  return {};
+};
+
+const getSelectedModifiers = (record: Record<string, unknown>) => {
+  const direct = normalizeModifierSelections(record.selectedModifiers);
+  if (Object.keys(direct).length > 0) return direct;
+  return normalizeModifierSelections(record.modifiers);
+};
+
 const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
   const record = isRecord(raw) ? raw : {};
+  const itemRecord = isRecord(record.item) ? record.item : null;
   const quantityCandidate = record.quantity ?? record.qty;
   const quantity = typeof quantityCandidate === 'number' && quantityCandidate > 0 ? quantityCandidate : 1;
   const price =
@@ -43,6 +105,8 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
     (typeof record.title === 'string' && record.title) ||
     (typeof record.name === 'string' && record.name) ||
     (typeof record.itemTitle === 'string' && record.itemTitle) ||
+    (itemRecord && typeof itemRecord.name === 'string' && itemRecord.name) ||
+    (itemRecord && typeof itemRecord.title === 'string' && itemRecord.title) ||
     `Item ${idx + 1}`;
   const itemId =
     (typeof record.itemId === 'string' && record.itemId) ||
@@ -51,22 +115,29 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
   const printerTopic =
     typeof record.printerTopic === 'string'
       ? record.printerTopic
-      : isRecord(record.item) && typeof record.item.printerTopic === 'string'
-        ? record.item.printerTopic
+      : itemRecord && typeof itemRecord.printerTopic === 'string'
+        ? itemRecord.printerTopic
         : null;
+  const selectedModifiers = getSelectedModifiers(record);
   return {
     item: {
       id: itemId,
       name,
-      description: typeof record.description === 'string' ? record.description : '',
+      description:
+        typeof record.description === 'string'
+          ? record.description
+          : itemRecord && typeof itemRecord.description === 'string'
+            ? itemRecord.description
+            : '',
       price,
       image: typeof record.image === 'string' ? record.image : '',
       category: typeof record.category === 'string' ? record.category : '',
       printerTopic,
       available: record.available !== false,
+      modifiers: itemRecord && Array.isArray(itemRecord.modifiers) ? itemRecord.modifiers : undefined,
     },
     quantity,
-    selectedModifiers: {},
+    selectedModifiers,
   };
 };
 
@@ -163,6 +234,7 @@ export default function CookDashboard() {
     } catch {}
     return "classic";
   });
+  const [modifierOrder, setModifierOrder] = useState<Order | null>(null);
 
   // Ensure the active store context matches the authenticated user (avoid stale STORE_SLUG from other tabs/sessions)
   useEffect(() => {
@@ -427,6 +499,7 @@ export default function CookDashboard() {
               onAcceptWithPrint={acceptWithPrint}
               onCancel={cancelOrder}
               onMarkReady={markReady}
+              onViewModifiers={setModifierOrder}
             />
           ) : (
             <>
@@ -482,7 +555,7 @@ export default function CookDashboard() {
                           );
                         })}
                       </div>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <Button
                           className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                           onClick={() => accept(o.id)}
@@ -514,6 +587,14 @@ export default function CookDashboard() {
                               🖨️
                             </span>
                           )}
+                        </Button>
+                        <Button
+                          className="w-full inline-flex items-center justify-center gap-2 bg-muted text-foreground hover:bg-muted/80 shadow-md"
+                          onClick={() => setModifierOrder(o)}
+                          aria-label={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                          title={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                        >
+                          <ListChecks className="h-4 w-4" />
                         </Button>
                         <Button
                           className="w-full inline-flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md transition-shadow"
@@ -606,6 +687,14 @@ export default function CookDashboard() {
                             </span>
                           )}
                         </Button>
+                        <Button
+                          className="flex-1 inline-flex items-center justify-center gap-2 bg-muted text-foreground hover:bg-muted/80 shadow-md"
+                          onClick={() => setModifierOrder(o)}
+                          aria-label={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                          title={t("cook.view_modifiers", { defaultValue: "Modifiers" })}
+                        >
+                          <ListChecks className="h-4 w-4" />
+                        </Button>
                       </div>
                     </Card>
                   ))}
@@ -615,6 +704,14 @@ export default function CookDashboard() {
           )}
         </div>
       </div>
+      <OrderModifiersDialog
+        order={modifierOrder}
+        open={Boolean(modifierOrder)}
+        onOpenChange={(open) => {
+          if (!open) setModifierOrder(null);
+        }}
+      />
     </PageTransition>
   );
 }
+

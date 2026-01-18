@@ -8,6 +8,7 @@ interface AuthStore {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateUser: (updates: Partial<User>) => void;
   isAuthenticated: () => boolean;
 }
 
@@ -51,6 +52,23 @@ export const useAuthStore = create<AuthStore>()(
           }
         }
         set({ user: null, token: null });
+      },
+      updateUser: (updates) => {
+        set((state) => {
+          if (!state.user) return state;
+          const nextUser = { ...state.user, ...updates };
+          try {
+            if (nextUser.role) {
+              localStorage.setItem('ROLE', nextUser.role);
+            }
+            if (nextUser.storeSlug) {
+              setStoredStoreSlug(nextUser.storeSlug);
+            }
+          } catch (error) {
+            console.warn('Failed to persist user updates', error);
+          }
+          return { ...state, user: nextUser };
+        });
       },
       isAuthenticated: () => !!get().token,
     }),

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Home, LogIn, LogOut, QrCode } from 'lucide-react';
+import { Home, LogIn, LogOut, QrCode, User } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
@@ -21,6 +21,9 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const themedSheet = clsx(themeClass, { dark: dashboardDark });
+  const canViewProfile = Boolean(
+    user && ['waiter', 'manager', 'cook'].includes(user.role)
+  );
 
   const handleLogout = () => {
     logout();
@@ -57,6 +60,13 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.navigation', { defaultValue: 'Navigation' })}</h3>
             <NavLink to="/" label={t('nav.home')} icon={<Home className="h-4 w-4" />} />
+            {canViewProfile ? (
+              <NavLink
+                to="/profile"
+                label={t('app.profile', { defaultValue: 'Profile' })}
+                icon={<User className="h-4 w-4" />}
+              />
+            ) : null}
             <NavLink to="/login" label={t('nav.login')} icon={<LogIn className="h-4 w-4" />} />
             {user?.role === 'architect' && (
               <NavLink to="/GarsoneAdmin" label="Garsone Admin" icon={<QrCode className="h-4 w-4" />} />
