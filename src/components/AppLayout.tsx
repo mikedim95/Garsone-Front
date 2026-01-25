@@ -3,7 +3,6 @@ import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
 import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
 
 const AnimatedMockup = lazy(() =>
   import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
@@ -38,8 +37,6 @@ const AppLayout: React.FC = () => {
   const demoRef = useRef<HTMLDivElement | null>(null);
   const [forceDemoVisible, setForceDemoVisible] = useState(false);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
-  const [liveLoading, setLiveLoading] = useState(false);
-  const navigate = useNavigate();
 
   const renderLazy = (
     node: React.ReactNode,
@@ -57,14 +54,6 @@ const AppLayout: React.FC = () => {
     </Suspense>
   );
 
-  const setOfflineFlag = (enabled: boolean) => {
-    try {
-      localStorage.setItem('OFFLINE', enabled ? '1' : '0');
-    } catch (error) {
-      console.warn('Failed to toggle OFFLINE flag', error);
-    }
-  };
-
   const getBaseOrigin = () => {
     const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN;
     if (envOrigin && envOrigin.trim().length > 0) {
@@ -78,31 +67,22 @@ const AppLayout: React.FC = () => {
     return 'http://localhost:8080';
   };
 
-  const fetchLiveUrl = useCallback(
-    async (opts?: { forceOnline?: boolean }) => {
-      setLiveLoading(true);
-      if (opts?.forceOnline) {
-        setOfflineFlag(false);
+  const fetchLiveUrl = useCallback(async () => {
+    try {
+      const data = await api.getTables();
+      const actives = (data?.tables || []).filter((t) => t.active);
+      if (actives.length > 0) {
+        const random = actives[Math.floor(Math.random() * actives.length)];
+        const origin = getBaseOrigin();
+        const url = `${origin}/${random.id}`;
+        setLiveUrl(url);
+        return url;
       }
-      try {
-        const data = await api.getTables();
-        const actives = (data?.tables || []).filter((t) => t.active);
-        if (actives.length > 0) {
-          const random = actives[Math.floor(Math.random() * actives.length)];
-          const origin = getBaseOrigin();
-          const url = `${origin}/${random.id}`;
-          setLiveUrl(url);
-          return url;
-        }
-      } catch (error) {
-        console.warn('Failed to fetch tables for landing live link', error);
-      } finally {
-        setLiveLoading(false);
-      }
-      return null;
-    },
-    []
-  );
+    } catch (error) {
+      console.warn('Failed to fetch tables for landing live link', error);
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -149,51 +129,6 @@ const AppLayout: React.FC = () => {
     requestAnimationFrame(() => performScroll(0));
   };
 
-  const openLiveStore = async () => {
-    const url = await fetchLiveUrl({ forceOnline: true });
-    let target = url || liveUrl;
-
-    // Fallback: try the landing stores list (first active table)
-    if (!target) {
-      try {
-        const res = await api.getLandingStores();
-        const first = res?.stores?.[0];
-        if (first?.publicCode) {
-          const base = window.location.origin.replace(/\/$/, "");
-          target = `${base}/publiccode/${first.publicCode}`;
-        } else if (first?.tableId) {
-          const base = getBaseOrigin();
-          target = `${base}/${first.tableId}`;
-        }
-      } catch (error) {
-        console.warn("Fallback to landing stores failed", error);
-      }
-    }
-
-    // Last-resort offline demo
-    if (!target) {
-      target = "/T1";
-    }
-
-    // Navigate in the same tab to avoid popup blockers.
-    window.location.assign(target);
-  };
-
-  const startOfflineDemo = async () => {
-    setOfflineFlag(true);
-    try {
-      const data = await api.getTables();
-      const first = data?.tables?.[0];
-      if (first?.id) {
-        navigate(`/${first.id}`);
-        return;
-      }
-    } catch (error) {
-      console.warn('Failed to get tables for offline demo', error);
-    }
-    navigate('/T1');
-  };
-
   // Do not connect to realtime streams from landing; ensure any active connection is closed.
   useEffect(() => {
     try {
@@ -215,9 +150,6 @@ const AppLayout: React.FC = () => {
       <Navigation />
       <Hero
         onScanQr={scrollToDemoQr}
-        onOpenLive={openLiveStore}
-        onOfflineDemo={startOfflineDemo}
-        liveReady={!!liveUrl && !liveLoading}
       />
       <DeferredSection placeholderHeight={720}>
         {renderLazy(<AnimatedMockup />, 720)}

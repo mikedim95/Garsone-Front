@@ -21,6 +21,7 @@ import type {
   OrderQueueSummary,
   OrderResponse,
   OrdersResponse,
+  OrderItemStatus,
   OrderStatus,
   LandingStoreLink,
   StoreInfo,
@@ -402,6 +403,20 @@ export const api = {
             ...(options?.skipMqtt ? { skipMqtt: true } : {}),
           }),
         }),
+  updateOrderItemStatus: (
+    orderId: string,
+    orderItemId: string,
+    status: OrderItemStatus
+  ): Promise<OrderResponse> =>
+    isOffline()
+      ? devMocks.updateOrderItemStatus(orderId, orderItemId, status)
+      : fetchApi<OrderResponse>(
+          `/orders/${orderId}/items/${orderItemId}/status`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ status }),
+          }
+        ),
 
   // Manager: waiter-table assignments
   getWaiterTables: (): Promise<WaiterTableOverview> =>

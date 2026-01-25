@@ -1,13 +1,19 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { Order, OrderStatus } from '@/types';
+import { Order, OrderItemStatus, OrderStatus } from '@/types';
 import { formatTableLabel } from '@/lib/formatTableLabel';
 import { Loader2, Check, ChefHat, UtensilsCrossed, CreditCard } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface Props {
   order: Order;
   onUpdateStatus: (orderId: string, status: OrderStatus) => void;
+  onUpdateItemStatus?: (
+    orderId: string,
+    orderItemId: string,
+    status: OrderItemStatus
+  ) => Promise<void> | void;
   mode?: 'full' | 'waiter';
   busy?: boolean;
   highlighted?: boolean;
@@ -78,8 +84,16 @@ const getTimeAgo = (dateStr: string): string => {
   return `${Math.floor(diffHours / 24)}d`;
 };
 
-export function OrderCardPro({ order, onUpdateStatus, mode = 'full', busy = false, highlighted = false }: Props) {
+export function OrderCardPro({
+  order,
+  onUpdateStatus,
+  onUpdateItemStatus,
+  mode = 'full',
+  busy = false,
+  highlighted = false,
+}: Props) {
   const [localBusy, setLocalBusy] = useState(false);
+  const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
   const isBusy = busy || localBusy;
   const config = statusConfig[order.status];
   const timeAgo = getTimeAgo(order.createdAt);
@@ -90,6 +104,23 @@ export function OrderCardPro({ order, onUpdateStatus, mode = 'full', busy = fals
       await Promise.resolve(onUpdateStatus(order.id, status));
     } finally {
       setLocalBusy(false);
+    }
+  };
+
+  const handleItemToggle = async (
+    orderItemId: string,
+    nextStatus: OrderItemStatus
+  ) => {
+    if (!onUpdateItemStatus) return;
+    setItemBusy((prev) => new Set(prev).add(orderItemId));
+    try {
+      await Promise.resolve(onUpdateItemStatus(order.id, orderItemId, nextStatus));
+    } finally {
+      setItemBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(orderItemId);
+        return next;
+      });
     }
   };
 
@@ -232,24 +263,51 @@ export function OrderCardPro({ order, onUpdateStatus, mode = 'full', busy = fals
       {/* Items list - compact */}
       <div className="px-4 pb-3">
         <div className="space-y-1">
-          {(order.items ?? []).slice(0, 4).map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-sm">
-              <span className="font-semibold text-foreground min-w-[1.5rem]">
-                {item.quantity}×
-              </span>
-              <span className="text-muted-foreground truncate">
-                {item.item.name ?? 'Item'}
-              </span>
-            </div>
-          ))}
+          {(order.items ?? []).slice(0, 4).map((item, idx) => {
+            const orderItemId = item.orderItemId;
+            const isServed = item.status === 'SERVED';
+            const canToggle =
+              Boolean(onUpdateItemStatus) &&
+              Boolean(orderItemId) &&
+              !isServed &&
+              !['CANCELLED', 'PAID'].includes(order.status);
+            const toggleDisabled =
+              !canToggle || (orderItemId ? itemBusy.has(orderItemId) : false);
+            return (
+              <div key={idx} className="flex items-center gap-2 text-sm">
+                {onUpdateItemStatus && (
+                  <Checkbox
+                    checked={isServed}
+                    disabled={toggleDisabled}
+                    onCheckedChange={(checked) => {
+                      if (!orderItemId || checked !== true) return;
+                      handleItemToggle(orderItemId, 'SERVED');
+                    }}
+                    className="mt-0.5"
+                  />
+                )}
+                <span className="font-semibold text-foreground min-w-[1.5rem]">
+                  {item.quantity}x
+                </span>
+                <span
+                  className={clsx(
+                    'truncate',
+                    isServed ? 'text-muted-foreground line-through' : 'text-muted-foreground'
+                  )}
+                >
+                  {item.item.name ?? 'Item'}
+                </span>
+              </div>
+            );
+          })}
           {(order.items ?? []).length > 4 && (
             <div className="text-xs text-muted-foreground pl-7">
               +{order.items.length - 4} more items
             </div>
           )}
         </div>
-        
-        {/* Note if present */}
+
+      {/* Note if present */}
         {order.note && (
           <div className="mt-2 px-2 py-1.5 rounded-md bg-muted/50 text-xs text-muted-foreground italic">
             "{order.note}"

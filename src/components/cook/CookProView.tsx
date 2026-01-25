@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
-import type { Order, CartItem } from "@/types";
+import type { Order, CartItem, OrderItemStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import {
   Clock,
@@ -24,11 +25,17 @@ interface CookProViewProps {
   accepting: Set<string>;
   printing: Set<string>;
   actingIds: Set<string>;
+  itemBusy?: Set<string>;
   onAccept: (id: string) => void;
   onAcceptWithPrint: (order: Order) => void;
   onCancel: (id: string) => void;
   onMarkReady: (id: string) => void;
   onViewModifiers: (order: Order) => void;
+  onUpdateItemStatus: (
+    orderId: string,
+    orderItemId: string,
+    status: OrderItemStatus
+  ) => void;
 }
 
 const getElapsedMinutes = (createdAt: string) => {
@@ -57,11 +64,13 @@ export const CookProView = ({
   accepting,
   printing,
   actingIds,
+  itemBusy,
   onAccept,
   onAcceptWithPrint,
   onCancel,
   onMarkReady,
   onViewModifiers,
+  onUpdateItemStatus,
 }: CookProViewProps) => {
   const { t } = useTranslation();
 
@@ -212,14 +221,44 @@ export const CookProView = ({
 
                     {/* Items */}
                     <div className="bg-muted/50 rounded-lg p-3 mb-3 space-y-1.5">
-                      {(order.items ?? []).slice(0, 5).map((line: CartItem, i: number) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <span className="h-5 w-5 rounded bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
-                            {line.quantity}
-                          </span>
-                          <span className="text-foreground">{line.item?.name || "Item"}</span>
-                        </div>
-                      ))}
+                      {(order.items ?? []).slice(0, 5).map((line: CartItem, i: number) => {
+                        const orderItemId = line.orderItemId;
+                        const isAccepted = line.status === "ACCEPTED" || line.status === "SERVED";
+                        const isServed = line.status === "SERVED";
+                        const busyKey = orderItemId ? `${order.id}:${orderItemId}` : null;
+                        const canToggle =
+                          Boolean(orderItemId) &&
+                          !isAccepted &&
+                          (order.status === "PLACED" || order.status === "PREPARING");
+                        const toggleDisabled =
+                          !canToggle || (busyKey ? itemBusy?.has(busyKey) : false);
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={isAccepted}
+                              disabled={toggleDisabled}
+                              onCheckedChange={(checked) => {
+                                if (!orderItemId || checked !== true) return;
+                                onUpdateItemStatus(order.id, orderItemId, "ACCEPTED");
+                              }}
+                            />
+                            <span className="h-5 w-5 rounded bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                              {line.quantity}
+                            </span>
+                            <span
+                              className={clsx(
+                                isServed
+                                  ? "text-muted-foreground line-through"
+                                  : isAccepted
+                                    ? "text-muted-foreground"
+                                    : "text-foreground"
+                              )}
+                            >
+                              {line.item?.name || "Item"}
+                            </span>
+                          </div>
+                        );
+                      })}
                       {(order.items?.length || 0) > 5 && (
                         <p className="text-xs text-muted-foreground pl-7">
                           +{(order.items?.length || 0) - 5} more...
@@ -356,14 +395,44 @@ export const CookProView = ({
 
                     {/* Items */}
                     <div className="bg-muted/50 rounded-lg p-3 mb-3 space-y-1.5">
-                      {(order.items ?? []).map((line: CartItem, i: number) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <span className="h-5 w-5 rounded bg-secondary/20 text-secondary-foreground text-xs font-bold flex items-center justify-center">
-                            {line.quantity}
-                          </span>
-                          <span className="text-foreground">{line.item?.name || "Item"}</span>
-                        </div>
-                      ))}
+                      {(order.items ?? []).map((line: CartItem, i: number) => {
+                        const orderItemId = line.orderItemId;
+                        const isAccepted = line.status === "ACCEPTED" || line.status === "SERVED";
+                        const isServed = line.status === "SERVED";
+                        const busyKey = orderItemId ? `${order.id}:${orderItemId}` : null;
+                        const canToggle =
+                          Boolean(orderItemId) &&
+                          !isAccepted &&
+                          (order.status === "PLACED" || order.status === "PREPARING");
+                        const toggleDisabled =
+                          !canToggle || (busyKey ? itemBusy?.has(busyKey) : false);
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={isAccepted}
+                              disabled={toggleDisabled}
+                              onCheckedChange={(checked) => {
+                                if (!orderItemId || checked !== true) return;
+                                onUpdateItemStatus(order.id, orderItemId, "ACCEPTED");
+                              }}
+                            />
+                            <span className="h-5 w-5 rounded bg-secondary/20 text-secondary-foreground text-xs font-bold flex items-center justify-center">
+                              {line.quantity}
+                            </span>
+                            <span
+                              className={clsx(
+                                isServed
+                                  ? "text-muted-foreground line-through"
+                                  : isAccepted
+                                    ? "text-muted-foreground"
+                                    : "text-foreground"
+                              )}
+                            >
+                              {line.item?.name || "Item"}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Actions */}

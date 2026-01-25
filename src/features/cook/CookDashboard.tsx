@@ -7,9 +7,10 @@ import { useOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import { realtimeService } from "@/lib/realtime";
-import type { Order, CartItem } from "@/types";
+import type { Order, CartItem, OrderItemStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PageTransition } from "@/components/ui/page-transition";
 import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import { useToast } from "@/hooks/use-toast";
@@ -80,6 +81,15 @@ const normalizeModifierSelections = (value: unknown): Record<string, string> => 
   return {};
 };
 
+const normalizeItemStatus = (value: unknown): OrderItemStatus | undefined => {
+  if (typeof value !== "string") return undefined;
+  const upper = value.toUpperCase();
+  if (upper === "PLACED" || upper === "ACCEPTED" || upper === "SERVED") {
+    return upper as OrderItemStatus;
+  }
+  return undefined;
+};
+
 const getSelectedModifiers = (record: Record<string, unknown>) => {
   const direct = normalizeModifierSelections(record.selectedModifiers);
   if (Object.keys(direct).length > 0) return direct;
@@ -88,6 +98,10 @@ const getSelectedModifiers = (record: Record<string, unknown>) => {
 
 const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
   const record = isRecord(raw) ? raw : {};
+  const orderItemId = typeof record.id === "string" ? record.id : undefined;
+  const status = normalizeItemStatus(record.status);
+  const acceptedAt = typeof record.acceptedAt === "string" ? record.acceptedAt : null;
+  const servedAt = typeof record.servedAt === "string" ? record.servedAt : null;
   const itemRecord = isRecord(record.item) ? record.item : null;
   const quantityCandidate = record.quantity ?? record.qty;
   const quantity = typeof quantityCandidate === 'number' && quantityCandidate > 0 ? quantityCandidate : 1;
@@ -138,6 +152,10 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
     },
     quantity,
     selectedModifiers,
+    orderItemId,
+    status,
+    acceptedAt,
+    servedAt,
   };
 };
 
@@ -226,6 +244,7 @@ export default function CookDashboard() {
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
+  const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [viewMode, setViewMode] = useState<"classic" | "pro">(() => {
     try {
@@ -306,6 +325,7 @@ export default function CookDashboard() {
     const topic = normalizedCookTopic
       ? `${storeSlug}/orders/placed/${normalizedCookTopic}`
       : `${storeSlug}/orders/placed`;
+    const itemTopic = `${storeSlug}/orders/items`;
     const handler = (payload: unknown) => {
       if (!isOrderPlacedPayload(payload)) return;
       const normalized = normalizeOrder(
@@ -324,10 +344,19 @@ export default function CookDashboard() {
       );
       if (normalized) upsertOrder(normalized);
     };
+    const handleItemStatus = (payload: unknown) => {
+      if (!isRecord(payload)) return;
+      const rawOrder = (payload as any).order;
+      if (!rawOrder) return;
+      const normalized = normalizeOrder(rawOrder, Date.now(), cookPrinterTopic);
+      if (normalized) upsertOrder(normalized);
+    };
     realtimeService.connect();
     realtimeService.subscribe(topic, handler);
+    realtimeService.subscribe(itemTopic, handleItemStatus);
     return () => {
       realtimeService.unsubscribe(topic, handler);
+      realtimeService.unsubscribe(itemTopic, handleItemStatus);
     };
   }, [storeSlug, cookPrinterTopic, upsertOrder]);
 
@@ -360,10 +389,15 @@ export default function CookDashboard() {
   ) => {
     setTracker((s) => new Set(s).add(id));
     try {
-      await api.updateOrderStatus(id, "PREPARING", {
+      const res = await api.updateOrderStatus(id, "PREPARING", {
         ...(options?.skipMqtt ? { skipMqtt: true } : {}),
       });
-      updateLocalStatus(id, "PREPARING");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "PREPARING");
+      }
       toast({
         title: "Preparing",
         description: `Order ${id} is now PREPARING`,
@@ -404,8 +438,13 @@ export default function CookDashboard() {
   const cancelOrder = async (id: string) => {
     setActingIds((s) => new Set(s).add(`cancel:${id}`));
     try {
-      await api.updateOrderStatus(id, "CANCELLED");
-      updateLocalStatus(id, "CANCELLED");
+      const res = await api.updateOrderStatus(id, "CANCELLED");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "CANCELLED");
+      }
       toast({ title: "Cancelled", description: `Order ${id} cancelled` });
     } finally {
       setActingIds((s) => {
@@ -419,13 +458,45 @@ export default function CookDashboard() {
   const markReady = async (id: string) => {
     setActingIds((s) => new Set(s).add(`ready:${id}`));
     try {
-      await api.updateOrderStatus(id, "READY");
-      updateLocalStatus(id, "READY");
+      const res = await api.updateOrderStatus(id, "READY");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "READY");
+      }
       toast({ title: "Ready", description: `Order ${id} is READY` });
     } finally {
       setActingIds((s) => {
         const n = new Set(s);
         n.delete(`ready:${id}`);
+        return n;
+      });
+    }
+  };
+
+  const handleItemStatus = async (
+    orderId: string,
+    orderItemId: string,
+    status: OrderItemStatus
+  ) => {
+    const key = `${orderId}:${orderItemId}`;
+    setItemBusy((s) => new Set(s).add(key));
+    try {
+      const res = await api.updateOrderItemStatus(orderId, orderItemId, status);
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      }
+    } catch (error) {
+      toast({
+        title: t("toasts.update_failed"),
+        description: "Unable to update item status",
+      });
+    } finally {
+      setItemBusy((s) => {
+        const n = new Set(s);
+        n.delete(key);
         return n;
       });
     }
@@ -495,11 +566,13 @@ export default function CookDashboard() {
               accepting={accepting}
               printing={printing}
               actingIds={actingIds}
+              itemBusy={itemBusy}
               onAccept={accept}
               onAcceptWithPrint={acceptWithPrint}
               onCancel={cancelOrder}
               onMarkReady={markReady}
               onViewModifiers={setModifierOrder}
+              onUpdateItemStatus={handleItemStatus}
             />
           ) : (
             <>
@@ -543,12 +616,39 @@ export default function CookDashboard() {
                         {(o.items ?? []).map((line, idx: number) => {
                           const qty = line.quantity;
                           const name = line.item?.name ?? line.item?.title ?? 'Item';
+                          const orderItemId = line.orderItemId;
+                          const isAccepted = line.status === 'ACCEPTED' || line.status === 'SERVED';
+                          const isServed = line.status === 'SERVED';
+                          const busyKey = orderItemId ? `${o.id}:${orderItemId}` : null;
+                          const canToggle =
+                            Boolean(orderItemId) &&
+                            !isAccepted &&
+                            (o.status === 'PLACED' || o.status === 'PREPARING');
+                          const toggleDisabled =
+                            !canToggle || (busyKey ? itemBusy.has(busyKey) : false);
                           return (
                             <div key={idx} className="flex items-center gap-2">
+                              <Checkbox
+                                checked={isAccepted}
+                                disabled={toggleDisabled}
+                                onCheckedChange={(checked) => {
+                                  if (!orderItemId || checked !== true) return;
+                                  handleItemStatus(o.id, orderItemId, 'ACCEPTED');
+                                }}
+                              />
                               <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
                                 {qty}
                               </div>
-                              <span className="text-foreground font-medium">
+                              <span
+                                className={clsx(
+                                  'font-medium',
+                                  isServed
+                                    ? 'text-muted-foreground line-through'
+                                    : isAccepted
+                                      ? 'text-muted-foreground'
+                                      : 'text-foreground'
+                                )}
+                              >
                                 {name}
                               </span>
                             </div>
@@ -658,12 +758,39 @@ export default function CookDashboard() {
                         {(o.items ?? []).map((line, idx: number) => {
                           const qty = line.quantity;
                           const name = line.item?.name ?? line.item?.title ?? 'Item';
+                          const orderItemId = line.orderItemId;
+                          const isAccepted = line.status === 'ACCEPTED' || line.status === 'SERVED';
+                          const isServed = line.status === 'SERVED';
+                          const busyKey = orderItemId ? `${o.id}:${orderItemId}` : null;
+                          const canToggle =
+                            Boolean(orderItemId) &&
+                            !isAccepted &&
+                            (o.status === 'PLACED' || o.status === 'PREPARING');
+                          const toggleDisabled =
+                            !canToggle || (busyKey ? itemBusy.has(busyKey) : false);
                           return (
                             <div key={idx} className="flex items-center gap-2">
+                              <Checkbox
+                                checked={isAccepted}
+                                disabled={toggleDisabled}
+                                onCheckedChange={(checked) => {
+                                  if (!orderItemId || checked !== true) return;
+                                  handleItemStatus(o.id, orderItemId, 'ACCEPTED');
+                                }}
+                              />
                               <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
                                 {qty}
                               </div>
-                              <span className="text-foreground font-medium">
+                              <span
+                                className={clsx(
+                                  'font-medium',
+                                  isServed
+                                    ? 'text-muted-foreground line-through'
+                                    : isAccepted
+                                      ? 'text-muted-foreground'
+                                      : 'text-foreground'
+                                )}
+                              >
                                 {name}
                               </span>
                             </div>

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useOrdersStore } from '@/store/ordersStore';
-import { Order, OrderStatus, OrderingMode, Table } from '@/types';
+import { Order, OrderItemStatus, OrderStatus, OrderingMode, Table } from '@/types';
 import { OrderCardPro } from '@/components/waiter/OrderCardPro';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
@@ -65,6 +65,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isOrderStatus = (value: unknown): value is OrderStatus =>
   typeof value === 'string' && ORDER_STATUS_VALUES.includes(value as OrderStatus);
 
+const normalizeItemStatus = (value: unknown): OrderItemStatus | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const upper = value.toUpperCase();
+  if (upper === 'PLACED' || upper === 'ACCEPTED' || upper === 'SERVED') {
+    return upper as OrderItemStatus;
+  }
+  return undefined;
+};
+
 const normalizeOrderingMode = (mode?: string | null): OrderingMode =>
   mode === 'waiter' || mode === 'hybrid' ? mode : 'qr';
 
@@ -73,6 +82,10 @@ const centsToCurrency = (value?: number | null) =>
 
 const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] => {
   const record = isRecord(raw) ? raw : {};
+  const orderItemId = typeof record.id === 'string' ? record.id : undefined;
+  const status = normalizeItemStatus(record.status);
+  const acceptedAt = typeof record.acceptedAt === 'string' ? record.acceptedAt : null;
+  const servedAt = typeof record.servedAt === 'string' ? record.servedAt : null;
   const quantityCandidate = record.quantity ?? record.qty;
   const quantity = typeof quantityCandidate === 'number' && quantityCandidate > 0 ? quantityCandidate : 1;
   const price =
@@ -121,6 +134,10 @@ const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] =
       },
       quantity,
       selectedModifiers,
+      orderItemId,
+      status,
+      acceptedAt,
+      servedAt,
     };
   }
   return {
@@ -135,6 +152,10 @@ const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] =
     },
     quantity,
     selectedModifiers: {},
+    orderItemId,
+    status,
+    acceptedAt,
+    servedAt,
   };
 };
 
@@ -554,6 +575,7 @@ export default function WaiterDashboard() {
     const readyTopic = `${storeSlug}/orders/ready`;
     const cancelledTopic = `${storeSlug}/orders/canceled`;
     const paidTopic = `${storeSlug}/orders/paid`;
+    const itemTopic = `${storeSlug}/orders/items`;
     const waiterCallTopic = `${storeSlug}/waiter/call`;
     const assignmentsTopic = `${storeSlug}/waiter/assignments`;
 
@@ -656,6 +678,22 @@ export default function WaiterDashboard() {
       await hydrateOrder(payload.orderId!);
       dbg("realtime paid", payload.orderId, "table", payload.tableId);
     };
+    const handleItemStatus = async (payload: unknown) => {
+      if (!isRecord(payload)) return;
+      const rawOrder = (payload as any).order;
+      if (rawOrder) {
+        const normalized = normalizeOrder(rawOrder, Date.now());
+        if (!normalized || !shouldShowTable(normalized.tableId) || !withinShift(normalized)) return;
+        upsertOrder(normalized);
+        return;
+      }
+      const orderId =
+        typeof (payload as any).orderId === 'string'
+          ? (payload as any).orderId
+          : undefined;
+      if (!orderId) return;
+      await hydrateOrder(orderId, true);
+    };
     const handleWaiterCall = (payload: unknown) => {
       if (!isWaiterCallPayload(payload)) return;
       if (!shouldShowTable(payload.tableId)) {
@@ -679,6 +717,7 @@ export default function WaiterDashboard() {
       realtimeService.subscribe(readyTopic, handleReady);
       realtimeService.subscribe(cancelledTopic, handleCancelled);
       realtimeService.subscribe(paidTopic, handlePaid);
+      realtimeService.subscribe(itemTopic, handleItemStatus);
       realtimeService.subscribe(waiterCallTopic, handleWaiterCall);
       realtimeService.subscribe(assignmentsTopic, () => {
         // Debounce assignment refetch to avoid rapid bursts
@@ -698,6 +737,7 @@ export default function WaiterDashboard() {
       realtimeService.unsubscribe(readyTopic, handleReady);
       realtimeService.unsubscribe(cancelledTopic, handleCancelled);
       realtimeService.unsubscribe(paidTopic, handlePaid);
+      realtimeService.unsubscribe(itemTopic, handleItemStatus);
       realtimeService.unsubscribe(waiterCallTopic, handleWaiterCall);
       realtimeService.unsubscribe(assignmentsTopic);
     };
@@ -788,8 +828,13 @@ export default function WaiterDashboard() {
     const key = `${status}:${orderId}`;
     setActingIds((s) => new Set(s).add(key));
     try {
-      await api.updateOrderStatus(orderId, status);
-      updateLocalStatus(orderId, status);
+      const res = await api.updateOrderStatus(orderId, status);
+      const normalized = normalizeOrder(res.order, Date.now());
+      if (normalized && shouldShowTable(normalized.tableId) && withinShift(normalized)) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(orderId, status);
+      }
       toast({ title: t('toasts.order_updated'), description: t('toasts.status_changed', { status }) });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not update status';
@@ -802,6 +847,22 @@ export default function WaiterDashboard() {
       });
     }
   };
+
+  const handleUpdateItemStatus = useCallback(
+    async (orderId: string, orderItemId: string, status: OrderItemStatus) => {
+      try {
+        const res = await api.updateOrderItemStatus(orderId, orderItemId, status);
+        const normalized = normalizeOrder(res.order, Date.now());
+        if (normalized && shouldShowTable(normalized.tableId) && withinShift(normalized)) {
+          upsertOrder(normalized);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not update item status';
+        toast({ title: t('toasts.update_failed'), description: message });
+      }
+    },
+    [shouldShowTable, withinShift, upsertOrder, toast, t]
+  );
 
   const handleMenuOrderCreated = useCallback(
     (raw: Order) => {
@@ -979,6 +1040,7 @@ export default function WaiterDashboard() {
                 <TableCardView
                   orders={allTableOrders}
                   onUpdateStatus={handleUpdateStatus}
+                  onUpdateItemStatus={handleUpdateItemStatus}
                   showInactiveTables={showInactiveTables}
                   onToggleInactive={() => setShowInactiveTables(prev => !prev)}
                 />
@@ -1010,6 +1072,7 @@ export default function WaiterDashboard() {
                       key={order.id}
                       order={order}
                       onUpdateStatus={handleUpdateStatus}
+                      onUpdateItemStatus={handleUpdateItemStatus}
                       mode="waiter"
                       busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
                       highlighted={highlightedIds.has(order.id)}

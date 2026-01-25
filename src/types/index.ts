@@ -1,4 +1,5 @@
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
+export type OrderItemStatus = 'PLACED' | 'ACCEPTED' | 'SERVED';
 export type UserRole = 'waiter' | 'manager' | 'cook' | 'architect';
 export type OrderingMode = 'qr' | 'waiter' | 'hybrid';
 
@@ -55,6 +56,10 @@ export interface CartItem {
   item: MenuItem;
   quantity: number;
   selectedModifiers: { [modifierId: string]: string };
+  orderItemId?: string;
+  status?: OrderItemStatus;
+  acceptedAt?: string | null;
+  servedAt?: string | null;
 }
 
 export interface Order {

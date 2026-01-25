@@ -2,16 +2,22 @@ import { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Order, OrderStatus } from '@/types';
+import { Order, OrderItemStatus, OrderStatus } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ChefHat, CheckCircle, CreditCard, XCircle, Eye, EyeOff } from 'lucide-react';
 
 interface TableCardViewProps {
   orders: Order[];
   onUpdateStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  onUpdateItemStatus?: (
+    orderId: string,
+    orderItemId: string,
+    status: OrderItemStatus
+  ) => Promise<void> | void;
   showInactiveTables?: boolean;
   onToggleInactive?: () => void;
   busy?: boolean;
@@ -43,10 +49,18 @@ const getTablePriorityStatus = (orders: Order[]): OrderStatus | null => {
   return null;
 };
 
-export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onToggleInactive, busy }: TableCardViewProps) {
+export function TableCardView({
+  orders,
+  onUpdateStatus,
+  onUpdateItemStatus,
+  showInactiveTables,
+  onToggleInactive,
+  busy,
+}: TableCardViewProps) {
   const { t } = useTranslation();
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
+  const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
   const [showLessImportant, setShowLessImportant] = useState(false);
 
   // Reset toggle when closing the modal or switching tables
@@ -104,6 +118,25 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
       setActingIds(prev => {
         const next = new Set(prev);
         next.delete(orderId);
+        return next;
+      });
+    }
+  };
+
+  const handleItemToggle = async (
+    orderId: string,
+    orderItemId: string,
+    status: OrderItemStatus
+  ) => {
+    if (!onUpdateItemStatus) return;
+    const key = `${orderId}:${orderItemId}`;
+    setItemBusy((prev) => new Set(prev).add(key));
+    try {
+      await Promise.resolve(onUpdateItemStatus(orderId, orderItemId, status));
+    } finally {
+      setItemBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
         return next;
       });
     }
@@ -344,12 +377,40 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
 
                       {/* Order items */}
                       <div className="space-y-1">
-                        {order.items?.slice(0, 4).map((item, idx) => (
-                          <div key={idx} className="text-xs flex items-center gap-1">
-                            <span className="font-medium">{item.quantity}×</span>
-                            <span className="truncate">{item.item?.name || 'Item'}</span>
-                          </div>
-                        ))}
+                        {order.items?.slice(0, 4).map((item, idx) => {
+                          const orderItemId = item.orderItemId;
+                          const isServed = item.status === 'SERVED';
+                          const canToggle =
+                            Boolean(onUpdateItemStatus) &&
+                            Boolean(orderItemId) &&
+                            !isServed &&
+                            !['CANCELLED', 'PAID'].includes(order.status);
+                          const toggleDisabled =
+                            !canToggle || (orderItemId ? itemBusy.has(`${order.id}:${orderItemId}`) : false);
+                          return (
+                            <div key={idx} className="text-xs flex items-center gap-1">
+                              {onUpdateItemStatus && (
+                                <Checkbox
+                                  checked={isServed}
+                                  disabled={toggleDisabled}
+                                  onCheckedChange={(checked) => {
+                                    if (!orderItemId || checked !== true) return;
+                                    handleItemToggle(order.id, orderItemId, 'SERVED');
+                                  }}
+                                />
+                              )}
+                              <span className="font-medium">{item.quantity}x</span>
+                              <span
+                                className={clsx(
+                                  'truncate',
+                                  isServed ? 'text-muted-foreground line-through' : 'text-foreground'
+                                )}
+                              >
+                                {item.item?.name || 'Item'}
+                              </span>
+                            </div>
+                          );
+                        })}
                         {(order.items?.length || 0) > 4 && (
                           <div className="text-xs text-muted-foreground">
                             +{(order.items?.length || 0) - 4} more items
@@ -437,12 +498,40 @@ export function TableCardView({ orders, onUpdateStatus, showInactiveTables, onTo
                             )}
                           </div>
                           <div className="space-y-1">
-                            {order.items?.slice(0, 4).map((item, idx) => (
-                              <div key={idx} className="text-xs flex items-center gap-1">
-                                <span className="font-medium">{item.quantity}A-</span>
-                                <span className="truncate">{item.item?.name || 'Item'}</span>
-                              </div>
-                            ))}
+                            {order.items?.slice(0, 4).map((item, idx) => {
+                              const orderItemId = item.orderItemId;
+                              const isServed = item.status === 'SERVED';
+                              const canToggle =
+                                Boolean(onUpdateItemStatus) &&
+                                Boolean(orderItemId) &&
+                                !isServed &&
+                                !['CANCELLED', 'PAID'].includes(order.status);
+                              const toggleDisabled =
+                                !canToggle || (orderItemId ? itemBusy.has(`${order.id}:${orderItemId}`) : false);
+                              return (
+                                <div key={idx} className="text-xs flex items-center gap-1">
+                                  {onUpdateItemStatus && (
+                                    <Checkbox
+                                      checked={isServed}
+                                      disabled={toggleDisabled}
+                                      onCheckedChange={(checked) => {
+                                        if (!orderItemId || checked !== true) return;
+                                        handleItemToggle(order.id, orderItemId, 'SERVED');
+                                      }}
+                                    />
+                                  )}
+                                  <span className="font-medium">{item.quantity}x</span>
+                                  <span
+                                    className={clsx(
+                                      'truncate',
+                                      isServed ? 'text-muted-foreground line-through' : 'text-foreground'
+                                    )}
+                                  >
+                                    {item.item?.name || 'Item'}
+                                  </span>
+                                </div>
+                              );
+                            })}
                             {(order.items?.length || 0) > 4 && (
                               <div className="text-xs text-muted-foreground">+{(order.items?.length || 0) - 4} more items</div>
                             )}

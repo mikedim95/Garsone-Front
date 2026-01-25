@@ -1,18 +1,15 @@
 ﻿import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
-import { QrCode, LogIn, Play, Sparkles } from 'lucide-react';
+import { QrCode, LogIn, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { HERO_IMAGE } from '@/lib/mockData';
 
 type HeroProps = {
   onScanQr?: () => void;
-  onOpenLive?: () => void;
   onDemo?: () => void;
-  onOfflineDemo?: () => void;
-  liveReady?: boolean;
 };
 
-export const Hero = ({ onScanQr, onDemo, onOpenLive, onOfflineDemo, liveReady }: HeroProps) => {
+export const Hero = ({ onScanQr, onDemo }: HeroProps) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -47,24 +44,6 @@ export const Hero = ({ onScanQr, onDemo, onOpenLive, onOfflineDemo, liveReady }:
         </p>
         
         <div className="flex flex-wrap gap-4 justify-center mb-24">
-          <Button 
-            size="lg" 
-            onClick={onOpenLive}
-            disabled={!liveReady}
-            className="gap-2 text-base px-10 py-7 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 disabled:opacity-70 disabled:hover:scale-100"
-          >
-            <Play className="h-5 w-5" />
-            {t('hero.cta_demo')}
-          </Button>
-          <Button
-            size="lg"
-            variant="secondary"
-            onClick={onOfflineDemo}
-            className="gap-2 text-base px-10 py-7 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300"
-          >
-            <Play className="h-5 w-5" />
-            Offline Demo
-          </Button>
           <Button 
             size="lg" 
             variant="outline" 

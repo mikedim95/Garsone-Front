@@ -115,7 +115,13 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
     };
   }, [providedLiveUrl]);
 
-  const storeCards = stores || [];
+  const storeCards = (stores || [])
+    .filter((store) =>
+      store.slug === 'acropolis-street-food' ||
+      store.name?.toLowerCase().includes('acropolis')
+    )
+    .slice(0, 1);
+  const singleCard = storeCards.length === 1;
 
   return (
     <div className="py-32 bg-gradient-card" data-section="demo-qr">
@@ -131,14 +137,22 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
 
         <div className="mb-20" data-live-qr-anchor>
           {storeCards.length > 0 ? (
-            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              className={
+                singleCard
+                  ? 'grid gap-8 place-items-center'
+                  : 'grid gap-8 md:grid-cols-2 lg:grid-cols-3'
+              }
+            >
               {storeCards.map((store) => {
                 const qrUrl = buildStoreUrl(store);
                 const label = store.tableLabel ? `Table ${store.tableLabel}` : 'Live table';
                 return (
                   <div
                     key={store.id}
-                    className="group p-8 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2"
+                    className={`group p-8 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2 ${
+                      singleCard ? 'w-full max-w-md mx-auto' : ''
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <h3 className="text-2xl font-bold text-foreground text-left">{store.name}</h3>

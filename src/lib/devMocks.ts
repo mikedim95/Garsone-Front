@@ -22,7 +22,16 @@ type StaffType = { id: Id; slug: string; title: string; printerTopic?: string | 
 type Waiter = { id: Id; email: string; displayName: string; password?: string; waiterTypeId?: Id | null };
 type Cook = { id: Id; email: string; displayName: string; password?: string; cookTypeId?: Id | null };
 type WaiterAssignment = { waiterId: Id; tableId: Id };
-type OrderItem = { itemId: Id; qty: number; modifiers?: Array<{ modifierId: Id; optionIds: Id[] }> };
+type OrderItemStatus = 'PLACED' | 'ACCEPTED' | 'SERVED';
+type OrderItem = {
+  id: Id;
+  itemId: Id;
+  qty: number;
+  status: OrderItemStatus;
+  acceptedAt?: number | null;
+  servedAt?: number | null;
+  modifiers?: Array<{ modifierId: Id; optionIds: Id[] }>;
+};
 type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'READY'|'SERVED'|'PAID'|'CANCELLED'; createdAt: number; items: OrderItem[]; note?: string };
 
 type QRTileRecord = {
@@ -183,8 +192,12 @@ const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
         : 1;
     const selections = mapToSelections(item.modifiers);
     return {
+      id: uid('orderItem'),
       itemId: item.itemId,
       qty,
+      status: 'PLACED',
+      acceptedAt: null,
+      servedAt: null,
       modifiers: selections.length ? selections : undefined,
     };
   });
@@ -305,6 +318,7 @@ function load(): Db {
       };
       seedStaffTypesIfEmpty(db);
       seedQrTilesIfEmpty(db);
+      ensureOrderItemMeta(db);
       return db;
     } catch (error) {
       console.warn('Failed to parse devMocks snapshot', error);
@@ -416,11 +430,40 @@ function load(): Db {
   };
   seedStaffTypesIfEmpty(db);
   seedQrTilesIfEmpty(db);
+  ensureOrderItemMeta(db);
   save(db);
   return db;
 }
 
 function snapshot() { return load(); }
+
+function ensureOrderItemMeta(db: Db) {
+  let changed = false;
+  db.orders = db.orders.map((order) => {
+    const nextItems = (order.items || []).map((item) => {
+      let next = item as OrderItem;
+      if (!next.id) {
+        next = { ...next, id: uid('orderItem') };
+        changed = true;
+      }
+      if (!next.status) {
+        next = { ...next, status: 'PLACED', acceptedAt: null, servedAt: null };
+        changed = true;
+      }
+      if (next.acceptedAt === undefined) {
+        next = { ...next, acceptedAt: null };
+        changed = true;
+      }
+      if (next.servedAt === undefined) {
+        next = { ...next, servedAt: null };
+        changed = true;
+      }
+      return next;
+    });
+    return { ...order, items: nextItems };
+  });
+  if (changed) save(db);
+}
 
 function summarizeTable(db: Db, table: Table) {
   return {
@@ -445,9 +488,20 @@ function enrichOrder(db: Db, order: Order): any {
     const unitPriceCents = item?.priceCents || 0;
     const quantity = orderItem.qty || 1;
     totalCents += unitPriceCents * quantity;
+    const acceptedAt =
+      typeof orderItem.acceptedAt === 'number'
+        ? new Date(orderItem.acceptedAt).toISOString()
+        : orderItem.acceptedAt ?? null;
+    const servedAt =
+      typeof orderItem.servedAt === 'number'
+        ? new Date(orderItem.servedAt).toISOString()
+        : orderItem.servedAt ?? null;
     return {
-      id: uid('orderItem'),
+      id: orderItem.id || uid('orderItem'),
       itemId: orderItem.itemId,
+      status: orderItem.status || 'PLACED',
+      acceptedAt,
+      servedAt,
       title: item?.title || 'Item',
       unitPriceCents,
       quantity,
@@ -529,15 +583,15 @@ function seedOrdersIfEmpty(db: Db) {
   if (sugar && sugar1) cappuccinoModifiers.push({ modifierId: sugar.id, optionIds: [sugar1.id] });
   db.orders = [
     { id: uid('ord'), tableId: t2.id, status: 'PLACED', createdAt: now - 60_000,
-      items: [ { itemId: cappuccino.id, qty: 1, modifiers: cappuccinoModifiers } ], note: 'No cocoa on top' },
+      items: [ { id: uid('orderItem'), itemId: cappuccino.id, qty: 1, status: 'PLACED', acceptedAt: null, servedAt: null, modifiers: cappuccinoModifiers } ], note: 'No cocoa on top' },
     { id: uid('ord'), tableId: t1.id, status: 'PREPARING', createdAt: now - 5*60_000,
-      items: [ { itemId: espresso.id, qty: 2, modifiers: [] } ], note: '' },
+      items: [ { id: uid('orderItem'), itemId: espresso.id, qty: 2, status: 'ACCEPTED', acceptedAt: now - 5*60_000, servedAt: null, modifiers: [] } ], note: '' },
     { id: uid('ord'), tableId: t3.id, status: 'READY', createdAt: now - 12*60_000,
-      items: [ { itemId: croissant.id, qty: 1, modifiers: [] } ], note: '' },
+      items: [ { id: uid('orderItem'), itemId: croissant.id, qty: 1, status: 'ACCEPTED', acceptedAt: now - 12*60_000, servedAt: null, modifiers: [] } ], note: '' },
     { id: uid('ord'), tableId: t1.id, status: 'CANCELLED', createdAt: now - 30*60_000,
-      items: [ { itemId: cappuccino.id, qty: 1, modifiers: [] } ], note: 'Changed mind' },
+      items: [ { id: uid('orderItem'), itemId: cappuccino.id, qty: 1, status: 'PLACED', acceptedAt: null, servedAt: null, modifiers: [] } ], note: 'Changed mind' },
     { id: uid('ord'), tableId: t2.id, status: 'SERVED', createdAt: now - 55*60_000,
-      items: [ { itemId: espresso.id, qty: 1, modifiers: [] } ], note: '' },
+      items: [ { id: uid('orderItem'), itemId: espresso.id, qty: 1, status: 'SERVED', acceptedAt: now - 55*60_000, servedAt: now - 50*60_000, modifiers: [] } ], note: '' },
   ];
   save(db);
 }
@@ -802,6 +856,29 @@ export const devMocks = {
     const o = db.orders.find(x=>x.id===orderId); if (o) o.status = status;
     save(db);
     return Promise.resolve({ order: o ? enrichOrder(db, o) : o });
+  },
+  updateOrderItemStatus(orderId: Id, orderItemId: Id, status: OrderItemStatus) {
+    const db = snapshot();
+    const order = db.orders.find((o) => o.id === orderId);
+    if (order) {
+      const line = order.items.find((item) => item.id === orderItemId);
+      if (line) {
+        const now = Date.now();
+        line.status = status;
+        if (status === 'ACCEPTED') {
+          line.acceptedAt = now;
+          line.servedAt = null;
+        } else if (status === 'SERVED') {
+          if (!line.acceptedAt) line.acceptedAt = now;
+          line.servedAt = now;
+        } else {
+          line.acceptedAt = null;
+          line.servedAt = null;
+        }
+      }
+    }
+    save(db);
+    return Promise.resolve({ order: order ? enrichOrder(db, order) : order });
   },
   managerDeleteOrder(orderId: Id) {
     const db = snapshot();
