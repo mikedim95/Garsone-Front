@@ -331,6 +331,9 @@ export interface CreateOrderPayload {
   items: CreateOrderPayloadItem[];
   note?: string;
   visit?: string;
+  localityApprovalToken?: string;
+  localitySessionId?: string;
+  paymentSessionId?: string;
 }
 
 export interface OrderResponse {

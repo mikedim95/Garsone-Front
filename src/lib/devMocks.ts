@@ -775,6 +775,24 @@ export const devMocks = {
       publicCode,
     });
   },
+  createLocalityApproval(data: { publicCode: string; tableId: string; purpose?: string; sessionId: string; method?: string }) {
+    const db = snapshot();
+    seedQrTilesIfEmpty(db);
+    const code = (data.publicCode || '').trim().toUpperCase();
+    const tile = db.qrTiles.find((t) => t.publicCode === code && t.isActive);
+    if (!tile) return Promise.reject(new Error('QR_TILE_NOT_FOUND_OR_INACTIVE'));
+    if (!tile.tableId || tile.tableId !== data.tableId) {
+      return Promise.reject(new Error('WRONG_LOCATION'));
+    }
+    return Promise.resolve({
+      approvalToken: uid('loc'),
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      purpose: data.purpose || 'ORDER_SUBMIT',
+      method: data.method || 'qr',
+      storeSlug: db.store.slug || 'local-store',
+      tableId: data.tableId,
+    });
+  },
   
   // Auth (offline)
   signIn(email: string, _password: string) {

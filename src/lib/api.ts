@@ -127,6 +127,40 @@ type QRTileUpdatePayload = {
   label?: string;
 };
 type BulkTilePayload = { count: number; labelPrefix?: string };
+type LocalityApprovalPayload = {
+  publicCode: string;
+  tableId: string;
+  purpose?: "ORDER_SUBMIT";
+  sessionId: string;
+  method?: "nfc" | "qr" | "link";
+};
+type LocalityApprovalResponse = {
+  approvalToken: string;
+  expiresAt: string;
+  purpose: string;
+  method?: string;
+  storeSlug?: string | null;
+  tableId?: string | null;
+};
+type PublicEventPayload = {
+  event:
+    | "locality_gate_opened"
+    | "locality_scan_started"
+    | "locality_scan_succeeded"
+    | "locality_scan_failed"
+    | "locality_approved"
+    | "order_submit_attempted"
+    | "order_submit_succeeded"
+    | "order_submit_failed";
+  storeSlug?: string;
+  tableId?: string;
+  sessionId?: string;
+  deviceType?: string;
+  platform?: string;
+  method?: string;
+  ts?: string;
+  meta?: Record<string, unknown>;
+};
 
 async function fetchApi<T>(
   endpoint: string,
@@ -877,5 +911,23 @@ export const api = {
             amountCents: Math.round(amount * 100),
             description,
           }),
+        }),
+
+  createLocalityApproval: (
+    data: LocalityApprovalPayload
+  ): Promise<LocalityApprovalResponse> =>
+    isOffline()
+      ? devMocks.createLocalityApproval(data)
+      : fetchApi<LocalityApprovalResponse>("/locality/approve", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+
+  trackPublicEvent: (data: PublicEventPayload): Promise<{ ok: boolean }> =>
+    isOffline()
+      ? Promise.resolve({ ok: true })
+      : fetchApi<{ ok: boolean }>("/public/events", {
+          method: "POST",
+          body: JSON.stringify(data),
         }),
 };

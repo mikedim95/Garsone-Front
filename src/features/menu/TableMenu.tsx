@@ -33,8 +33,16 @@ import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
 import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
+import { LocalityApprovalModal } from "@/components/menu/LocalityApprovalModal";
 import { useQuery } from "@tanstack/react-query";
 import { MenuSkeleton } from "./MenuSkeleton";
+import {
+  clearStoredLocalityApproval,
+  getDeviceContext,
+  getLocalitySessionId,
+  getStoredLocalityApproval,
+  type LocalityApproval,
+} from "@/lib/locality";
 
 const ModifierDialog = lazy(() =>
   import("@/components/menu/ModifierDialog").then((mod) => ({
@@ -231,6 +239,7 @@ export default function TableMenu() {
   const { dashboardDark, themeClass } = useDashboardTheme();
   const { theme, setTheme } = useTheme();
   const { addItem, clearCart, setItems } = useCartStore();
+  const cartItems = useCartStore((s) => s.items);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categorySelected, setCategorySelected] = useState(false);
   const [menuData, setMenuData] = useState<MenuStateData | null>(null);
@@ -303,7 +312,15 @@ export default function TableMenu() {
   const navMarkRef = useRef(false);
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
+  const cartChangeRef = useRef(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [localityGateOpen, setLocalityGateOpen] = useState(false);
+  const localityGatePromiseRef = useRef<Promise<LocalityApproval | null> | null>(
+    null
+  );
+  const localityGateResolveRef = useRef<((approval: LocalityApproval | null) => void) | null>(null);
+  const [localitySessionId] = useState(() => getLocalitySessionId());
+  const deviceContext = getDeviceContext();
   const bootstrapQueryEnabled =
     Boolean(activeTableId) && !isFallbackSlug(storeSlug);
   const {
@@ -374,6 +391,14 @@ export default function TableMenu() {
       clearCart();
     }
   }, [guestOrderingEnabled, clearCart]);
+
+  useEffect(() => {
+    if (!cartChangeRef.current) {
+      cartChangeRef.current = true;
+      return;
+    }
+    clearStoredLocalityApproval();
+  }, [cartItems]);
 
   useEffect(() => {
     if (!bootstrapError) return;
@@ -889,6 +914,47 @@ export default function TableMenu() {
     loadOrderIntoCart(lastOrder);
   };
 
+  const resolveLocalityGate = (approval: LocalityApproval | null) => {
+    setLocalityGateOpen(false);
+    if (localityGateResolveRef.current) {
+      localityGateResolveRef.current(approval);
+    }
+    localityGateResolveRef.current = null;
+    localityGatePromiseRef.current = null;
+  };
+
+  const requestLocalityApproval = () => {
+    if (localityGatePromiseRef.current) {
+      return localityGatePromiseRef.current;
+    }
+    setLocalityGateOpen(true);
+    localityGatePromiseRef.current = new Promise((resolve) => {
+      localityGateResolveRef.current = resolve;
+    });
+    return localityGatePromiseRef.current;
+  };
+
+  const trackOrderEvent = async (
+    event: Parameters<typeof api.trackPublicEvent>[0]["event"],
+    method?: string,
+    meta?: Record<string, unknown>
+  ) => {
+    if (!activeTableId) return;
+    try {
+      await api.trackPublicEvent({
+        event,
+        storeSlug: storeSlug || undefined,
+        tableId: activeTableId,
+        sessionId: localitySessionId,
+        deviceType: deviceContext.deviceType,
+        platform: deviceContext.platform,
+        method,
+        ts: new Date().toISOString(),
+        meta,
+      });
+    } catch {}
+  };
+
   const handleImmediateCheckout = async (
     note?: string
   ): Promise<SubmittedOrderSummary | null> => {
@@ -929,6 +995,18 @@ export default function TableMenu() {
       return null;
     }
 
+    const approval =
+      getStoredLocalityApproval({
+        tableId: activeTableId,
+        storeSlug: storeSlug || null,
+        purpose: "ORDER_SUBMIT",
+        sessionId: localitySessionId,
+      }) ?? (await requestLocalityApproval());
+
+    if (!approval) {
+      return null;
+    }
+
     const payload: CreateOrderPayload = {
       tableId: activeTableId,
       items: cartItems.map((item) => ({
@@ -937,9 +1015,12 @@ export default function TableMenu() {
         modifiers: JSON.stringify(item.selectedModifiers),
       })),
       ...(note ? { note } : {}),
+      localityApprovalToken: approval.token,
+      localitySessionId,
     };
 
     try {
+      void trackOrderEvent("order_submit_attempted", approval.method);
       setCheckoutBusy(true);
       const response = editingOrderId
         ? await api.editOrder(editingOrderId, payload)
@@ -954,6 +1035,8 @@ export default function TableMenu() {
       setActiveOrdersOpen(true);
       clearCart();
       stopEditingLastOrder();
+      clearStoredLocalityApproval();
+      void trackOrderEvent("order_submit_succeeded", approval.method);
       setCategorySelected(false);
       setSelectedCategory(null);
       setOrderPlacedSignal((s) => s + 1);
@@ -970,6 +1053,30 @@ export default function TableMenu() {
       return summary;
     } catch (error) {
       console.error("Immediate checkout failed:", error);
+      const message = error instanceof Error ? error.message : String(error ?? "");
+      if (
+        error instanceof ApiError &&
+        error.status === 403 &&
+        (message.includes("LOCALITY_APPROVAL_INVALID") ||
+          message.includes("LOCALITY_APPROVAL_REQUIRED"))
+      ) {
+        clearStoredLocalityApproval();
+        toast({
+          title: t("menu.toast_error_title", {
+            defaultValue: "Approval expired",
+          }),
+          description: t("menu.toast_error_description", {
+            defaultValue: "Please scan the table tag again to submit.",
+          }),
+        });
+        void trackOrderEvent("order_submit_failed", approval.method, {
+          reason: message,
+        });
+        return null;
+      }
+      void trackOrderEvent("order_submit_failed", approval.method, {
+        reason: message,
+      });
       toast({
         title: t("menu.toast_error_title", {
           defaultValue: "Order not placed",
@@ -1613,7 +1720,17 @@ export default function TableMenu() {
           </motion.div>
         )}
 
-<Suspense fallback={null}>
+        <LocalityApprovalModal
+          open={localityGateOpen}
+          tableId={activeTableId || ""}
+          storeSlug={storeSlug || null}
+          sessionId={localitySessionId}
+          purpose="ORDER_SUBMIT"
+          onCancel={() => resolveLocalityGate(null)}
+          onApproved={(approval) => resolveLocalityGate(approval)}
+        />
+
+        <Suspense fallback={null}>
           <ModifierDialog
             open={customizeOpen}
             item={customizeItem}
