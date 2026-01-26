@@ -123,6 +123,11 @@ export interface OrderQueueSummary {
   ahead?: number;
 }
 
+export interface OrderPublicSummary {
+  queuePosition?: number | null;
+  estimatedMinutes?: number | null;
+}
+
 export interface MenuCategory {
   id: string;
   title: string;

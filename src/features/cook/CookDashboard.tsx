@@ -745,7 +745,10 @@ export default function CookDashboard() {
   ): Promise<void> => {
     try {
       const res = await api.updateOrderItemStatus(orderId, orderItemId, status);
+      const rawItems = Array.isArray(res?.order?.items) ? res.order.items : [];
       const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      const rawStatus =
+        typeof res?.order?.status === "string" ? res.order.status : undefined;
       let updatedOrder: Order | null = null;
       if (normalized) {
         updatedOrder = normalized;
@@ -761,6 +764,31 @@ export default function CookDashboard() {
           } catch (error) {
             console.warn("Failed to update order to PREPARING", error);
             updateLocalStatus(orderId, "PREPARING");
+          }
+        }
+      }
+      if (status === "SERVED") {
+        const hasUnservedItems = rawItems.some(
+          (item: any) => String(item?.status || "").toUpperCase() !== "SERVED"
+        );
+        if (
+          !hasUnservedItems &&
+          (rawStatus === "PREPARING" || rawStatus === "PLACED")
+        ) {
+          try {
+            const res = await api.updateOrderStatus(orderId, "READY");
+            const normalizedReady = normalizeOrder(
+              res.order,
+              Date.now(),
+              cookPrinterTopic
+            );
+            if (normalizedReady) {
+              upsertOrder(normalizedReady);
+            } else {
+              updateLocalStatus(orderId, "READY");
+            }
+          } catch (error) {
+            console.warn("Failed to update order to READY", error);
           }
         }
       }

@@ -19,6 +19,7 @@ import type {
   QRTile,
   OkResponse,
   OrderQueueSummary,
+  OrderPublicSummary,
   OrderResponse,
   OrdersResponse,
   OrderItemStatus,
@@ -344,6 +345,22 @@ export const api = {
     isOffline()
       ? devMocks.getOrderQueueSummary()
       : fetchApi<OrderQueueSummary>("/orders/queue"),
+  getPublicOrderSummary: (
+    orderId: string,
+    opts?: { storeSlug?: string }
+  ): Promise<OrderPublicSummary> =>
+    isOffline()
+      ? devMocks.getPublicOrderSummary(orderId)
+      : fetchApi<OrderPublicSummary>(
+          `/public/orders/${encodeURIComponent(orderId)}/summary`,
+          opts?.storeSlug
+            ? {
+                headers: {
+                  "x-store-slug": opts.storeSlug,
+                },
+              }
+            : undefined
+        ),
   getPublicTableOrders: (
     tableId: string,
     opts?: { status?: string; take?: number; storeSlug?: string }

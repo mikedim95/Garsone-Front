@@ -18,6 +18,8 @@ export default function OrderThanks() {
   const location = useLocation();
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
+  const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const { tableId, paid } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
     return {
@@ -26,10 +28,6 @@ export default function OrderThanks() {
     };
   }, [location.search]);
   const [storeSlug, setStoreSlug] = useState<string>('');
-
-  // Placeholder values - will be populated from API later
-  const queuePosition: number | null = null; // e.g., 3
-  const estimatedMinutes: number | null = null; // e.g., 15
 
   useEffect(() => {
     let mounted = true;
@@ -62,8 +60,28 @@ export default function OrderThanks() {
   }, []);
 
   useEffect(() => {
-    return () => {};
-  }, [storeSlug, orderId, tableId]);
+    if (!orderId || !storeSlug) return;
+    let active = true;
+    api
+      .getPublicOrderSummary(orderId, { storeSlug })
+      .then((summary) => {
+        if (!active) return;
+        const nextQueue =
+          typeof summary.queuePosition === 'number' ? summary.queuePosition : null;
+        const nextEstimate =
+          typeof summary.estimatedMinutes === 'number'
+            ? summary.estimatedMinutes
+            : null;
+        setQueuePosition(nextQueue);
+        setEstimatedMinutes(nextEstimate);
+      })
+      .catch((error) => {
+        console.warn('Failed to load order summary', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [storeSlug, orderId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex items-center justify-center p-4">

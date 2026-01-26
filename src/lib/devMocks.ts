@@ -837,6 +837,45 @@ export const devMocks = {
     ).length;
     return Promise.resolve({ ahead });
   },
+  getPublicOrderSummary(orderId: Id) {
+    const db = snapshot();
+    seedOrdersIfEmpty(db);
+    const order = db.orders.find((o) => o.id === orderId);
+    if (!order) {
+      return Promise.resolve({ queuePosition: null, estimatedMinutes: null });
+    }
+    let queuePosition: number | null = null;
+    if (order.status === 'PLACED' || order.status === 'PREPARING') {
+      const queueCount = db.orders.filter(
+        (o) => o.status === 'PLACED' || o.status === 'PREPARING'
+      ).length;
+      queuePosition = queueCount > 0 ? queueCount : null;
+    }
+
+    const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const durations = db.orders
+      .map((o) => {
+        const itemServedTimes = o.items
+          .map((item) => (typeof item.servedAt === 'number' ? item.servedAt : null))
+          .filter((value): value is number => typeof value === 'number');
+        const servedAt = itemServedTimes.length ? Math.max(...itemServedTimes) : null;
+        if (!servedAt || servedAt < since) return null;
+        const start = o.createdAt;
+        const diffMs = servedAt - start;
+        if (diffMs <= 0) return null;
+        return diffMs;
+      })
+      .filter((value): value is number => typeof value === 'number');
+    const averageMinutes =
+      durations.length > 0
+        ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length / 60000)
+        : null;
+    const estimatedMinutes =
+      averageMinutes !== null && typeof queuePosition === 'number'
+        ? Math.max(1, Math.round(averageMinutes * queuePosition))
+        : averageMinutes;
+    return Promise.resolve({ queuePosition, estimatedMinutes });
+  },
   createOrder(data: CreateOrderPayload) {
     const db = snapshot();
     const order: Order = {
