@@ -90,7 +90,11 @@ export function OrderModifiersDialog({
             modifierId,
             optionId,
             modifierLabel: modifier?.name || modifier?.title || modifierId,
-            optionLabel: option?.label || option?.title || optionId,
+            optionLabel:
+              option?.label ||
+              option?.title ||
+              line.selectedModifierLabels?.[modifierId] ||
+              optionId,
           };
         }
       );

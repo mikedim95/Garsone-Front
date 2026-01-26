@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -81,6 +81,56 @@ const normalizeModifierSelections = (value: unknown): Record<string, string> => 
   return {};
 };
 
+const normalizeModifierLabels = (value: unknown): Record<string, string> => {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      return normalizeModifierLabels(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.reduce<Record<string, string>>((acc, entry) => {
+      if (!isRecord(entry)) return acc;
+      const modifierId =
+        typeof entry.modifierId === "string"
+          ? entry.modifierId
+          : typeof entry.id === "string"
+            ? entry.id
+            : null;
+      const label =
+        typeof entry.title === "string"
+          ? entry.title
+          : typeof entry.name === "string"
+            ? entry.name
+            : typeof entry.label === "string"
+              ? entry.label
+              : null;
+      if (!modifierId || !label) return acc;
+      acc[modifierId] = acc[modifierId] ? `${acc[modifierId]}, ${label}` : label;
+      return acc;
+    }, {});
+  }
+  if (isRecord(value)) {
+    return Object.entries(value).reduce<Record<string, string>>((acc, [modifierId, option]) => {
+      if (!isRecord(option)) return acc;
+      const label =
+        typeof option.label === "string"
+          ? option.label
+          : typeof option.title === "string"
+            ? option.title
+            : typeof option.name === "string"
+              ? option.name
+              : null;
+      if (!label) return acc;
+      acc[modifierId] = label;
+      return acc;
+    }, {});
+  }
+  return {};
+};
+
 const normalizeItemStatus = (value: unknown): OrderItemStatus | undefined => {
   if (typeof value !== "string") return undefined;
   const upper = value.toUpperCase();
@@ -133,6 +183,10 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
         ? itemRecord.printerTopic
         : null;
   const selectedModifiers = getSelectedModifiers(record);
+  const selectedModifierLabels = {
+    ...normalizeModifierLabels(record.selectedModifiers),
+    ...normalizeModifierLabels(record.modifiers),
+  };
   return {
     item: {
       id: itemId,
@@ -152,6 +206,7 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
     },
     quantity,
     selectedModifiers,
+    selectedModifierLabels: Object.keys(selectedModifierLabels).length ? selectedModifierLabels : undefined,
     orderItemId,
     status,
     acceptedAt,
@@ -224,6 +279,7 @@ const isOrderPlacedPayload = (payload: unknown): payload is {
   totalCents?: number;
   createdAt?: string;
   items?: any[];
+  order?: unknown;
 } =>
   isRecord(payload) && typeof payload.orderId === 'string';
 
@@ -244,7 +300,7 @@ export default function CookDashboard() {
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
   const [printing, setPrinting] = useState<Set<string>>(new Set());
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
-  const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
+  const [selectedItemsByOrder, setSelectedItemsByOrder] = useState<Record<string, Record<string, boolean>>>({});
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [viewMode, setViewMode] = useState<"classic" | "pro">(() => {
     try {
@@ -328,8 +384,9 @@ export default function CookDashboard() {
     const itemTopic = `${storeSlug}/orders/items`;
     const handler = (payload: unknown) => {
       if (!isOrderPlacedPayload(payload)) return;
+      const payloadOrder = isRecord(payload.order) ? payload.order : null;
       const normalized = normalizeOrder(
-        {
+        payloadOrder ?? {
           id: payload.orderId,
           tableId: payload.tableId,
           tableLabel: payload.tableLabel,
@@ -382,26 +439,194 @@ export default function CookDashboard() {
     [ordersAll]
   );
 
+  const getVisibleItemsForOrder = useCallback((order: Order) => {
+    const items = order.items ?? [];
+    if (order.status === "PLACED" || order.status === "PREPARING") {
+      return items.filter((item) => item.status !== "SERVED");
+    }
+    return items;
+  }, []);
+
+  const incomingVisible = useMemo(
+    () => incoming.filter((order) => getVisibleItemsForOrder(order).length > 0),
+    [incoming, getVisibleItemsForOrder]
+  );
+
+  const preparingVisible = useMemo(
+    () => preparing.filter((order) => getVisibleItemsForOrder(order).length > 0),
+    [preparing, getVisibleItemsForOrder]
+  );
+
+  const toggleItemSelection = useCallback(
+    (orderId: string, orderItemId: string, selected: boolean) => {
+      setSelectedItemsByOrder((prev) => {
+        const orderSelection = { ...(prev[orderId] ?? {}) };
+        if (selected) {
+          orderSelection[orderItemId] = true;
+        } else {
+          delete orderSelection[orderItemId];
+        }
+        const next = { ...prev };
+        if (Object.keys(orderSelection).length === 0) {
+          delete next[orderId];
+        } else {
+          next[orderId] = orderSelection;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const isItemSelected = (orderId: string, orderItemId?: string) =>
+    Boolean(orderItemId && selectedItemsByOrder[orderId]?.[orderItemId]);
+
+  const clearSelectedItems = useCallback((orderId: string, itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+    setSelectedItemsByOrder((prev) => {
+      const orderSelection = { ...(prev[orderId] ?? {}) };
+      let changed = false;
+      itemIds.forEach((itemId) => {
+        if (orderSelection[itemId]) {
+          delete orderSelection[itemId];
+          changed = true;
+        }
+      });
+      if (!changed) return prev;
+      const next = { ...prev };
+      if (Object.keys(orderSelection).length === 0) {
+        delete next[orderId];
+      } else {
+        next[orderId] = orderSelection;
+      }
+      return next;
+    });
+  }, []);
+
+  const clearAllSelectionsForOrder = useCallback((orderId: string) => {
+    setSelectedItemsByOrder((prev) => {
+      if (!prev[orderId]) return prev;
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  }, []);
+
+  const getEligibleItemIds = (
+    order: Order | undefined,
+    mode: "prepare" | "ready"
+  ) => {
+    if (!order?.items?.length) return [];
+    return order.items.reduce<string[]>((acc, item) => {
+      const itemId = item.orderItemId;
+      if (!itemId) return acc;
+      if (mode === "prepare") {
+        if (item.status !== "ACCEPTED" && item.status !== "SERVED") {
+          acc.push(itemId);
+        }
+        return acc;
+      }
+      if (item.status !== "SERVED") {
+        acc.push(itemId);
+      }
+      return acc;
+    }, []);
+  };
+
+  const getSelectedItemIds = (orderId: string, eligibleItemIds: string[]) => {
+    const selection = selectedItemsByOrder[orderId] ?? {};
+    return eligibleItemIds.filter((itemId) => Boolean(selection[itemId]));
+  };
+
+  const updateSelectedItemsStatus = async (
+    orderId: string,
+    itemIds: string[],
+    status: OrderItemStatus
+  ) => {
+    if (itemIds.length === 0) return { successIds: [] as string[], failures: 0 };
+    const results = await Promise.allSettled(
+      itemIds.map((itemId) => api.updateOrderItemStatus(orderId, itemId, status))
+    );
+    const successIds: string[] = [];
+    let failures = 0;
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        successIds.push(itemIds[index]);
+        const normalized = normalizeOrder(result.value.order, Date.now(), cookPrinterTopic);
+        if (normalized) {
+          upsertOrder(normalized);
+        }
+      } else {
+        failures += 1;
+      }
+    });
+    return { successIds, failures };
+  };
+
+  const setOrderPreparing = async (
+    id: string,
+    options?: { skipMqtt?: boolean }
+  ) => {
+    const res = await api.updateOrderStatus(id, "PREPARING", {
+      ...(options?.skipMqtt ? { skipMqtt: true } : {}),
+    });
+    const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+    if (normalized) {
+      upsertOrder(normalized);
+    } else {
+      updateLocalStatus(id, "PREPARING");
+    }
+  };
+
   const transitionToPreparing = async (
     id: string,
     setTracker: React.Dispatch<React.SetStateAction<Set<string>>>,
     options?: { skipMqtt?: boolean }
-  ) => {
+  ): Promise<boolean> => {
     setTracker((s) => new Set(s).add(id));
     try {
-      const res = await api.updateOrderStatus(id, "PREPARING", {
-        ...(options?.skipMqtt ? { skipMqtt: true } : {}),
-      });
-      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
-      if (normalized) {
-        upsertOrder(normalized);
-      } else {
-        updateLocalStatus(id, "PREPARING");
+      const order = useOrdersStore.getState().orders.find((o) => o.id === id);
+      const eligibleItemIds = getEligibleItemIds(order, "prepare");
+      const selectedItemIds = getSelectedItemIds(id, eligibleItemIds);
+      const hasSelection = selectedItemIds.length > 0;
+      const targetItemIds = hasSelection ? selectedItemIds : eligibleItemIds;
+      let shouldAdvance =
+        !hasSelection || selectedItemIds.length === eligibleItemIds.length;
+
+      if (targetItemIds.length > 0) {
+        try {
+          const { successIds, failures } = await updateSelectedItemsStatus(
+            id,
+            targetItemIds,
+            "ACCEPTED"
+          );
+          if (successIds.length > 0) {
+            clearSelectedItems(id, successIds);
+          }
+          if (failures > 0) {
+            shouldAdvance = false;
+            toast({
+              title: t("toasts.update_failed"),
+              description: "Unable to update some item statuses",
+            });
+          }
+        } catch (error) {
+          shouldAdvance = false;
+          toast({
+            title: t("toasts.update_failed"),
+            description: "Unable to update item statuses",
+          });
+        }
       }
+
+      if (!shouldAdvance) return false;
+      await setOrderPreparing(id, options);
       toast({
         title: "Preparing",
         description: `Order ${id} is now PREPARING`,
       });
+      clearAllSelectionsForOrder(id);
+      return true;
     } finally {
       setTracker((s) => {
         const n = new Set(s);
@@ -428,8 +653,10 @@ export default function CookDashboard() {
 
   const acceptWithPrint = async (order: Order) => {
     try {
-      await transitionToPreparing(order.id, setPrinting, { skipMqtt: true });
-      await sendOrderToPrinter(order);
+      const didAdvance = await transitionToPreparing(order.id, setPrinting, { skipMqtt: true });
+      if (didAdvance) {
+        await sendOrderToPrinter(order);
+      }
     } catch (error) {
       console.error("Accept with print failed", error);
     }
@@ -458,6 +685,40 @@ export default function CookDashboard() {
   const markReady = async (id: string) => {
     setActingIds((s) => new Set(s).add(`ready:${id}`));
     try {
+      const order = useOrdersStore.getState().orders.find((o) => o.id === id);
+      const eligibleItemIds = getEligibleItemIds(order, "ready");
+      const selectedItemIds = getSelectedItemIds(id, eligibleItemIds);
+      let shouldAdvance =
+        selectedItemIds.length === 0 ||
+        selectedItemIds.length === eligibleItemIds.length;
+
+      if (selectedItemIds.length > 0) {
+        try {
+          const { successIds, failures } = await updateSelectedItemsStatus(
+            id,
+            selectedItemIds,
+            "SERVED"
+          );
+          if (successIds.length > 0) {
+            clearSelectedItems(id, successIds);
+          }
+          if (failures > 0) {
+            shouldAdvance = false;
+            toast({
+              title: t("toasts.update_failed"),
+              description: "Unable to update some item statuses",
+            });
+          }
+        } catch (error) {
+          shouldAdvance = false;
+          toast({
+            title: t("toasts.update_failed"),
+            description: "Unable to update item statuses",
+          });
+        }
+      }
+
+      if (!shouldAdvance) return;
       const res = await api.updateOrderStatus(id, "READY");
       const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
       if (normalized) {
@@ -466,6 +727,7 @@ export default function CookDashboard() {
         updateLocalStatus(id, "READY");
       }
       toast({ title: "Ready", description: `Order ${id} is READY` });
+      clearAllSelectionsForOrder(id);
     } finally {
       setActingIds((s) => {
         const n = new Set(s);
@@ -475,30 +737,53 @@ export default function CookDashboard() {
     }
   };
 
-  const handleItemStatus = async (
+  // Individual item status update handler for the Pro view
+  const updateSingleItemStatus = async (
     orderId: string,
     orderItemId: string,
     status: OrderItemStatus
-  ) => {
-    const key = `${orderId}:${orderItemId}`;
-    setItemBusy((s) => new Set(s).add(key));
+  ): Promise<void> => {
     try {
       const res = await api.updateOrderItemStatus(orderId, orderItemId, status);
       const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      let updatedOrder: Order | null = null;
       if (normalized) {
+        updatedOrder = normalized;
         upsertOrder(normalized);
       }
+      if (status === "ACCEPTED") {
+        const hasPendingItems = (updatedOrder?.items ?? []).some(
+          (item) => item.status !== "ACCEPTED" && item.status !== "SERVED"
+        );
+        if (!hasPendingItems && updatedOrder?.status === "PLACED") {
+          try {
+            await setOrderPreparing(orderId, { skipMqtt: true });
+          } catch (error) {
+            console.warn("Failed to update order to PREPARING", error);
+            updateLocalStatus(orderId, "PREPARING");
+          }
+        }
+      }
+      // Show brief feedback
+      if (status === "ACCEPTED") {
+        toast({
+          title: t("cook.item_accepted", { defaultValue: "Item accepted" }),
+          description: t("cook.item_cooking", { defaultValue: "Item is now being prepared" }),
+        });
+      } else if (status === "SERVED") {
+        toast({
+          title: t("cook.item_ready", { defaultValue: "Item ready" }),
+          description: t("cook.item_ready_pickup", { defaultValue: "Item is ready for pickup" }),
+        });
+      }
     } catch (error) {
+      console.error("Failed to update item status", error);
       toast({
         title: t("toasts.update_failed"),
-        description: "Unable to update item status",
+        description: t("cook.item_update_failed", { defaultValue: "Could not update item status" }),
+        variant: "destructive",
       });
-    } finally {
-      setItemBusy((s) => {
-        const n = new Set(s);
-        n.delete(key);
-        return n;
-      });
+      throw error;
     }
   };
 
@@ -560,19 +845,20 @@ export default function CookDashboard() {
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">
           {viewMode === "pro" ? (
             <CookProView
-              incoming={incoming}
-              preparing={preparing}
+              incoming={incomingVisible}
+              preparing={preparingVisible}
               loadingOrders={loadingOrders}
               accepting={accepting}
               printing={printing}
               actingIds={actingIds}
-              itemBusy={itemBusy}
+              selectedItemsByOrder={selectedItemsByOrder}
               onAccept={accept}
               onAcceptWithPrint={acceptWithPrint}
               onCancel={cancelOrder}
               onMarkReady={markReady}
               onViewModifiers={setModifierOrder}
-              onUpdateItemStatus={handleItemStatus}
+              onToggleItem={toggleItemSelection}
+              onUpdateItemStatus={updateSingleItemStatus}
             />
           ) : (
             <>
@@ -582,14 +868,16 @@ export default function CookDashboard() {
                   {t('cook.incoming_orders')}
                 </h2>
                 <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
-                  {incoming.length}
+                  {incomingVisible.length}
                 </div>
               </div>
               {loadingOrders ? (
                 <DashboardGridSkeleton count={4} />
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-                  {incoming.map((o, idx) => (
+                  {incomingVisible.map((o, idx) => {
+                    const visibleItems = getVisibleItemsForOrder(o);
+                    return (
                     <Card
                       key={o.id}
                       className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-slide-in"
@@ -613,27 +901,25 @@ export default function CookDashboard() {
                         </div>
                       </div>
                       <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                        {(o.items ?? []).map((line, idx: number) => {
+                        {visibleItems.map((line, idx: number) => {
                           const qty = line.quantity;
                           const name = line.item?.name ?? line.item?.title ?? 'Item';
                           const orderItemId = line.orderItemId;
-                          const isAccepted = line.status === 'ACCEPTED' || line.status === 'SERVED';
                           const isServed = line.status === 'SERVED';
-                          const busyKey = orderItemId ? `${o.id}:${orderItemId}` : null;
-                          const canToggle =
+                          const isSelected = isItemSelected(o.id, orderItemId);
+                          const canSelect =
                             Boolean(orderItemId) &&
-                            !isAccepted &&
-                            (o.status === 'PLACED' || o.status === 'PREPARING');
-                          const toggleDisabled =
-                            !canToggle || (busyKey ? itemBusy.has(busyKey) : false);
+                            line.status !== 'ACCEPTED' &&
+                            !isServed;
+                          const toggleDisabled = !canSelect;
                           return (
                             <div key={idx} className="flex items-center gap-2">
                               <Checkbox
-                                checked={isAccepted}
+                                checked={isSelected}
                                 disabled={toggleDisabled}
                                 onCheckedChange={(checked) => {
-                                  if (!orderItemId || checked !== true) return;
-                                  handleItemStatus(o.id, orderItemId, 'ACCEPTED');
+                                  if (!orderItemId) return;
+                                  toggleItemSelection(o.id, orderItemId, checked === true);
                                 }}
                               />
                               <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
@@ -644,7 +930,7 @@ export default function CookDashboard() {
                                   'font-medium',
                                   isServed
                                     ? 'text-muted-foreground line-through'
-                                    : isAccepted
+                                    : isSelected
                                       ? 'text-muted-foreground'
                                       : 'text-foreground'
                                 )}
@@ -714,7 +1000,8 @@ export default function CookDashboard() {
                         </Button>
                       </div>
                     </Card>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
 
@@ -722,14 +1009,16 @@ export default function CookDashboard() {
                 <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
                 <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('cook.in_preparation')}</h2>
                 <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
-                  {preparing.length}
+                  {preparingVisible.length}
                 </div>
               </div>
               {loadingOrders ? (
                 <DashboardGridSkeleton count={3} />
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-                  {preparing.map((o) => (
+                  {preparingVisible.map((o) => {
+                    const visibleItems = getVisibleItemsForOrder(o);
+                    return (
                     <Card
                       key={o.id}
                       className="p-3 sm:p-5 space-y-3 sm:space-y-4 bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300"
@@ -755,27 +1044,24 @@ export default function CookDashboard() {
                         </div>
                       </div>
                       <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
-                        {(o.items ?? []).map((line, idx: number) => {
+                        {visibleItems.map((line, idx: number) => {
                           const qty = line.quantity;
                           const name = line.item?.name ?? line.item?.title ?? 'Item';
                           const orderItemId = line.orderItemId;
-                          const isAccepted = line.status === 'ACCEPTED' || line.status === 'SERVED';
                           const isServed = line.status === 'SERVED';
-                          const busyKey = orderItemId ? `${o.id}:${orderItemId}` : null;
-                          const canToggle =
+                          const isSelected = isItemSelected(o.id, orderItemId);
+                          const canSelect =
                             Boolean(orderItemId) &&
-                            !isAccepted &&
-                            (o.status === 'PLACED' || o.status === 'PREPARING');
-                          const toggleDisabled =
-                            !canToggle || (busyKey ? itemBusy.has(busyKey) : false);
+                            !isServed;
+                          const toggleDisabled = !canSelect;
                           return (
                             <div key={idx} className="flex items-center gap-2">
                               <Checkbox
-                                checked={isAccepted}
+                                checked={isSelected}
                                 disabled={toggleDisabled}
                                 onCheckedChange={(checked) => {
-                                  if (!orderItemId || checked !== true) return;
-                                  handleItemStatus(o.id, orderItemId, 'ACCEPTED');
+                                  if (!orderItemId) return;
+                                  toggleItemSelection(o.id, orderItemId, checked === true);
                                 }}
                               />
                               <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-[10px] sm:text-xs font-bold">
@@ -786,7 +1072,7 @@ export default function CookDashboard() {
                                   'font-medium',
                                   isServed
                                     ? 'text-muted-foreground line-through'
-                                    : isAccepted
+                                    : isSelected
                                       ? 'text-muted-foreground'
                                       : 'text-foreground'
                                 )}
@@ -824,7 +1110,8 @@ export default function CookDashboard() {
                         </Button>
                       </div>
                     </Card>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </>
