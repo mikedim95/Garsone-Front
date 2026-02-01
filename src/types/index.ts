@@ -186,6 +186,15 @@ export interface StoreInfo {
    printers?: string[];
 }
 
+export interface StoreOverview {
+  id: string;
+  name: string;
+  slug?: string;
+  usersCount: number;
+  tilesCount: number;
+  ordersCount: number;
+}
+
 export interface LandingStoreLink {
   id: string;
   name: string;

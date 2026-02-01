@@ -33,6 +33,7 @@ import type {
   WaiterType,
   WaiterTableOverview,
   OrderingMode,
+  StoreOverview,
 } from "@/types";
 import { devMocks } from "./devMocks";
 import { getStoredStoreSlug } from "./storeSlug";
@@ -126,7 +127,7 @@ type QRTileUpdatePayload = {
   isActive?: boolean;
   label?: string;
 };
-type BulkTilePayload = { count: number; labelPrefix?: string };
+type BulkTilePayload = { codes: string[] };
 type LocalityApprovalPayload = {
   publicCode: string;
   tableId: string;
@@ -798,6 +799,10 @@ export const api = {
     isOffline()
       ? devMocks.adminListStores()
       : fetchApi<{ stores: StoreInfo[] }>("/admin/stores"),
+  adminListStoreOverview: (): Promise<{ stores: StoreOverview[] }> =>
+    isOffline()
+      ? devMocks.adminListStoreOverview()
+      : fetchApi<{ stores: StoreOverview[] }>("/admin/stores/overview"),
   adminListStoreTables: (
     storeId: string
   ): Promise<{ tables: ManagerTableSummary[] }> =>

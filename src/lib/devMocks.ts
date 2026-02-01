@@ -62,6 +62,7 @@ type Db = {
 };
 
 const LS_KEY = 'devMocks';
+const QR_CODE_REGEX = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
 
 const normalizePrinterTopic = (value?: string | null, fallback?: string) => {
   const raw = (value ?? fallback ?? '').trim().toLowerCase();
@@ -657,6 +658,24 @@ export const devMocks = {
       ],
     });
   },
+  adminListStoreOverview() {
+    const db = snapshot();
+    seedQrTilesIfEmpty(db);
+    seedOrdersIfEmpty(db);
+    const usersCount = (db.waiters?.length ?? 0) + (db.cooks?.length ?? 0) + 1;
+    return Promise.resolve({
+      stores: [
+        {
+          id: db.store.id,
+          name: db.store.name,
+          slug: db.store.slug || 'local-store',
+          usersCount,
+          tilesCount: db.qrTiles.length,
+          ordersCount: db.orders.length,
+        },
+      ],
+    });
+  },
   adminUpdateStoreOrderingMode(storeId: string, orderingMode: OrderingMode) {
     const db = snapshot();
     if (db.store.id !== storeId) {
@@ -713,24 +732,51 @@ export const devMocks = {
       tiles,
     });
   },
-  adminBulkCreateQrTiles(storeId: string, data: { count: number; labelPrefix?: string }) {
+  adminBulkCreateQrTiles(storeId: string, data: { codes: string[] }) {
     const db = snapshot();
-    const count = Math.max(1, Math.min(500, Number(data.count) || 0));
-    const prefix = (data.labelPrefix || '').trim();
-    const pad = Math.max(String(count).length, 2);
+    const rawCodes = Array.isArray(data.codes) ? data.codes : [];
+    const normalized = rawCodes
+      .map((code) => String(code ?? '').trim().toUpperCase())
+      .filter(Boolean);
+    if (normalized.length === 0) {
+      return Promise.reject(new Error('No codes provided'));
+    }
+    if (normalized.length > 500) {
+      return Promise.reject(new Error('Too many codes (max 500)'));
+    }
+    const invalid = normalized.filter((code) => !QR_CODE_REGEX.test(code));
+    if (invalid.length > 0) {
+      return Promise.reject(new Error(`Invalid code format: ${invalid[0]}`));
+    }
+    const seen = new Set<string>();
+    const dupes: string[] = [];
+    for (const code of normalized) {
+      if (seen.has(code)) dupes.push(code);
+      seen.add(code);
+    }
+    if (dupes.length > 0) {
+      return Promise.reject(new Error(`Duplicate codes: ${Array.from(new Set(dupes)).join(', ')}`));
+    }
+    const existing = new Set(
+      db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
+    );
+    const conflicts = normalized.filter((code) => existing.has(code));
+    if (conflicts.length > 0) {
+      return Promise.reject(new Error(`Codes already exist: ${conflicts.join(', ')}`));
+    }
+
     const created: QRTileRecord[] = [];
-    for (let i = 0; i < count; i += 1) {
-      const publicCode = `QR${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
-      const label = prefix ? `${prefix}${String(i + 1).padStart(pad, '0')}` : null;
+    const now = Date.now();
+    for (const publicCode of normalized) {
       const tile: QRTileRecord = {
         id: uid('qr'),
         storeId: storeId || db.store.id,
         publicCode,
-        label,
+        label: null,
         tableId: null,
         isActive: true,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       };
       db.qrTiles.unshift(tile);
       created.push(tile);

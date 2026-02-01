@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Copy, Loader2, Plus, QrCode, RefreshCcw, Trash2, Search, Link as LinkIcon, Settings, Grid3X3, Printer } from 'lucide-react';
+import { Check, Copy, Loader2, Plus, QrCode, RefreshCcw, Trash2, Search, Link as LinkIcon, Settings, Grid3X3, Printer, Building2, ChevronDown } from 'lucide-react';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,20 +8,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/components/ui/use-toast';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
-import type { ManagerTableSummary, OrderingMode, QRTile, StoreInfo } from '@/types';
-import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
+import type { ManagerTableSummary, OrderingMode, QRTile, StoreInfo, StoreOverview } from '@/types';
+import { DashboardCardSkeleton, DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { PageTransition } from '@/components/ui/page-transition';
 
 type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug' | 'orderingMode' | 'printers'>;
+
+const OVERVIEW_STORE_ID = '__overview__';
+const QR_CODE_REGEX = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
+const MAX_MANUAL_CODES = 500;
 
 const formatDate = (value?: string) => {
   if (!value) return '—';
@@ -30,22 +36,57 @@ const formatDate = (value?: string) => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+const buildSparkline = (store: StoreOverview, points = 12) => {
+  const base =
+    store.usersCount * 0.6 + store.tilesCount * 0.25 + store.ordersCount * 0.15;
+  const seed = (store.slug ?? store.id).length + base;
+  const values = Array.from({ length: points }, (_, i) => {
+    const wave = Math.sin((i / (points - 1)) * Math.PI * 2 + seed) * 0.35 + 0.6;
+    const ramp = (i / (points - 1)) * 0.15;
+    const intensity = Math.min(1, base / 200 + 0.35);
+    const value = (wave + ramp) * intensity;
+    return Math.max(0.08, Math.min(0.95, value));
+  });
+  return values;
+};
+
+const sparklinePath = (values: number[], width = 320, height = 80, padding = 6) => {
+  if (values.length === 0) return '';
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const step = (width - padding * 2) / Math.max(1, values.length - 1);
+  return values
+    .map((value, index) => {
+      const x = padding + index * step;
+      const y =
+        padding + (1 - (value - min) / range) * (height - padding * 2);
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+};
+
+
 export default function ArchitectQrTiles() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuthStore();
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'tiles' | 'settings' | 'overview'>('tiles');
   const [tiles, setTiles] = useState<QRTile[]>([]);
   const [tables, setTables] = useState<ManagerTableSummary[]>([]);
   const [recentTiles, setRecentTiles] = useState<QRTile[]>([]);
+  const [overview, setOverview] = useState<StoreOverview[]>([]);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [collapsedOverview, setCollapsedOverview] = useState<Record<string, boolean>>({});
   const [loadingStores, setLoadingStores] = useState(false);
   const [loadingTiles, setLoadingTiles] = useState(false);
   const storesLoading = loadingStores && stores.length === 0;
   const tilesLoading = loadingTiles && tiles.length === 0;
   const [refreshing, setRefreshing] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [count, setCount] = useState<string>('12');
+  const [manualCodes, setManualCodes] = useState<string>('');
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
   const [updatingMode, setUpdatingMode] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -58,6 +99,39 @@ export default function ArchitectQrTiles() {
 
   const isArchitect = user?.role === 'architect';
   const isAllowed = isArchitect;
+  const isOverview = selectedStoreId === OVERVIEW_STORE_ID;
+
+  const parsedCodes = useMemo(
+    () =>
+      manualCodes
+        .split(/[\s,]+/)
+        .map((code) => code.trim().toUpperCase())
+        .filter(Boolean),
+    [manualCodes]
+  );
+  const uniqueCodes = useMemo(
+    () => Array.from(new Set(parsedCodes)),
+    [parsedCodes]
+  );
+  const duplicateCodes = useMemo(() => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    for (const code of parsedCodes) {
+      if (seen.has(code)) duplicates.add(code);
+      seen.add(code);
+    }
+    return Array.from(duplicates);
+  }, [parsedCodes]);
+  const invalidCodes = useMemo(
+    () => parsedCodes.filter((code) => !QR_CODE_REGEX.test(code)),
+    [parsedCodes]
+  );
+  const tooManyCodes = uniqueCodes.length > MAX_MANUAL_CODES;
+  const canSubmitCodes =
+    uniqueCodes.length > 0 &&
+    invalidCodes.length === 0 &&
+    duplicateCodes.length === 0 &&
+    !tooManyCodes;
 
   useEffect(() => {
     if (!isAuthenticated() || !isAllowed) {
@@ -72,11 +146,14 @@ export default function ArchitectQrTiles() {
       const list = res.stores ?? [];
       if (list.length > 0) {
         setStores(list);
-        if (!selectedStoreId) {
+        if (!selectedStoreId || (!isOverview && !list.some((s) => s.id === selectedStoreId))) {
           setSelectedStoreId(list[0].id);
         }
-        setStoreOrderingMode((list[0] as StoreOption | undefined)?.orderingMode ?? 'qr');
-        setPrinters((list[0] as any)?.printers ?? []);
+        if (!isOverview) {
+          const selected = list.find((s) => s.id === selectedStoreId) ?? list[0];
+          setStoreOrderingMode((selected as StoreOption | undefined)?.orderingMode ?? 'qr');
+          setPrinters((selected as any)?.printers ?? []);
+        }
         return;
       }
     } catch (error) {
@@ -105,7 +182,7 @@ export default function ArchitectQrTiles() {
     } catch {
       // ignore
     }
-  }, [selectedStoreId, toast]);
+  }, [isOverview, selectedStoreId, toast]);
 
   const refreshTiles = useCallback(
     async (storeId: string) => {
@@ -133,6 +210,23 @@ export default function ArchitectQrTiles() {
     [toast]
   );
 
+  const loadOverview = useCallback(async () => {
+    try {
+      setOverviewLoading(true);
+      const res = await api.adminListStoreOverview();
+      setOverview(res.stores ?? []);
+    } catch (error) {
+      console.error('Failed to load store overview', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load overview',
+        description: error instanceof ApiError ? error.message : 'Try again in a moment.',
+      });
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     loadStores();
     const baseEnv = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
@@ -149,20 +243,29 @@ export default function ArchitectQrTiles() {
   }, [loadStores]);
 
   useEffect(() => {
+    if (isOverview) {
+      if (activeTab !== 'overview') setActiveTab('overview');
+      loadOverview();
+      return;
+    }
+    if (activeTab === 'overview') setActiveTab('tiles');
     if (selectedStoreId) {
       refreshTiles(selectedStoreId);
+      const mode = stores.find((s) => s.id === selectedStoreId)?.orderingMode ?? 'qr';
+      setStoreOrderingMode(mode as OrderingMode);
+      const selectedStore = stores.find((s) => s.id === selectedStoreId) as any;
+      setPrinters(selectedStore?.printers ?? []);
     }
-    const mode = stores.find((s) => s.id === selectedStoreId)?.orderingMode ?? 'qr';
-    setStoreOrderingMode(mode as OrderingMode);
-    const selectedStore = stores.find((s) => s.id === selectedStoreId) as any;
-    setPrinters(selectedStore?.printers ?? []);
-  }, [selectedStoreId, refreshTiles, stores]);
+  }, [activeTab, isOverview, loadOverview, refreshTiles, selectedStoreId, stores]);
 
   useEffect(() => {
     setRecentTiles([]);
   }, [selectedStoreId]);
 
-  const storeName = useMemo(() => stores.find((s) => s.id === selectedStoreId)?.name, [stores, selectedStoreId]);
+  const storeName = useMemo(() => {
+    if (isOverview) return 'All Stores';
+    return stores.find((s) => s.id === selectedStoreId)?.name;
+  }, [isOverview, stores, selectedStoreId]);
   const buildPublicUrl = useCallback(
     (code: string) => {
       const base = (publicResolverBase || 'https://www.garsone.gr/publiccode').replace(/\/$/, '');
@@ -200,16 +303,48 @@ export default function ArchitectQrTiles() {
   };
 
   const handleBulkCreate = async () => {
-    const numericCount = Math.max(1, Math.min(500, Number(count) || 0));
     if (!selectedStoreId) return;
+    if (uniqueCodes.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'No codes provided',
+        description: 'Paste one or more GT-XXXX-XXXX codes.',
+      });
+      return;
+    }
+    if (tooManyCodes) {
+      toast({
+        variant: 'destructive',
+        title: 'Too many codes',
+        description: `Maximum ${MAX_MANUAL_CODES} codes per batch.`,
+      });
+      return;
+    }
+    if (invalidCodes.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid code format',
+        description: 'Use GT-XXXX-XXXX with A-Z (no I,L,O,U) and 0-9.',
+      });
+      return;
+    }
+    if (duplicateCodes.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Duplicate codes',
+        description: 'Remove duplicates before submitting.',
+      });
+      return;
+    }
     try {
       const created = await api.adminBulkCreateQrTiles(selectedStoreId, {
-        count: numericCount,
+        codes: uniqueCodes,
       });
       setDialogOpen(false);
+      setManualCodes('');
       setRecentTiles(created.tiles ?? []);
       setTiles((prev) => [...(created.tiles ?? []), ...prev]);
-      toast({ title: 'QR tiles created', description: `${created.tiles?.length ?? 0} new tiles ready.` });
+      toast({ title: 'QR tiles added', description: `${created.tiles?.length ?? 0} new tiles ready.` });
     } catch (error) {
       console.error('Bulk creation failed', error);
       toast({
@@ -340,12 +475,28 @@ export default function ArchitectQrTiles() {
       .finally(() => setUpdatingMode(false));
   };
 
+  const handleRefresh = () => {
+    if (isOverview) {
+      void loadOverview();
+      return;
+    }
+    if (selectedStoreId) {
+      void refreshTiles(selectedStoreId);
+    }
+  };
+
   return (
     <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
         supertitle="Admin"
         title="QR Architect"
-        subtitle={storeName ? `Managing ${storeName}` : 'Generate & assign QR tiles'}
+        subtitle={
+          isOverview
+            ? 'Overview of all venues'
+            : storeName
+              ? `Managing ${storeName}`
+              : 'Add & assign QR tiles'
+        }
         icon="🏗️"
         tone="secondary"
         rightContent={
@@ -354,13 +505,23 @@ export default function ArchitectQrTiles() {
           ) : (
             <Select
               value={selectedStoreId}
-              onValueChange={(value) => setSelectedStoreId(value)}
+              onValueChange={(value) => {
+                setSelectedStoreId(value);
+                if (value === OVERVIEW_STORE_ID) {
+                  setActiveTab('overview');
+                } else if (activeTab === 'overview') {
+                  setActiveTab('tiles');
+                }
+              }}
               disabled={loadingStores || stores.length === 0}
             >
               <SelectTrigger className="w-48 h-9 text-sm bg-card border-border/50">
                 <SelectValue placeholder="Select store" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={OVERVIEW_STORE_ID}>
+                  All Stores Overview
+                </SelectItem>
                 {stores.map((store) => (
                   <SelectItem key={store.id} value={store.id}>
                     {store.name}
@@ -376,58 +537,199 @@ export default function ArchitectQrTiles() {
               variant="outline"
               size="sm"
               className="w-full justify-start"
-              onClick={() => selectedStoreId && refreshTiles(selectedStoreId)}
-              disabled={refreshing}
+              onClick={handleRefresh}
+              disabled={refreshing || overviewLoading}
             >
-              {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-              Refresh data
+              {refreshing || overviewLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+              {isOverview ? 'Refresh overview' : 'Refresh data'}
             </Button>
             <Button
               size="sm"
               className="w-full justify-start"
               onClick={() => setDialogOpen(true)}
+              disabled={isOverview}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Generate tiles
+              Add tiles
             </Button>
           </div>
         }
       />
 
       <div className="max-w-6xl mx-auto px-4 py-6">
-        <Tabs defaultValue="tiles" className="space-y-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => {
+            const next = val as 'tiles' | 'settings' | 'overview';
+            if (next === 'overview' && !isOverview) return;
+            setActiveTab(next);
+          }}
+          className="space-y-6"
+        >
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <TabsList className="bg-muted/50 p-1">
-              <TabsTrigger value="tiles" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Grid3X3 className="h-4 w-4" />
-                QR Tiles
-                {tiles.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                    {tiles.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="settings" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Settings className="h-4 w-4" />
-                Settings
-              </TabsTrigger>
+              {isOverview ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-background shadow-sm text-sm font-medium">
+                  <Building2 className="h-4 w-4" />
+                  Overview
+                </div>
+              ) : (
+                <>
+                  <TabsTrigger value="tiles" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    <Grid3X3 className="h-4 w-4" />
+                    QR Tiles
+                    {tiles.length > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                        {tiles.length}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </TabsTrigger>
+                </>
+              )}
             </TabsList>
 
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => selectedStoreId && refreshTiles(selectedStoreId)}
-                disabled={refreshing}
+                onClick={handleRefresh}
+                disabled={refreshing || overviewLoading}
               >
-                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                {refreshing || overviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               </Button>
-              <Button size="sm" onClick={() => setDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Generate
-              </Button>
+              {!isOverview && (
+                <Button size="sm" onClick={() => setDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </Button>
+              )}
             </div>
           </div>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-4 mt-0">
+            {overviewLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <DashboardCardSkeleton key={idx} className="w-full" />
+                ))}
+              </div>
+            ) : overview.length === 0 ? (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <Building2 className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+                  <p className="text-muted-foreground">No store data available</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1">Refresh to load the latest overview.</p>
+                  <Button className="mt-4" variant="outline" onClick={handleRefresh}>
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                    Refresh overview
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {overview.map((store) => {
+                  const isCollapsed = collapsedOverview[store.id] ?? false;
+                  const chartValues = buildSparkline(store);
+                  const chartPath = sparklinePath(chartValues);
+                  const areaPath = chartPath ? `${chartPath} L 320 80 L 0 80 Z` : '';
+                  return (
+                    <Collapsible
+                      key={store.id}
+                      open={!isCollapsed}
+                      onOpenChange={(open) =>
+                        setCollapsedOverview((prev) => ({ ...prev, [store.id]: !open }))
+                      }
+                    >
+                      <Card className="border-border/70 w-full">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Building2 className="h-4 w-4 text-primary" />
+                                {store.name}
+                              </CardTitle>
+                              <CardDescription className="mt-1">
+                                {store.slug ?? '-'}
+                              </CardDescription>
+                            </div>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 px-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {isCollapsed ? 'Show metrics' : 'Hide metrics'}
+                                </span>
+                                <ChevronDown
+                                  className={`ml-1 h-4 w-4 transition-transform ${
+                                    isCollapsed ? '' : 'rotate-180'
+                                  }`}
+                                />
+                              </Button>
+                            </CollapsibleTrigger>
+                          </div>
+                        </CardHeader>
+                        <CollapsibleContent>
+                          <CardContent className="pt-0">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                                <p className="text-xs text-muted-foreground">Users</p>
+                                <p className="text-2xl font-semibold">{store.usersCount}</p>
+                              </div>
+                              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                                <p className="text-xs text-muted-foreground">Tiles</p>
+                                <p className="text-2xl font-semibold">{store.tilesCount}</p>
+                              </div>
+                              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                                <p className="text-xs text-muted-foreground">Orders</p>
+                                <p className="text-2xl font-semibold">{store.ordersCount}</p>
+                              </div>
+                            </div>
+                            <div className="mt-4 rounded-lg border border-border/60 bg-gradient-to-br from-muted/30 via-background to-muted/40 p-3">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                                <span>Activity trend</span>
+                                <span>Last 12 points</span>
+                              </div>
+                              <svg
+                                viewBox="0 0 320 80"
+                                width="100%"
+                                height="80"
+                                preserveAspectRatio="none"
+                                className="block"
+                              >
+                                <defs>
+                                  <linearGradient id={`venue-line-${store.id}`} x1="0" x2="0" y1="0" y2="1">
+                                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.9" />
+                                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.2" />
+                                  </linearGradient>
+                                  <linearGradient id={`venue-fill-${store.id}`} x1="0" x2="0" y1="0" y2="1">
+                                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.25" />
+                                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+                                  </linearGradient>
+                                </defs>
+                                <path
+                                  d={areaPath}
+                                  fill={`url(#venue-fill-${store.id})`}
+                                />
+                                <path
+                                  d={chartPath}
+                                  fill="none"
+                                  stroke={`url(#venue-line-${store.id})`}
+                                  strokeWidth="2"
+                                />
+                              </svg>
+                            </div>
+                          </CardContent>
+                        </CollapsibleContent>
+                      </Card>
+                    </Collapsible>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
 
           {/* QR Tiles Tab */}
           <TabsContent value="tiles" className="space-y-4 mt-0">
@@ -454,7 +756,7 @@ export default function ArchitectQrTiles() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <QrCode className="h-4 w-4 text-primary" />
-                      <CardTitle className="text-base">Just generated</CardTitle>
+                      <CardTitle className="text-base">Just added</CardTitle>
                       <Badge variant="secondary" className="text-xs">{recentTiles.length} new</Badge>
                     </div>
                     <div className="flex gap-2">
@@ -502,10 +804,10 @@ export default function ArchitectQrTiles() {
                   <div className="py-16 text-center">
                     <QrCode className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
                     <p className="text-muted-foreground">No QR tiles found</p>
-                    <p className="text-sm text-muted-foreground/70 mt-1">Generate a batch to get started</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">Add tiles to get started</p>
                     <Button className="mt-4" onClick={() => setDialogOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Generate tiles
+                      Add tiles
                     </Button>
                   </div>
                 ) : (
@@ -758,35 +1060,58 @@ export default function ArchitectQrTiles() {
         </Tabs>
       </div>
 
-      {/* Generate Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Add Dialog */}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setManualCodes('');
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Generate QR tiles</DialogTitle>
-            <DialogDescription>Create a batch of QR codes for printing</DialogDescription>
+            <DialogTitle>Add QR tiles</DialogTitle>
+            <DialogDescription>Paste GT-XXXX-XXXX codes to register them</DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="tile-count" className="text-sm font-medium">
-              Number of tiles
+            <Label htmlFor="tile-codes" className="text-sm font-medium">
+              QR codes
             </Label>
-            <Input
-              id="tile-count"
-              type="number"
-              min={1}
-              max={500}
-              value={count}
-              onChange={(e) => setCount(e.target.value)}
-              className="mt-2"
+            <Textarea
+              id="tile-codes"
+              rows={6}
+              value={manualCodes}
+              onChange={(e) => setManualCodes(e.target.value)}
+              placeholder="GT-AB12-CD34\nGT-EF56-GH78"
+              className="mt-2 font-mono"
             />
-            <p className="text-xs text-muted-foreground mt-2">Maximum 500 per batch</p>
+            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{uniqueCodes.length} code{uniqueCodes.length === 1 ? '' : 's'} ready</span>
+              <span>Max {MAX_MANUAL_CODES} per batch</span>
+            </div>
+            {invalidCodes.length > 0 && (
+              <p className="text-xs text-destructive mt-2">
+                Invalid format detected. Use GT-XXXX-XXXX with A-Z (no I,L,O,U) and 0-9.
+              </p>
+            )}
+            {duplicateCodes.length > 0 && (
+              <p className="text-xs text-destructive mt-1">
+                Duplicate codes found. Remove duplicates before submitting.
+              </p>
+            )}
+            {tooManyCodes && (
+              <p className="text-xs text-destructive mt-1">
+                Too many codes. Maximum {MAX_MANUAL_CODES} per batch.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleBulkCreate}>
+            <Button onClick={handleBulkCreate} disabled={!canSubmitCodes}>
               <Plus className="mr-2 h-4 w-4" />
-              Generate
+              Add tiles
             </Button>
           </DialogFooter>
         </DialogContent>
