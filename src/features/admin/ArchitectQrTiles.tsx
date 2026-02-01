@@ -232,12 +232,12 @@ export default function ArchitectQrTiles() {
     const baseEnv = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
     let derived = baseEnv && baseEnv.length > 0 ? baseEnv : '';
     if (!derived && typeof window !== 'undefined') {
-      derived = `${window.location.origin.replace(/\/$/, '')}/publiccode`;
+      derived = `${window.location.origin.replace(/\/$/, '')}/q`;
     }
     if (!derived) {
       const originEnv = (import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined)?.trim();
       const origin = originEnv && originEnv.length > 0 ? originEnv.replace(/\/$/, '') : 'http://localhost:5173';
-      derived = `${origin}/publiccode`;
+      derived = `${origin}/q`;
     }
     setPublicResolverBase(derived.replace(/\/$/, ''));
   }, [loadStores]);
@@ -268,7 +268,7 @@ export default function ArchitectQrTiles() {
   }, [isOverview, stores, selectedStoreId]);
   const buildPublicUrl = useCallback(
     (code: string) => {
-      const base = (publicResolverBase || 'https://www.garsone.gr/publiccode').replace(/\/$/, '');
+      const base = (publicResolverBase || 'https://www.garsone.gr/q').replace(/\/$/, '');
       return `${base}/${code}`;
     },
     [publicResolverBase]

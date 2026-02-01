@@ -22,12 +22,12 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
       return envBase.replace(/\/$/, '');
     }
     if (typeof window !== 'undefined') {
-      return `${window.location.origin.replace(/\/$/, '')}/publiccode`;
+      return `${window.location.origin.replace(/\/$/, '')}/q`;
     }
     // SSR fallback: prefer a declared public origin, otherwise default to localhost frontend port
     const originEnv = (import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined)?.trim();
     const origin = originEnv && originEnv.length > 0 ? originEnv.replace(/\/$/, '') : 'http://localhost:5173';
-    return `${origin}/publiccode`;
+    return `${origin}/q`;
   }, []);
 
   const getBaseOrigin = (storeSlug?: string | null) => {
