@@ -19,7 +19,7 @@ import {
   useDashboardTheme,
 } from "@/hooks/useDashboardDark";
 import { API_BASE } from "@/lib/api";
-import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
+import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 import "./i18n/config";
 
@@ -40,11 +40,20 @@ const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const ProfileDashboard = lazy(() => import("./pages/ProfileDashboard"));
 const PublicCodeRedirect = () => {
   const location = useLocation();
-  const params = useParams<{ publicCode: string }>();
+  const params = useParams<{
+    publicCode?: string;
+    legacyPublicCodeTail?: string;
+  }>();
   useEffect(() => {
     let aborted = false;
     const run = async () => {
-      const code = (params.publicCode || "").trim();
+      const resolvedCode = (() => {
+        const primary = (params.publicCode || "").trim();
+        if (primary) return primary;
+        const legacyTail = (params.legacyPublicCodeTail || "").trim();
+        return legacyTail ? `GT-${legacyTail}` : "";
+      })();
+      const code = resolvedCode.toUpperCase();
       if (!code) {
         window.location.replace("/");
         return;
@@ -72,9 +81,10 @@ const PublicCodeRedirect = () => {
         // Fall back to server-side redirect (might include visit token)
       }
       if (!aborted) {
-        const dest = `${API_BASE.replace(/\/$/, "")}${location.pathname}${
-          location.search
-        }${location.hash}`;
+        const dest = `${API_BASE.replace(
+          /\/$/,
+          ""
+        )}/q/${encodeURIComponent(code)}${location.search}${location.hash}`;
         window.location.replace(dest);
       }
     };
@@ -82,7 +92,7 @@ const PublicCodeRedirect = () => {
     return () => {
       aborted = true;
     };
-  }, [location, params.publicCode]);
+  }, [location, params.publicCode, params.legacyPublicCodeTail]);
   return null;
 };
 
@@ -110,16 +120,9 @@ const BrandedLoadingScreen = () => {
   const isCustomerMenu =
     segments.length === 1 && firstSegment && !reservedTopLevels.has(firstSegment);
 
-  let label = isLanding ? "Garsone" : "Garsone";
+  const label = "Garsone";
   let roleLabel: string | null = null;
   if (!isLanding && typeof window !== "undefined") {
-    try {
-      const storedName = window.localStorage.getItem("STORE_NAME");
-      const storedSlug = getStoredStoreSlug();
-      label = storedName || storedSlug || "Garsone";
-    } catch {
-      label = "Garsone";
-    }
     if (!isCustomerMenu) {
       const storedRole = window.localStorage.getItem("USER_ROLE");
       if (storedRole) roleLabel = storedRole;
@@ -198,6 +201,10 @@ const AppShell = () => {
                 <Route path="/payment-complete" element={<PaymentComplete />} />
                 <Route path="/payment-success" element={<PaymentSuccess />} />
                 <Route path="/payment-failed" element={<PaymentFailed />} />
+                <Route
+                  path="/:legacyTableHint/GT-:legacyPublicCodeTail"
+                  element={<PublicCodeRedirect />}
+                />
                 <Route
                   path="/publiccode/:publicCode/*"
                   element={<PublicCodeRedirect />}
