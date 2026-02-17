@@ -40,20 +40,11 @@ const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const ProfileDashboard = lazy(() => import("./pages/ProfileDashboard"));
 const PublicCodeRedirect = () => {
   const location = useLocation();
-  const params = useParams<{
-    publicCode?: string;
-    legacyPublicCodeTail?: string;
-  }>();
+  const params = useParams<{ publicCode?: string }>();
   useEffect(() => {
     let aborted = false;
     const run = async () => {
-      const resolvedCode = (() => {
-        const primary = (params.publicCode || "").trim();
-        if (primary) return primary;
-        const legacyTail = (params.legacyPublicCodeTail || "").trim();
-        return legacyTail ? `GT-${legacyTail}` : "";
-      })();
-      const code = resolvedCode.toUpperCase();
+      const code = (params.publicCode || "").trim().toUpperCase();
       if (!code) {
         window.location.replace("/");
         return;
@@ -92,7 +83,7 @@ const PublicCodeRedirect = () => {
     return () => {
       aborted = true;
     };
-  }, [location, params.publicCode, params.legacyPublicCodeTail]);
+  }, [location, params.publicCode]);
   return null;
 };
 
@@ -108,7 +99,6 @@ const BrandedLoadingScreen = () => {
     "payment-complete",
     "payment-success",
     "payment-failed",
-    "publiccode",
     "waiter",
     "manager",
     "cook",
@@ -201,14 +191,7 @@ const AppShell = () => {
                 <Route path="/payment-complete" element={<PaymentComplete />} />
                 <Route path="/payment-success" element={<PaymentSuccess />} />
                 <Route path="/payment-failed" element={<PaymentFailed />} />
-                <Route
-                  path="/:legacyTableHint/GT-:legacyPublicCodeTail"
-                  element={<PublicCodeRedirect />}
-                />
-                <Route
-                  path="/publiccode/:publicCode/*"
-                  element={<PublicCodeRedirect />}
-                />
+                <Route path="/q/:publicCode/*" element={<PublicCodeRedirect />} />
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/cook" element={<CookDashboard />} />

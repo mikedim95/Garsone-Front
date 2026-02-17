@@ -36,7 +36,7 @@ const extractPublicCode = (value: string): string | null => {
     const url = new URL(trimmed);
     const parts = url.pathname.split("/").filter(Boolean);
     const idx = parts.findIndex(
-      (part) => part.toLowerCase() === "publiccode" || part.toLowerCase() === "q"
+      (part) => part.toLowerCase() === "q"
     );
     if (idx >= 0 && parts[idx + 1]) {
       return normalizeSegment(parts[idx + 1]);
@@ -45,7 +45,7 @@ const extractPublicCode = (value: string): string | null => {
   } catch {
     const parts = trimmed.split("/").filter(Boolean);
     const idx = parts.findIndex(
-      (part) => part.toLowerCase() === "publiccode" || part.toLowerCase() === "q"
+      (part) => part.toLowerCase() === "q"
     );
     if (idx >= 0 && parts[idx + 1]) {
       return normalizeSegment(parts[idx + 1]);

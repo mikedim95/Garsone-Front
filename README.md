@@ -55,7 +55,7 @@ Dev server defaults to `http://localhost:8080` (see `vite.config.ts`).
 - `/payment-complete` - Payment redirect landing
 - `/payment-success` - Payment success
 - `/payment-failed` - Payment failure
-- `/publiccode/:publicCode` - Public QR redirect
+- `/q/:publicCode` - Public QR redirect
 - `/waiter` - Waiter dashboard
 - `/cook` - Cook dashboard
 - `/manager` - Manager dashboard
@@ -74,8 +74,8 @@ VITE_OFFLINE=true
 # Public origin used to build table URLs and QR links (supports {storeSlug}).
 VITE_PUBLIC_BASE_ORIGIN=https://{storeSlug}.yourapp.com
 
-# Override QR code base URL (defaults to /publiccode on the current origin).
-VITE_PUBLIC_CODE_BASE=https://qr.yourapp.com/publiccode
+# Override QR code base URL (defaults to /q on the current origin).
+VITE_PUBLIC_CODE_BASE=https://qr.yourapp.com/q
 
 # Login helpers
 VITE_DEFAULT_EMAIL_DOMAIN=demo.local
