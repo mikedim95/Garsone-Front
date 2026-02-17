@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from 'framer-motion';
 import type { MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ChefHat, Coffee, Salad, UtensilsCrossed, Wine, Cake, Soup, Sandwich, Pizza, IceCream } from 'lucide-react';
@@ -78,21 +77,10 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.3 }}
-      className="px-4 py-6"
-    >
-      <motion.h2
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="text-2xl font-bold text-center mb-8 text-foreground"
-      >
+    <div className="px-4 py-6">
+      <h2 className="text-2xl font-bold text-center mb-8 text-foreground">
         {t('menu.choose_category', { defaultValue: 'What are you craving?' })}
-      </motion.h2>
+      </h2>
 
       <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
         {categories.map((cat, idx) => {
@@ -100,13 +88,9 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
           const gradient = categoryGradients[idx % categoryGradients.length];
 
           return (
-            <motion.button
+            <button
               key={cat.id}
-              initial={{ opacity: 0, y: 30, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: 0.1 + idx * 0.05, type: 'spring', stiffness: 300, damping: 25 }}
-              whileHover={{ scale: 1.05, y: -4 }}
-              whileTap={{ scale: 0.98 }}
+              type="button"
               onClick={() => onSelect(cat.id)}
               className={`
                 group relative aspect-square rounded-3xl 
@@ -128,10 +112,10 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
               </span>
               
               <div className="absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-all duration-500" />
-            </motion.button>
+            </button>
           );
         })}
       </div>
-    </motion.div>
+    </div>
   );
 };

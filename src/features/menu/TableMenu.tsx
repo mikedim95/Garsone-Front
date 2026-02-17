@@ -2,15 +2,13 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { motion, AnimatePresence } from "framer-motion";
-import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { Button } from "@/components/ui/button";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
 import { useCartStore } from "@/store/cartStore";
-import { api, ApiError, API_BASE, MenuBootstrapResponse } from "@/lib/api";
+import { api, ApiError, API_BASE } from "@/lib/api";
 import { realtimeService } from "@/lib/realtime";
 import { useMenuStore } from "@/store/menuStore";
 import type {
@@ -33,7 +31,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
 import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
-import { LocalityApprovalModal } from "@/components/menu/LocalityApprovalModal";
 import { useQuery } from "@tanstack/react-query";
 import { MenuSkeleton } from "./MenuSkeleton";
 import {
@@ -47,6 +44,16 @@ import {
 const ModifierDialog = lazy(() =>
   import("@/components/menu/ModifierDialog").then((mod) => ({
     default: mod.ModifierDialog,
+  }))
+);
+const SwipeableMenuView = lazy(() =>
+  import("@/components/menu/SwipeableMenuView").then((mod) => ({
+    default: mod.SwipeableMenuView,
+  }))
+);
+const LocalityApprovalModal = lazy(() =>
+  import("@/components/menu/LocalityApprovalModal").then((mod) => ({
+    default: mod.LocalityApprovalModal,
   }))
 );
 
@@ -1496,58 +1503,48 @@ export default function TableMenu() {
               </p>
             </div>
           )}
-          <AnimatePresence mode="wait">
-            {!categorySelected ? (
-              <CategorySelectView
-                key="category-select"
+          {!categorySelected ? (
+            <CategorySelectView
+              key="category-select"
+              categories={categories}
+              loading={loading}
+              onSelect={(catId) => {
+                setSelectedCategory(catId);
+                setCategorySelected(true);
+                setActiveOrdersOpen(false);
+              }}
+            />
+          ) : error ? (
+            <div className="text-center py-12">
+              <p className="text-destructive mb-4">{error}</p>
+              <Button onClick={() => window.location.reload()}>
+                {t("actions.retry", { defaultValue: "Retry" })}
+              </Button>
+            </div>
+          ) : (
+            <Suspense fallback={<MenuSkeleton />}>
+              <SwipeableMenuView
                 categories={categories}
-                loading={loading}
-                onSelect={(catId) => {
-                  setSelectedCategory(catId);
-                  setCategorySelected(true);
-                  setActiveOrdersOpen(false);
+                items={menuData?.items ?? []}
+                selectedCategory={selectedCategory || "all"}
+                onCategoryChange={(catId) => setSelectedCategory(catId)}
+                onBack={() => {
+                  setCategorySelected(false);
+                  setSelectedCategory(null);
                 }}
+                onAddItem={handleAddItem}
+                onCheckout={handleCheckout}
+                onImmediateCheckout={handleImmediateCheckout}
+                orderPlacedSignal={orderPlacedSignal}
+                checkoutBusy={checkoutBusy}
+                callButtonLabel={callButtonLabel}
+                callStatus={calling}
+                callPrompted={callPrompted}
+                onCallClick={handleFloatingCallClick}
+                showCartButton={guestOrderingEnabled}
               />
-            ) : (
-              <motion.div
-                key="menu-view"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-              >
-                {error ? (
-                  <div className="text-center py-12">
-                    <p className="text-destructive mb-4">{error}</p>
-                    <Button onClick={() => window.location.reload()}>
-                      {t("actions.retry", { defaultValue: "Retry" })}
-                    </Button>
-                  </div>
-                ) : (
-                  <SwipeableMenuView
-                    categories={categories}
-                    items={menuData?.items ?? []}
-                    selectedCategory={selectedCategory || "all"}
-                    onCategoryChange={(catId) => setSelectedCategory(catId)}
-                    onBack={() => {
-                      setCategorySelected(false);
-                      setSelectedCategory(null);
-                    }}
-                    onAddItem={handleAddItem}
-                    onCheckout={handleCheckout}
-                    onImmediateCheckout={handleImmediateCheckout}
-                    orderPlacedSignal={orderPlacedSignal}
-                    checkoutBusy={checkoutBusy}
-                    callButtonLabel={callButtonLabel}
-                    callStatus={calling}
-                    callPrompted={callPrompted}
-                    onCallClick={handleFloatingCallClick}
-                    showCartButton={guestOrderingEnabled}
-                  />
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+            </Suspense>
+          )}
         </div>
 
         {showActiveOrders && activeOrdersOpen && !categorySelected && (
@@ -1683,13 +1680,7 @@ export default function TableMenu() {
         )}
 
         {showActiveOrders && !activeOrdersOpen && placedOrders.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 30, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 30, scale: 0.9 }}
-            transition={{ type: "spring", stiffness: 220, damping: 20 }}
-            className="fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none"
-          >
+          <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none">
             <Button
               variant="secondary"
               className="pointer-events-auto rounded-full shadow-2xl bg-card/90 border border-border/70 px-4 py-3"
@@ -1700,18 +1691,22 @@ export default function TableMenu() {
                 {placedOrders.length}
               </span>
             </Button>
-          </motion.div>
+          </div>
         )}
 
-        <LocalityApprovalModal
-          open={localityGateOpen}
-          tableId={activeTableId || ""}
-          storeSlug={storeSlug || null}
-          sessionId={localitySessionId}
-          purpose="ORDER_SUBMIT"
-          onCancel={() => resolveLocalityGate(null)}
-          onApproved={(approval) => resolveLocalityGate(approval)}
-        />
+        {localityGateOpen ? (
+          <Suspense fallback={null}>
+            <LocalityApprovalModal
+              open={localityGateOpen}
+              tableId={activeTableId || ""}
+              storeSlug={storeSlug || null}
+              sessionId={localitySessionId}
+              purpose="ORDER_SUBMIT"
+              onCancel={() => resolveLocalityGate(null)}
+              onApproved={(approval) => resolveLocalityGate(approval)}
+            />
+          </Suspense>
+        ) : null}
 
         <Suspense fallback={null}>
           <ModifierDialog

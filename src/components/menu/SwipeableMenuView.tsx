@@ -1,15 +1,13 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import useEmblaCarousel from 'embla-carousel-react';
 import type { MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
-import { Separator } from '../ui/separator';
-import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogHeader, DialogFooter } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { useCartStore } from '@/store/cartStore';
 import { ModifierDialog } from './ModifierDialog';
@@ -46,17 +44,6 @@ interface Props {
   showCartButton?: boolean;
 }
 
-const matchesCategory = (
-  item: MenuItem,
-  categoryId: string,
-  categories: Array<Pick<MenuCategory, 'id' | 'title'>>
-): boolean => {
-  if (categoryId === 'all') return true;
-  if (item.categoryId === categoryId) return true;
-  const category = categories.find((cat) => cat.id === categoryId);
-  return category ? item.category === category.title : false;
-};
-
 export const SwipeableMenuView = ({
   categories,
   items,
@@ -66,9 +53,7 @@ export const SwipeableMenuView = ({
   onAddItem,
   onCheckout,
   onImmediateCheckout,
-  callButtonLabel,
   callStatus = 'idle',
-  callPrompted = false,
   onCallClick,
   checkoutBusy = false,
   openCartSignal = 0,
@@ -76,7 +61,6 @@ export const SwipeableMenuView = ({
   showPaymentButton = true,
   showCartButton = true,
   primaryCtaLabel,
-  secondaryCtaLabel,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -97,7 +81,10 @@ export const SwipeableMenuView = ({
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
   // Category tabs with "All" prepended
-  const allCategories = [{ id: 'all', title: t('menu.category_all', { defaultValue: 'All' }) }, ...categories];
+  const allCategories = useMemo(
+    () => [{ id: 'all', title: t('menu.category_all', { defaultValue: 'All' }) }, ...categories],
+    [categories, t]
+  );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
 
@@ -233,30 +220,47 @@ export const SwipeableMenuView = ({
     }, 2000);
   };
 
-  const itemCountLabel =
-    cartItems.length === 1
-      ? t('menu.item', { defaultValue: '1 item' })
-      : t('menu.items', { defaultValue: `${cartItems.length} items` });
-
-  // Get items for a specific category
-  const getItemsForCategory = (categoryId: string) => {
-    if (categoryId === 'all') return items;
-    return items.filter((item) => matchesCategory(item, categoryId, categories));
-  };
-
-  // Group items by category for "All" view
-  const getGroupedItems = (categoryId: string) => {
-    if (categoryId === 'all') {
-      return categories.map((cat) => ({
-        category: cat,
-        items: items.filter((item) => matchesCategory(item, cat.id, categories))
-      })).filter(group => group.items.length > 0);
+  const itemsByCategory = useMemo(() => {
+    const mapped = new Map<string, MenuItem[]>();
+    for (const category of categories) {
+      mapped.set(category.id, []);
     }
-    return [{ 
-      category: categories.find(c => c.id === categoryId) || { id: categoryId, title: '' }, 
-      items: getItemsForCategory(categoryId) 
-    }];
-  };
+
+    for (const item of items) {
+      if (item.categoryId && mapped.has(item.categoryId)) {
+        mapped.get(item.categoryId)?.push(item);
+        continue;
+      }
+
+      const categoryByTitle = categories.find((category) => category.title === item.category);
+      if (categoryByTitle) {
+        mapped.get(categoryByTitle.id)?.push(item);
+      }
+    }
+    return mapped;
+  }, [categories, items]);
+
+  const groupedByCategoryId = useMemo(() => {
+    const grouped = new Map<string, Array<{ category: Pick<MenuCategory, 'id' | 'title'>; items: MenuItem[] }>>();
+    grouped.set(
+      'all',
+      categories
+        .map((category) => ({
+          category,
+          items: itemsByCategory.get(category.id) ?? [],
+        }))
+        .filter((entry) => entry.items.length > 0)
+    );
+    for (const category of categories) {
+      grouped.set(category.id, [
+        {
+          category,
+          items: itemsByCategory.get(category.id) ?? [],
+        },
+      ]);
+    }
+    return grouped;
+  }, [categories, itemsByCategory]);
 
   return (
     <>
@@ -309,49 +313,46 @@ export const SwipeableMenuView = ({
       {/* Swipeable Content Carousel */}
       <div className="overflow-hidden pb-32" ref={contentEmblaRef}>
         <div className="flex">
-          {allCategories.map((cat) => {
-            const groupedItems = getGroupedItems(cat.id);
+          {allCategories.map((cat, catIdx) => {
+            const shouldRenderSlide = Math.abs(catIdx - safeSelectedIndex) <= 2;
+            const groupedItems = shouldRenderSlide
+              ? groupedByCategoryId.get(cat.id) ?? []
+              : [];
             
             return (
               <div
                 key={cat.id}
                 className="flex-[0_0_100%] min-w-0 px-1"
               >
-                {groupedItems.map((group) => (
-                  <div key={group.category.id}>
-                    {cat.id === 'all' && (
-                      <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="relative flex items-center gap-4 my-8"
-                      >
-                        {/* Elegant category divider */}
-                        <div className="flex-1 flex items-center gap-2">
-                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-border/30" />
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
+                {!shouldRenderSlide ? (
+                  <div className="min-h-[50vh]" aria-hidden="true" />
+                ) : (
+                  groupedItems.map((group) => (
+                    <div key={group.category.id}>
+                      {cat.id === 'all' && (
+                        <div className="relative flex items-center gap-4 my-8">
+                          {/* Elegant category divider */}
+                          <div className="flex-1 flex items-center gap-2">
+                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-border/30" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
+                          </div>
+                          <h2 className="text-lg font-semibold text-foreground tracking-wide uppercase px-2">
+                            {group.category.title}
+                          </h2>
+                          <div className="flex-1 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
+                            <div className="h-px flex-1 bg-gradient-to-l from-transparent via-border to-border/30" />
+                          </div>
                         </div>
-                        <h2 className="text-lg font-semibold text-foreground tracking-wide uppercase px-2">
-                          {group.category.title}
-                        </h2>
-                        <div className="flex-1 flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                          <div className="h-px flex-1 bg-gradient-to-l from-transparent via-border to-border/30" />
-                        </div>
-                      </motion.div>
-                    )}
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
-                      {group.items.map((item, itemIdx) => {
-                        const price = getPrice(item);
-                        const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+                      )}
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
+                        {group.items.map((item) => {
+                          const price = getPrice(item);
+                          const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
 
-                        return (
-                          <motion.div
-                            key={item.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: itemIdx * 0.05, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                          >
+                          return (
                             <Card
+                              key={item.id}
                               className="group relative overflow-hidden rounded-2xl border-0 bg-card/40 backdrop-blur-sm hover:bg-card/60 transition-all duration-500 cursor-pointer shadow-lg hover:shadow-2xl hover:-translate-y-1"
                               onClick={() => handleAddItemClick(item)}
                             >
@@ -360,6 +361,8 @@ export const SwipeableMenuView = ({
                                 <img
                                   src={item.image}
                                   alt={displayName}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                 />
                                 
@@ -395,12 +398,12 @@ export const SwipeableMenuView = ({
                                 </div>
                               </div>
                             </Card>
-                          </motion.div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             );
           })}
@@ -550,6 +553,8 @@ export const SwipeableMenuView = ({
                           <img
                             src={cartItem.item.image}
                             alt={displayName}
+                            loading="lazy"
+                            decoding="async"
                             className="w-12 h-12 rounded-md object-cover flex-shrink-0"
                           />
                           <div className="flex-1 min-w-0">
