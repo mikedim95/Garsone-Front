@@ -169,7 +169,13 @@ export function WaiterMenuTab({
   onOrderCreated,
 }: WaiterMenuTabProps) {
   const { t, i18n } = useTranslation();
-  const preferGreek = i18n.language?.toLowerCase().startsWith("el");
+  const activeLanguage = (
+    i18n.resolvedLanguage ||
+    i18n.language ||
+    "el"
+  ).toLowerCase();
+  const languageCode = activeLanguage.startsWith("el") ? "el" : "en";
+  const preferGreek = languageCode === "el";
   const { toast } = useToast();
 
   const addItem = useCartStore((s) => s.addItem);
@@ -214,6 +220,7 @@ export function WaiterMenuTab({
     api
       .getMenuBootstrap(selectedTable, {
         storeSlug: storeSlug || undefined,
+        lang: languageCode,
       })
       .then((res) => {
         if (cancelled) return;
@@ -248,7 +255,7 @@ export function WaiterMenuTab({
     return () => {
       cancelled = true;
     };
-  }, [selectedTable, storeSlug, preferGreek, printerTopic, t, menuReload]);
+  }, [selectedTable, storeSlug, preferGreek, printerTopic, t, menuReload, languageCode]);
 
   const currentTableLabel = useMemo(
     () => assignedTables.find((t) => t.id === selectedTable)?.label,

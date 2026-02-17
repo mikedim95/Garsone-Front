@@ -238,7 +238,13 @@ const getStoredName = () => {
 export default function TableMenu() {
   const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
-  const preferGreek = i18n.language?.toLowerCase().startsWith("el");
+  const activeLanguage = (
+    i18n.resolvedLanguage ||
+    i18n.language ||
+    "el"
+  ).toLowerCase();
+  const languageCode = activeLanguage.startsWith("el") ? "el" : "en";
+  const preferGreek = languageCode === "el";
   const showActiveOrders = false; // Temporarily hide the Active Orders UI
   const navigate = useNavigate();
   const location = useLocation();
@@ -335,13 +341,14 @@ export default function TableMenu() {
     isFetching: bootstrapFetching,
     error: bootstrapError,
   } = useQuery({
-    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId],
+    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId, languageCode],
     queryFn: async () => {
       if (!activeTableId) {
         throw new Error("Missing table identifier");
       }
       return api.getMenuBootstrap(activeTableId, {
         storeSlug: storeSlug || undefined,
+        lang: languageCode,
       });
     },
     enabled: bootstrapQueryEnabled,
@@ -1361,19 +1368,6 @@ export default function TableMenu() {
       : callPrompted
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
-
-  if (!menuData && (bootstrapLoading || bootstrapFetching)) {
-    return (
-      <div
-        className={clsx(
-          themedWrapper,
-          "min-h-screen min-h-dvh overflow-hidden"
-        )}
-      >
-        <MenuSkeleton />
-      </div>
-    );
-  }
 
   return (
     <div

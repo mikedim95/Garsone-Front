@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const steps = [
-  { number: '01', text: 'Scan QR Code', desc: 'Customer scans table QR' },
-  { number: '02', text: 'Browse Menu', desc: 'View items with images' },
-  { number: '03', text: 'Add to Cart', desc: 'Customize and add items' },
-  { number: '04', text: 'Place Order', desc: 'Checkout with one tap' },
-  { number: '05', text: 'Get Notified', desc: 'Real-time updates' },
+  { number: '01', key: 'step_1', titleDefault: 'Scan QR Code', descDefault: 'Customer scans table QR' },
+  { number: '02', key: 'step_2', titleDefault: 'Browse Menu', descDefault: 'View items with images' },
+  { number: '03', key: 'step_3', titleDefault: 'Add to Cart', descDefault: 'Customize and add items' },
+  { number: '04', key: 'step_4', titleDefault: 'Place Order', descDefault: 'Checkout with one tap' },
+  { number: '05', key: 'step_5', titleDefault: 'Get Notified', descDefault: 'Real-time updates' },
 ];
 
 export const AnimatedMockup = () => {
+  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
@@ -24,10 +26,12 @@ export const AnimatedMockup = () => {
       <div className="max-w-6xl mx-auto px-4">
         <div className="text-center mb-20">
           <h2 className="text-6xl md:text-7xl font-black mb-6 text-foreground tracking-tight">
-            How It Works
+            {t('landing.process.title', { defaultValue: 'How It Works' })}
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto font-light">
-            A seamless ordering experience in five simple steps
+            {t('landing.process.subtitle', {
+              defaultValue: 'A seamless ordering experience in five simple steps',
+            })}
           </p>
         </div>
 
@@ -52,8 +56,8 @@ export const AnimatedMockup = () => {
                         : 'bg-muted text-muted-foreground'
                     }`}
                   >
-                    {step.number}
-                  </div>
+                  {step.number}
+                </div>
                   {idx < steps.length - 1 && (
                     <ArrowRight className={`hidden md:block absolute -right-10 top-1/2 -translate-y-1/2 w-8 h-8 transition-colors ${
                       idx < currentStep ? 'text-foreground' : 'text-muted-foreground'
@@ -65,9 +69,15 @@ export const AnimatedMockup = () => {
                     idx === currentStep ? 'text-primary' : 'text-foreground'
                   }`}
                 >
-                  {step.text}
+                  {t(`landing.process.${step.key}.title`, {
+                    defaultValue: step.titleDefault,
+                  })}
                 </h3>
-                <p className="text-sm text-muted-foreground text-center">{step.desc}</p>
+                <p className="text-sm text-muted-foreground text-center">
+                  {t(`landing.process.${step.key}.desc`, {
+                    defaultValue: step.descDefault,
+                  })}
+                </p>
               </div>
             ))}
           </div>

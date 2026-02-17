@@ -39,8 +39,47 @@
                  "call_waiter_error_title":  "Call failed",
                  "call_waiter_whitelist_error":  "Device not allowed by IP whitelist. See ALLOWED_IPS in backend.",
                  "call_waiter_generic_error":  "Unable to call waiter.",
-                 "call_status_pending":  "Calling…",
-                 "call_status_accepted":  "Coming…"
+                 "choose_category":  "What are you craving?",
+                 "categories":  "Categories",
+                 "modifiers":  "Modifiers",
+                 "itemModifiers":  "Item modifiers",
+                 "item":  "Item",
+                 "items":  "items",
+                 "cart_empty":  "Your cart is empty",
+                 "cart_summary":  "Cart summary and checkout",
+                 "tap_checkout":  "Tap to checkout",
+                 "your_order":  "Your Order",
+                 "edit":  "Edit",
+                 "remove_item":  "Remove item",
+                 "decrease_quantity":  "Decrease quantity",
+                 "increase_quantity":  "Increase quantity",
+                 "order_note":  "Add a note (optional)",
+                 "order_note_placeholder":  "Any special requests?",
+                 "pay_with_viva":  "Pay with Viva",
+                 "quick_order":  "Place order now",
+                 "yes_call":  "Yes, Call Waiter",
+                 "call_waiter_description":  "This will notify a waiter that you need assistance at your table. They will come to you shortly.",
+                 "call_waiter_prompt":  "Call waiter?",
+                 "load_error_title":  "Failed to load menu",
+                 "load_error_description":  "Please try again in a moment.",
+                 "store_title_fallback":  "Store",
+                 "waiter_only_title":  "Ordering with waiter only",
+                 "waiter_only_desc":  "Please ask your waiter to place the order.",
+                 "view_active_orders":  "Active Orders",
+                 "edit_order_banner":  "Updating your order before the kitchen accepts it.",
+                 "edit_order_cancel":  "Start new",
+                 "edit_order_unavailable_title":  "Unable to edit order",
+                 "edit_order_unavailable_desc":  "Place an order first.",
+                 "edit_order_locked_title":  "Kitchen already accepted",
+                 "edit_order_locked_desc":  "Edits are disabled once the kitchen starts preparing.",
+                 "edit_order_items_missing":  "Items are no longer available to edit.",
+                 "edit_order_partial_title":  "Some items were skipped",
+                 "edit_order_partial_desc":  "{{count}} item(s) are unavailable and were removed.",
+                 "toast_edit_unavailable_title":  "Order cannot be edited",
+                 "toast_edit_unavailable_desc":  "The kitchen has already started preparing your order.",
+                 "toast_edit_items_missing_desc":  "We could not load your previous items. Please create a new order.",
+                 "call_status_pending":  "Calling...",
+                 "call_status_accepted":  "Coming..."
              },
     "waiter":  {
                    "dashboard":  "Waiter Dashboard",
@@ -246,5 +285,114 @@
             },
     "cart":  {
                  "swipe_hint":  "Swipe left on items to Edit or Delete"
-             }
+             },
+    "theme": {
+      "label": "Theme",
+      "appearance": "Appearance",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "landing": {
+      "process": {
+        "title": "How It Works",
+        "subtitle": "A seamless ordering experience in five simple steps",
+        "step_1": {
+          "title": "Scan QR Code",
+          "desc": "Customer scans table QR"
+        },
+        "step_2": {
+          "title": "Browse Menu",
+          "desc": "View items with images"
+        },
+        "step_3": {
+          "title": "Add to Cart",
+          "desc": "Customize and add items"
+        },
+        "step_4": {
+          "title": "Place Order",
+          "desc": "Checkout with one tap"
+        },
+        "step_5": {
+          "title": "Get Notified",
+          "desc": "Real-time updates"
+        }
+      },
+      "features": {
+        "title": "Everything You Need",
+        "subtitle": "A complete ordering system with modern tech stack and professional features",
+        "cards": {
+          "qr": {
+            "title": "QR Code Ordering",
+            "desc": "Customers scan and order instantly. No app install needed."
+          },
+          "mqtt": {
+            "title": "Real-time MQTT",
+            "desc": "Instant order updates via WebSocket. Lightning fast notifications."
+          },
+          "alerts": {
+            "title": "Smart Alerts",
+            "desc": "Notify customers when orders are ready. Call waiter with one tap."
+          },
+          "language": {
+            "title": "Multi-language",
+            "desc": "Full Greek and English support. Switch languages seamlessly."
+          },
+          "security": {
+            "title": "IP Whitelisting",
+            "desc": "Secure orders from your venue only. No fake orders."
+          },
+          "analytics": {
+            "title": "Analytics Dashboard",
+            "desc": "Track orders, revenue, and performance in real-time."
+          },
+          "roles": {
+            "title": "Role-based Access",
+            "desc": "Separate dashboards for waiters and managers."
+          },
+          "orders": {
+            "title": "Order Management",
+            "desc": "Track status from placed to served. Export to CSV."
+          }
+        },
+        "cta": {
+          "title": "Ready to modernize?",
+          "subtitle": "Join the future of dining with Garsone. Setup in minutes, delight customers instantly.",
+          "setup_time": "Setup Time",
+          "monthly_fee": "Monthly Fee",
+          "orders": "Orders"
+        }
+      },
+      "testimonials": {
+        "title": "Trusted by Leading Restaurants",
+        "subtitle": "Join hundreds of restaurants already using Garsone to streamline their operations"
+      },
+      "demo": {
+        "title": "Experience It Live",
+        "subtitle": "Scan any of the live stores below to jump straight into their real menu. Each code maps to an active table from the seeded locations.",
+        "table_label": "Table {{label}}",
+        "live_table": "Live table",
+        "no_active_table": "No active table found",
+        "open_menu": "Open menu",
+        "preparing_link": "Preparing link",
+        "fallback_title": "Live Store",
+        "fallback_subtitle": "Random active table from the real Garsone backend",
+        "loading_stores": "Loading stores...",
+        "fetching_table": "Fetching a table...",
+        "open_live_table": "Open Live Table",
+        "preparing_link_dots": "Preparing link...",
+        "mockup_alt": "QR ordering mockup"
+      },
+      "footer": {
+        "about": "Modern QR ordering system with real-time notifications and multi-language support.",
+        "product": "Product",
+        "features": "Features",
+        "technology": "Technology",
+        "pwa_ready": "PWA Ready",
+        "contact": "Contact",
+        "copyright": "(c) 2025 Garsone. All rights reserved.",
+        "built_with": "Built with React + TypeScript + Tailwind CSS + MQTT"
+      }
+    }
 }
+

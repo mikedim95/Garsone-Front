@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import en from './locales/en.fixed.json';
-import el from './locales/el.fixed.json';
+import en from './locales/en.json';
+import el from './locales/el.json';
 
 const DEFAULT_LANGUAGE = 'el' as const;
 const SUPPORTED_LANGUAGES = ['en', 'el'] as const;

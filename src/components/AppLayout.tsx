@@ -3,6 +3,7 @@ import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
 import { realtimeService } from '@/lib/realtime';
 import { api } from '@/lib/api';
+import { useTranslation } from 'react-i18next';
 
 const AnimatedMockup = lazy(() =>
   import('./landing/AnimatedMockup').then((mod) => ({ default: mod.AnimatedMockup }))
@@ -34,6 +35,7 @@ declare global {
 }
 
 const AppLayout: React.FC = () => {
+  const { t } = useTranslation();
   const demoRef = useRef<HTMLDivElement | null>(null);
   const [forceDemoVisible, setForceDemoVisible] = useState(false);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
@@ -174,27 +176,50 @@ const AppLayout: React.FC = () => {
           <div className="grid md:grid-cols-4 gap-12 mb-12">
             <div>
               <h3 className="text-3xl font-black mb-4 bg-gradient-primary bg-clip-text text-transparent">Garsone</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">Modern QR ordering system with real-time notifications and multi-language support.</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {t('landing.footer.about', {
+                  defaultValue:
+                    'Modern QR ordering system with real-time notifications and multi-language support.',
+                })}
+              </p>
             </div>
             <div>
-              <h4 className="font-bold mb-4 text-background">Product</h4>
+              <h4 className="font-bold mb-4 text-background">
+                {t('landing.footer.product', { defaultValue: 'Product' })}
+              </h4>
               <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-background transition-colors">Features</a></li>
-                <li><a href="#demo-qr" className="hover:text-background transition-colors">Demo</a></li>
-                <li><a href="/login" className="hover:text-background transition-colors">Login</a></li>
+                <li>
+                  <a href="#" className="hover:text-background transition-colors">
+                    {t('landing.footer.features', { defaultValue: 'Features' })}
+                  </a>
+                </li>
+                <li>
+                  <a href="#demo-qr" className="hover:text-background transition-colors">
+                    {t('nav.demo', { defaultValue: 'Demo' })}
+                  </a>
+                </li>
+                <li>
+                  <a href="/login" className="hover:text-background transition-colors">
+                    {t('nav.login', { defaultValue: 'Login' })}
+                  </a>
+                </li>
               </ul>
             </div>
             <div>
-              <h4 className="font-bold mb-4 text-background">Technology</h4>
+              <h4 className="font-bold mb-4 text-background">
+                {t('landing.footer.technology', { defaultValue: 'Technology' })}
+              </h4>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li>React + TypeScript</li>
                 <li>MQTT WebSocket</li>
                 <li>PostgreSQL</li>
-                <li>PWA Ready</li>
+                <li>{t('landing.footer.pwa_ready', { defaultValue: 'PWA Ready' })}</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-bold mb-4 text-background">Contact</h4>
+              <h4 className="font-bold mb-4 text-background">
+                {t('landing.footer.contact', { defaultValue: 'Contact' })}
+              </h4>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li>info@garsone.app</li>
                 <li>+30 123 456 7890</li>
@@ -202,8 +227,16 @@ const AppLayout: React.FC = () => {
             </div>
           </div>
           <div className="border-t border-border pt-8 text-center">
-            <p className="text-muted-foreground mb-2">© 2025 Garsone. All rights reserved.</p>
-            <p className="text-sm text-muted-foreground">Built with React + TypeScript + Tailwind CSS + MQTT</p>
+            <p className="text-muted-foreground mb-2">
+              {t('landing.footer.copyright', {
+                defaultValue: '(c) 2025 Garsone. All rights reserved.',
+              })}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {t('landing.footer.built_with', {
+                defaultValue: 'Built with React + TypeScript + Tailwind CSS + MQTT',
+              })}
+            </p>
           </div>
         </div>
       </footer>
@@ -212,3 +245,4 @@ const AppLayout: React.FC = () => {
 };
 
 export default AppLayout;
+

@@ -307,7 +307,7 @@ export const api = {
     isOffline() ? devMocks.getMenu() : fetchApi<MenuData>("/menu"),
   getMenuBootstrap: (
     tableCode: string,
-    opts?: { storeSlug?: string }
+    opts?: { storeSlug?: string; lang?: string }
   ): Promise<MenuBootstrapResponse> => {
     if (!tableCode) {
       return Promise.reject(new Error("tableCode is required"));
@@ -334,6 +334,12 @@ export const api = {
     const params = new URLSearchParams();
     params.set("tableCode", tableCode);
     if (opts?.storeSlug) params.set("storeSlug", opts.storeSlug);
+    const normalizedLang = (opts?.lang || "").toLowerCase().startsWith("el")
+      ? "el"
+      : (opts?.lang || "").toLowerCase().startsWith("en")
+      ? "en"
+      : "";
+    if (normalizedLang) params.set("lang", normalizedLang);
     const qs = params.toString();
     return fetchApi<MenuBootstrapResponse>(`/public/menu-bootstrap?${qs}`);
   },

@@ -1,6 +1,7 @@
 import type { MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ChefHat, Coffee, Salad, UtensilsCrossed, Wine, Cake, Soup, Sandwich, Pizza, IceCream } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Props {
   categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
@@ -65,13 +66,35 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-4 px-4 py-8">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="aspect-square rounded-3xl bg-muted/30 animate-pulse"
-          />
-        ))}
+      <div className="px-4 py-6">
+        <h2 className="text-2xl font-bold text-center mb-8 text-foreground">
+          {t('menu.choose_category', { defaultValue: 'What are you craving?' })}
+        </h2>
+
+        <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
+          {Array.from({ length: 6 }).map((_, idx) => {
+            const gradient = categoryGradients[idx % categoryGradients.length];
+            return (
+              <div
+                key={`cat-skeleton-${idx}`}
+                className={`
+                  relative aspect-square rounded-3xl
+                  bg-gradient-to-br ${gradient}
+                  border border-border/40 backdrop-blur-sm
+                  shadow-lg overflow-hidden
+                  flex flex-col items-center justify-center gap-3 p-4
+                `}
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent" />
+
+                <Skeleton className="relative z-10 h-14 w-14 rounded-2xl bg-background/55" />
+                <Skeleton className="relative z-10 h-4 w-20 rounded-full bg-background/55" />
+
+                <div className="absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-primary/5" />
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
