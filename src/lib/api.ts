@@ -127,7 +127,7 @@ type QRTileUpdatePayload = {
   isActive?: boolean;
   label?: string;
 };
-type BulkTilePayload = { codes: string[] };
+type GenerateTilePayload = { count: number };
 type LocalityApprovalPayload = {
   publicCode: string;
   tableId: string;
@@ -819,12 +819,12 @@ export const api = {
       : fetchApi<{ store?: StoreInfo; tiles: QRTile[] }>(
           `/admin/stores/${storeId}/qr-tiles`
         ),
-  adminBulkCreateQrTiles: (
+  adminGenerateQrTiles: (
     storeId: string,
-    data: BulkTilePayload
+    data: GenerateTilePayload
   ): Promise<{ tiles: QRTile[] }> =>
     isOffline()
-      ? devMocks.adminBulkCreateQrTiles(storeId, data)
+      ? devMocks.adminGenerateQrTiles(storeId, data)
       : fetchApi<{ tiles: QRTile[] }>(
           `/admin/stores/${storeId}/qr-tiles/bulk`,
           {

@@ -63,6 +63,18 @@ type Db = {
 
 const LS_KEY = 'devMocks';
 const QR_CODE_REGEX = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
+const QR_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+const randomQrSegment = (length = 4) => {
+  let out = '';
+  for (let i = 0; i < length; i += 1) {
+    out += QR_ALPHABET[Math.floor(Math.random() * QR_ALPHABET.length)];
+  }
+  return out;
+};
+
+const generateMockPublicCode = () =>
+  `GT-${randomQrSegment(4)}-${randomQrSegment(4)}`;
 
 const normalizePrinterTopic = (value?: string | null, fallback?: string) => {
   const raw = (value ?? fallback ?? '').trim().toLowerCase();
@@ -606,7 +618,7 @@ function seedQrTilesIfEmpty(db: Db) {
     db.qrTiles.push({
       id: uid('qr'),
       storeId: db.store.id,
-      publicCode: `QR${String(i + 1).padStart(2, '0')}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      publicCode: generateMockPublicCode(),
       label: `Tile ${String(i + 1).padStart(2, '0')}`,
       tableId: table?.id ?? null,
       isActive: true,
@@ -732,42 +744,27 @@ export const devMocks = {
       tiles,
     });
   },
-  adminBulkCreateQrTiles(storeId: string, data: { codes: string[] }) {
+  adminGenerateQrTiles(storeId: string, data: { count: number }) {
     const db = snapshot();
-    const rawCodes = Array.isArray(data.codes) ? data.codes : [];
-    const normalized = rawCodes
-      .map((code) => String(code ?? '').trim().toUpperCase())
-      .filter(Boolean);
-    if (normalized.length === 0) {
-      return Promise.reject(new Error('No codes provided'));
+    const requestedCount = Number.isFinite(data?.count)
+      ? Math.trunc(Number(data.count))
+      : 0;
+    if (requestedCount < 1) {
+      return Promise.reject(new Error('Count must be at least 1'));
     }
-    if (normalized.length > 500) {
+    if (requestedCount > 500) {
       return Promise.reject(new Error('Too many codes (max 500)'));
-    }
-    const invalid = normalized.filter((code) => !QR_CODE_REGEX.test(code));
-    if (invalid.length > 0) {
-      return Promise.reject(new Error(`Invalid code format: ${invalid[0]}`));
-    }
-    const seen = new Set<string>();
-    const dupes: string[] = [];
-    for (const code of normalized) {
-      if (seen.has(code)) dupes.push(code);
-      seen.add(code);
-    }
-    if (dupes.length > 0) {
-      return Promise.reject(new Error(`Duplicate codes: ${Array.from(new Set(dupes)).join(', ')}`));
     }
     const existing = new Set(
       db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
     );
-    const conflicts = normalized.filter((code) => existing.has(code));
-    if (conflicts.length > 0) {
-      return Promise.reject(new Error(`Codes already exist: ${conflicts.join(', ')}`));
-    }
 
     const created: QRTileRecord[] = [];
     const now = Date.now();
-    for (const publicCode of normalized) {
+    while (created.length < requestedCount) {
+      const publicCode = generateMockPublicCode();
+      if (!QR_CODE_REGEX.test(publicCode) || existing.has(publicCode)) continue;
+      existing.add(publicCode);
       const tile: QRTileRecord = {
         id: uid('qr'),
         storeId: storeId || db.store.id,

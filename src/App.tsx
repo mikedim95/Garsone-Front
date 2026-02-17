@@ -189,6 +189,7 @@ const AppShell = () => {
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/table/:tableId" element={<TableMenu />} />
                 <Route path="/:tableId" element={<TableMenu />} />
                 <Route
                   path="/order/:orderId/thanks"

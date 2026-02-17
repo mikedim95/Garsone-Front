@@ -8,7 +8,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -26,8 +25,7 @@ import { PageTransition } from '@/components/ui/page-transition';
 type StoreOption = Pick<StoreInfo, 'id' | 'name' | 'slug' | 'orderingMode' | 'printers'>;
 
 const OVERVIEW_STORE_ID = '__overview__';
-const QR_CODE_REGEX = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
-const MAX_MANUAL_CODES = 500;
+const MAX_GENERATE_COUNT = 500;
 
 const formatDate = (value?: string) => {
   if (!value) return '—';
@@ -86,7 +84,7 @@ export default function ArchitectQrTiles() {
   const tilesLoading = loadingTiles && tiles.length === 0;
   const [refreshing, setRefreshing] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [manualCodes, setManualCodes] = useState<string>('');
+  const [generateCount, setGenerateCount] = useState<number>(10);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
   const [updatingMode, setUpdatingMode] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -101,37 +99,10 @@ export default function ArchitectQrTiles() {
   const isAllowed = isArchitect;
   const isOverview = selectedStoreId === OVERVIEW_STORE_ID;
 
-  const parsedCodes = useMemo(
-    () =>
-      manualCodes
-        .split(/[\s,]+/)
-        .map((code) => code.trim().toUpperCase())
-        .filter(Boolean),
-    [manualCodes]
-  );
-  const uniqueCodes = useMemo(
-    () => Array.from(new Set(parsedCodes)),
-    [parsedCodes]
-  );
-  const duplicateCodes = useMemo(() => {
-    const seen = new Set<string>();
-    const duplicates = new Set<string>();
-    for (const code of parsedCodes) {
-      if (seen.has(code)) duplicates.add(code);
-      seen.add(code);
-    }
-    return Array.from(duplicates);
-  }, [parsedCodes]);
-  const invalidCodes = useMemo(
-    () => parsedCodes.filter((code) => !QR_CODE_REGEX.test(code)),
-    [parsedCodes]
-  );
-  const tooManyCodes = uniqueCodes.length > MAX_MANUAL_CODES;
-  const canSubmitCodes =
-    uniqueCodes.length > 0 &&
-    invalidCodes.length === 0 &&
-    duplicateCodes.length === 0 &&
-    !tooManyCodes;
+  const canGenerate =
+    Number.isFinite(generateCount) &&
+    Math.trunc(generateCount) >= 1 &&
+    Math.trunc(generateCount) <= MAX_GENERATE_COUNT;
 
   useEffect(() => {
     if (!isAuthenticated() || !isAllowed) {
@@ -304,52 +275,29 @@ export default function ArchitectQrTiles() {
 
   const handleBulkCreate = async () => {
     if (!selectedStoreId) return;
-    if (uniqueCodes.length === 0) {
+    const count = Math.trunc(generateCount);
+    if (!Number.isFinite(count) || count < 1 || count > MAX_GENERATE_COUNT) {
       toast({
         variant: 'destructive',
-        title: 'No codes provided',
-        description: 'Paste one or more GT-XXXX-XXXX codes.',
-      });
-      return;
-    }
-    if (tooManyCodes) {
-      toast({
-        variant: 'destructive',
-        title: 'Too many codes',
-        description: `Maximum ${MAX_MANUAL_CODES} codes per batch.`,
-      });
-      return;
-    }
-    if (invalidCodes.length > 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Invalid code format',
-        description: 'Use GT-XXXX-XXXX with A-Z (no I,L,O,U) and 0-9.',
-      });
-      return;
-    }
-    if (duplicateCodes.length > 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Duplicate codes',
-        description: 'Remove duplicates before submitting.',
+        title: 'Invalid count',
+        description: `Choose a value between 1 and ${MAX_GENERATE_COUNT}.`,
       });
       return;
     }
     try {
-      const created = await api.adminBulkCreateQrTiles(selectedStoreId, {
-        codes: uniqueCodes,
+      const created = await api.adminGenerateQrTiles(selectedStoreId, {
+        count,
       });
       setDialogOpen(false);
-      setManualCodes('');
+      setGenerateCount(10);
       setRecentTiles(created.tiles ?? []);
       setTiles((prev) => [...(created.tiles ?? []), ...prev]);
-      toast({ title: 'QR tiles added', description: `${created.tiles?.length ?? 0} new tiles ready.` });
+      toast({ title: 'QR tiles generated', description: `${created.tiles?.length ?? 0} new tiles ready.` });
     } catch (error) {
-      console.error('Bulk creation failed', error);
+      console.error('QR generation failed', error);
       toast({
         variant: 'destructive',
-        title: 'Bulk creation failed',
+        title: 'Generation failed',
         description: error instanceof ApiError ? error.message : 'Please retry.',
       });
     }
@@ -495,7 +443,7 @@ export default function ArchitectQrTiles() {
             ? 'Overview of all venues'
             : storeName
               ? `Managing ${storeName}`
-              : 'Add & assign QR tiles'
+              : 'Generate & assign QR tiles'
         }
         icon="🏗️"
         tone="secondary"
@@ -550,7 +498,7 @@ export default function ArchitectQrTiles() {
               disabled={isOverview}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Add tiles
+              Generate tiles
             </Button>
           </div>
         }
@@ -804,10 +752,10 @@ export default function ArchitectQrTiles() {
                   <div className="py-16 text-center">
                     <QrCode className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
                     <p className="text-muted-foreground">No QR tiles found</p>
-                    <p className="text-sm text-muted-foreground/70 mt-1">Add tiles to get started</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">Generate tiles to get started</p>
                     <Button className="mt-4" onClick={() => setDialogOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Add tiles
+                      Generate tiles
                     </Button>
                   </div>
                 ) : (
@@ -1065,43 +1013,37 @@ export default function ArchitectQrTiles() {
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) setManualCodes('');
+          if (!open) setGenerateCount(10);
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add QR tiles</DialogTitle>
-            <DialogDescription>Paste GT-XXXX-XXXX codes to register them</DialogDescription>
+            <DialogTitle>Generate QR tiles</DialogTitle>
+            <DialogDescription>Create new public codes for this venue</DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="tile-codes" className="text-sm font-medium">
-              QR codes
+            <Label htmlFor="tile-count" className="text-sm font-medium">
+              How many codes
             </Label>
-            <Textarea
-              id="tile-codes"
-              rows={6}
-              value={manualCodes}
-              onChange={(e) => setManualCodes(e.target.value)}
-              placeholder="GT-AB12-CD34\nGT-EF56-GH78"
-              className="mt-2 font-mono"
+            <Input
+              id="tile-count"
+              type="number"
+              min={1}
+              max={MAX_GENERATE_COUNT}
+              value={Number.isFinite(generateCount) ? generateCount : ''}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setGenerateCount(Number.isFinite(next) ? next : 0);
+              }}
+              className="mt-2"
             />
             <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{uniqueCodes.length} code{uniqueCodes.length === 1 ? '' : 's'} ready</span>
-              <span>Max {MAX_MANUAL_CODES} per batch</span>
+              <span>{Math.max(0, Math.trunc(generateCount || 0))} code(s) to generate</span>
+              <span>Max {MAX_GENERATE_COUNT} per batch</span>
             </div>
-            {invalidCodes.length > 0 && (
+            {!canGenerate && (
               <p className="text-xs text-destructive mt-2">
-                Invalid format detected. Use GT-XXXX-XXXX with A-Z (no I,L,O,U) and 0-9.
-              </p>
-            )}
-            {duplicateCodes.length > 0 && (
-              <p className="text-xs text-destructive mt-1">
-                Duplicate codes found. Remove duplicates before submitting.
-              </p>
-            )}
-            {tooManyCodes && (
-              <p className="text-xs text-destructive mt-1">
-                Too many codes. Maximum {MAX_MANUAL_CODES} per batch.
+                Enter a number between 1 and {MAX_GENERATE_COUNT}.
               </p>
             )}
           </div>
@@ -1109,9 +1051,9 @@ export default function ArchitectQrTiles() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleBulkCreate} disabled={!canSubmitCodes}>
+            <Button onClick={handleBulkCreate} disabled={!canGenerate}>
               <Plus className="mr-2 h-4 w-4" />
-              Add tiles
+              Generate
             </Button>
           </DialogFooter>
         </DialogContent>
