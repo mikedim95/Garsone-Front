@@ -10,9 +10,12 @@ type Props = {
 
 export const LanguageSwitcher = ({ className = '' }: Props) => {
   const { i18n } = useTranslation();
+  const currentLanguage = (i18n.resolvedLanguage || i18n.language || 'el')
+    .toLowerCase();
+  const isEnglish = currentLanguage.startsWith('en');
 
   const toggleLanguage = () => {
-    const newLang = i18n.language === 'en' ? 'el' : 'en';
+    const newLang = isEnglish ? 'el' : 'en';
     i18n.changeLanguage(newLang);
     try {
       localStorage.setItem('language', newLang);
@@ -20,8 +23,6 @@ export const LanguageSwitcher = ({ className = '' }: Props) => {
       console.error('Failed to save language preference', e);
     }
   };
-
-  const isEnglish = (i18n.language || 'en').startsWith('en');
 
   const nextLabel = isEnglish ? 'Switch to Greek' : 'Switch to English';
   const FlagIcon = isEnglish ? UkFlag : GreekFlag;

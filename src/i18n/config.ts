@@ -1,14 +1,28 @@
-﻿import i18n from 'i18next';
+import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './locales/en.fixed.json';
 import el from './locales/el.fixed.json';
 
-// Safely get language from localStorage
-const getStoredLanguage = () => {
+const DEFAULT_LANGUAGE = 'el' as const;
+const SUPPORTED_LANGUAGES = ['en', 'el'] as const;
+
+type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
+const normalizeLanguage = (
+  value: string | null | undefined
+): SupportedLanguage => {
+  const lang = (value || '').trim().toLowerCase();
+  if (lang.startsWith('en')) return 'en';
+  if (lang.startsWith('el')) return 'el';
+  return DEFAULT_LANGUAGE;
+};
+
+// Safely get language from localStorage. Default to Greek on first start.
+const getStoredLanguage = (): SupportedLanguage => {
   try {
-    return localStorage.getItem('language') || 'en';
+    return normalizeLanguage(localStorage.getItem('language'));
   } catch {
-    return 'en';
+    return DEFAULT_LANGUAGE;
   }
 };
 
@@ -18,7 +32,10 @@ i18n.use(initReactI18next).init({
     el: { translation: el },
   },
   lng: getStoredLanguage(),
-  fallbackLng: 'en',
+  fallbackLng: DEFAULT_LANGUAGE,
+  supportedLngs: [...SUPPORTED_LANGUAGES],
+  nonExplicitSupportedLngs: true,
+  load: 'languageOnly',
   interpolation: {
     escapeValue: false,
   },
@@ -28,4 +45,3 @@ i18n.use(initReactI18next).init({
 });
 
 export default i18n;
-
