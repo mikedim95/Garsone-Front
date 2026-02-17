@@ -306,7 +306,6 @@ export default function TableMenu() {
   const canEditLastOrder = lastOrderStatus === "PLACED" && !!lastOrder?.id;
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
 
-  const menuCache = useMenuStore((s) => s.data);
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const clearMenuCache = useMenuStore((s) => s.clear);
   const navMarkRef = useRef(false);
@@ -329,7 +328,7 @@ export default function TableMenu() {
     isFetching: bootstrapFetching,
     error: bootstrapError,
   } = useQuery({
-    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId, preferGreek],
+    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId],
     queryFn: async () => {
       if (!activeTableId) {
         throw new Error("Missing table identifier");
@@ -339,11 +338,11 @@ export default function TableMenu() {
       });
     },
     enabled: bootstrapQueryEnabled,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnMount: "always",
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
     refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchInterval: false,
   });
 
@@ -351,11 +350,11 @@ export default function TableMenu() {
     queryKey: ["store-meta", storeSlug || null],
     queryFn: async () => api.getStore(),
     enabled: Boolean(storeSlug || activeTableId),
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnMount: "always",
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
     refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -493,22 +492,6 @@ export default function TableMenu() {
       setStoreName(storeMeta.store.name);
     }
   }, [storeMeta, storeName]);
-
-  useEffect(() => {
-    if (!menuCache || menuData) return;
-    setMenuData(
-      buildMenuState(
-        {
-          categories: menuCache.categories,
-          items: menuCache.items,
-          modifiers: (menuCache as any).modifiers || [],
-          modifierOptions: [],
-          itemModifiers: (menuCache as any).itemModifiers || [],
-        },
-        preferGreek
-      )
-    );
-  }, [menuCache, menuData, preferGreek]);
 
   // If no usable storeSlug yet (or only the fallback), try to resolve it via public table lookup
   useEffect(() => {
