@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import useEmblaCarousel from 'embla-carousel-react';
-import type { MenuItem, MenuCategory } from '@/types';
+import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -87,28 +87,39 @@ export const SwipeableMenuView = ({
   );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+  const initialEmblaIndexRef = useRef(safeSelectedIndex);
+  const carouselOptions = useMemo(
+    () => ({
+      startIndex: initialEmblaIndexRef.current,
+      loop: false,
+      // Allow a more natural settle instead of forcing a hard snap.
+      skipSnaps: true,
+      // Slow down snap animation slightly for smoother feel on release.
+      duration: 34,
+    }),
+    []
+  );
 
   // Content carousel for swipeable menu pages
-  const [contentEmblaRef, contentEmblaApi] = useEmblaCarousel({ 
-    startIndex: safeSelectedIndex,
-    loop: false,
-    skipSnaps: false,
-  });
+  const [contentEmblaRef, contentEmblaApi] = useEmblaCarousel(carouselOptions);
 
   // Sync category selection with carousel
   useEffect(() => {
     if (!contentEmblaApi) return;
     
-    const onSelect = () => {
+    const onSettle = () => {
       const index = contentEmblaApi.selectedScrollSnap();
       if (allCategories[index] && allCategories[index].id !== selectedCategory) {
         onCategoryChange(allCategories[index].id);
       }
     };
 
-    contentEmblaApi.on('select', onSelect);
+    contentEmblaApi.on('settle', onSettle);
+    contentEmblaApi.on('reInit', onSettle);
+    onSettle();
     return () => {
-      contentEmblaApi.off('select', onSelect);
+      contentEmblaApi.off('settle', onSettle);
+      contentEmblaApi.off('reInit', onSettle);
     };
   }, [contentEmblaApi, allCategories, selectedCategory, onCategoryChange]);
 
@@ -153,9 +164,29 @@ export const SwipeableMenuView = ({
       : 0;
   };
 
+  const getModifierOptionPriceDelta = (
+    option: NonNullable<CartItem['item']['modifiers']>[number]['options'][number]
+  ) => {
+    if (typeof option.priceDelta === 'number') return option.priceDelta;
+    if (typeof option.priceDeltaCents === 'number') return option.priceDeltaCents / 100;
+    return 0;
+  };
+
+  const getSelectedModifiersTotal = (cartItem: CartItem) => {
+    if (!cartItem.selectedModifiers) return 0;
+    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
+      const option = cartItem.item.modifiers
+        ?.find((modifier) => modifier.id === modifierId)
+        ?.options.find((opt) => opt.id === optionId);
+      return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+    }, 0);
+  };
+
+  const getCartItemUnitPrice = (cartItem: CartItem) =>
+    getPrice(cartItem.item) + getSelectedModifiersTotal(cartItem);
+
   const cartTotal = cartItems.reduce((sum, item) => {
-    const price = getPrice(item.item);
-    return sum + price * item.quantity;
+    return sum + getCartItemUnitPrice(item) * item.quantity;
   }, 0);
 
   const handleCheckout = async () => {
@@ -531,8 +562,7 @@ export const SwipeableMenuView = ({
               ) : (
                 <div className="p-3 space-y-2">
                   {cartItems.map((cartItem, idx) => {
-                    const price = getPrice(cartItem.item);
-                    const itemTotal = price * cartItem.quantity;
+                    const itemTotal = getCartItemUnitPrice(cartItem) * cartItem.quantity;
                     const displayName = cartItem.item.name ?? cartItem.item.title ?? t('menu.item', { defaultValue: 'Item' });
                     const hasModifiers = cartItem.selectedModifiers && Object.keys(cartItem.selectedModifiers).length > 0;
                     

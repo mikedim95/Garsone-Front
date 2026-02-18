@@ -2,6 +2,33 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { CartItem } from '../types';
 
+const getBaseItemPrice = (cartItem: CartItem) => {
+  if (typeof cartItem.item.price === 'number') return cartItem.item.price;
+  if (typeof cartItem.item.priceCents === 'number') return cartItem.item.priceCents / 100;
+  return 0;
+};
+
+const getModifierOptionPriceDelta = (
+  option: NonNullable<CartItem['item']['modifiers']>[number]['options'][number]
+) => {
+  if (typeof option.priceDelta === 'number') return option.priceDelta;
+  if (typeof option.priceDeltaCents === 'number') return option.priceDeltaCents / 100;
+  return 0;
+};
+
+const getSelectedModifiersTotal = (cartItem: CartItem) => {
+  if (!cartItem.selectedModifiers) return 0;
+  return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
+    const option = cartItem.item.modifiers
+      ?.find((modifier) => modifier.id === modifierId)
+      ?.options.find((opt) => opt.id === optionId);
+    return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+  }, 0);
+};
+
+const getCartItemUnitPrice = (cartItem: CartItem) =>
+  getBaseItemPrice(cartItem) + getSelectedModifiersTotal(cartItem);
+
 interface CartStore {
   items: CartItem[];
   addItem: (item: CartItem) => void;
@@ -60,16 +87,10 @@ export const useCartStore = create<CartStore>()(
       clearCart: () => set({ items: [] }),
       getTotal: () => {
         const { items } = get();
-        return items.reduce((sum, cartItem) => {
-          let price = cartItem.item.price;
-          Object.values(cartItem.selectedModifiers).forEach((optionId) => {
-            cartItem.item.modifiers?.forEach((mod) => {
-              const opt = mod.options.find((o) => o.id === optionId);
-              if (opt) price += opt.priceDelta;
-            });
-          });
-          return sum + price * cartItem.quantity;
-        }, 0);
+        return items.reduce(
+          (sum, cartItem) => sum + getCartItemUnitPrice(cartItem) * cartItem.quantity,
+          0
+        );
       },
     }),
     { name: 'cart-storage' }

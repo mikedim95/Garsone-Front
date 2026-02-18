@@ -1,4 +1,4 @@
-import type { MenuItem, MenuCategory } from '@/types';
+import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { Button } from '../ui/button';
 import { ShoppingCart, X, Pencil, Bell, Loader2, CreditCard, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -90,9 +90,29 @@ export const ElegantMenuView = ({
       : 0;
   };
 
+  const getModifierOptionPriceDelta = (
+    option: NonNullable<CartItem['item']['modifiers']>[number]['options'][number]
+  ) => {
+    if (typeof option.priceDelta === 'number') return option.priceDelta;
+    if (typeof option.priceDeltaCents === 'number') return option.priceDeltaCents / 100;
+    return 0;
+  };
+
+  const getSelectedModifiersTotal = (cartItem: CartItem) => {
+    if (!cartItem.selectedModifiers) return 0;
+    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
+      const option = cartItem.item.modifiers
+        ?.find((modifier) => modifier.id === modifierId)
+        ?.options.find((opt) => opt.id === optionId);
+      return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+    }, 0);
+  };
+
+  const getCartItemUnitPrice = (cartItem: CartItem) =>
+    getPrice(cartItem.item) + getSelectedModifiersTotal(cartItem);
+
   const cartTotal = cartItems.reduce((sum, item) => {
-    const price = getPrice(item.item);
-    return sum + price * item.quantity;
+    return sum + getCartItemUnitPrice(item) * item.quantity;
   }, 0);
 
   const filteredItems =
@@ -413,8 +433,8 @@ export const ElegantMenuView = ({
             ) : (
               <div className="p-3 space-y-2">
                 {cartItems.map((cartItem, idx) => {
-                  const price = getPrice(cartItem.item);
-                  const itemTotal = price * cartItem.quantity;
+                  const unitPrice = getCartItemUnitPrice(cartItem);
+                  const itemTotal = unitPrice * cartItem.quantity;
                   const displayName =
                     cartItem.item.name ??
                     cartItem.item.title ??
@@ -457,7 +477,7 @@ export const ElegantMenuView = ({
                           </div>
                           
                           <p className="text-xs text-primary font-bold mb-1">
-                            {formatPrice(price)}
+                            {formatPrice(unitPrice)}
                           </p>
 
                           {hasModifiers && (
@@ -466,14 +486,15 @@ export const ElegantMenuView = ({
                                 const selectedOptionId = cartItem.selectedModifiers[modifier.id];
                                 const selectedOption = modifier.options.find(opt => opt.id === selectedOptionId);
                                 if (!selectedOption) return null;
+                                const optionDelta = getModifierOptionPriceDelta(selectedOption);
                                 
                                 return (
                                   <div key={modifier.id} className="text-[10px] text-muted-foreground">
                                     <span className="font-medium">{modifier.name || modifier.title}:</span>{' '}
                                     <span>{selectedOption.label || selectedOption.title}</span>
-                                    {selectedOption.priceDelta > 0 && (
+                                    {optionDelta > 0 && (
                                       <span className="text-primary ml-1">
-                                        +{formatPrice(selectedOption.priceDelta)}
+                                        +{formatPrice(optionDelta)}
                                       </span>
                                     )}
                                   </div>
