@@ -76,6 +76,19 @@ const PublicCodeRedirect = () => {
           /\/$/,
           ""
         )}/q/${encodeURIComponent(code)}${location.search}${location.hash}`;
+        try {
+          const detail = {
+            code,
+            apiBase: API_BASE,
+            destination: dest,
+            sourcePath: `${location.pathname}${location.search}${location.hash}`,
+            ts: new Date().toISOString(),
+          };
+          console.warn("[qr] Client resolve fallback", detail);
+          window.dispatchEvent(
+            new CustomEvent("qr-client-resolve-fallback", { detail })
+          );
+        } catch {}
         window.location.replace(dest);
       }
     };

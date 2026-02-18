@@ -6,19 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/store/authStore";
 import { api, ApiError } from "@/lib/api";
+import {
+  isOfflineModeAllowed,
+  readOfflineStorageFlag,
+  writeOfflineStorageFlag,
+} from "@/lib/offlineMode";
 import { HomeLink } from "@/components/HomeLink";
 import { getStoredStoreSlug } from "@/lib/storeSlug";
 
 type RealtimeStatusDetail = { connected?: boolean };
-
-const readOfflineFlag = () => {
-  try {
-    return localStorage.getItem("OFFLINE") === "1";
-  } catch (error) {
-    console.warn("Failed to read OFFLINE flag", error);
-    return false;
-  }
-};
 
 const readStoreSlug = () => {
   return getStoredStoreSlug() || "";
@@ -37,6 +33,7 @@ export default function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const offlineModeAllowed = isOfflineModeAllowed();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
@@ -44,8 +41,13 @@ export default function Login() {
   // Show dummy login choices instantly when Offline is toggled
   const envDebug =
     String(import.meta.env.VITE_ENABLE_DEBUG_LOGIN ?? "").toLowerCase() === "true";
-  const [offline, setOffline] = useState<boolean>(() => readOfflineFlag());
+  const [offline, setOffline] = useState<boolean>(() => readOfflineStorageFlag());
   useEffect(() => {
+    if (!offlineModeAllowed) {
+      setOffline(false);
+      return;
+    }
+
     const onRealtimeStatus = (event: Event) => {
       const custom = event as CustomEvent<RealtimeStatusDetail>;
       const connected = Boolean(custom?.detail?.connected);
@@ -53,7 +55,7 @@ export default function Login() {
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key === "OFFLINE") {
-        setOffline(e.newValue === "1");
+        setOffline(readOfflineStorageFlag());
       }
     };
     window.addEventListener("realtime-status", onRealtimeStatus as EventListener);
@@ -62,8 +64,8 @@ export default function Login() {
       window.removeEventListener("realtime-status", onRealtimeStatus as EventListener);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
-  const debugEnabled = offline || envDebug;
+  }, [offlineModeAllowed]);
+  const debugEnabled = envDebug || (offlineModeAllowed && offline);
   const [emailDomain, setEmailDomain] = useState<string>(() => resolveEmailDomain());
   useEffect(() => {
     setEmailDomain(resolveEmailDomain());
@@ -238,27 +240,42 @@ export default function Login() {
         )}
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-t border-border pt-4">
-          <button
-            type="button"
-            onClick={() => {
-              const next = !offline;
-              try { localStorage.setItem('OFFLINE', next ? '1' : '0'); } catch (error) {
-                console.warn("Failed to toggle OFFLINE flag", error);
+          {offlineModeAllowed ? (
+            <button
+              type="button"
+              onClick={() => {
+                const next = !offline;
+                if (!writeOfflineStorageFlag(next)) return;
+                setOffline(next);
+                try {
+                  window.dispatchEvent(
+                    new CustomEvent("realtime-status", {
+                      detail: { connected: !next },
+                    })
+                  );
+                } catch (error) {
+                  console.warn("Failed to dispatch realtime status", error);
+                }
+              }}
+              title={
+                (offline ? "Offline" : "Connected") +
+                " - click to " +
+                (offline ? "go online" : "go offline")
               }
-              setOffline(next);
-              try { window.dispatchEvent(new CustomEvent('realtime-status', { detail: { connected: !next } })); } catch (error) {
-                console.warn("Failed to dispatch realtime status", error);
-              }
-            }}
-            title={(offline ? 'Offline' : 'Connected') + ' — click to ' + (offline ? 'go online' : 'go offline')}
-            className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-accent/40 px-3 py-1.5 text-xs font-medium text-foreground/80 hover:bg-accent/70 transition-colors shadow-sm"
-          >
-            <span className={`inline-block h-2.5 w-2.5 rounded-full ${offline ? 'bg-destructive' : 'bg-primary'}`} />
-            {offline ? 'Offline' : 'Connected'}
-          </button>
+              className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-accent/40 px-3 py-1.5 text-xs font-medium text-foreground/80 hover:bg-accent/70 transition-colors shadow-sm"
+            >
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full ${
+                  offline ? "bg-destructive" : "bg-primary"
+                }`}
+              />
+              {offline ? "Offline" : "Connected"}
+            </button>
+          ) : null}
           <HomeLink className="rounded-full border border-border/60 bg-accent/30 hover:bg-accent/60 px-3 py-1.5 text-xs font-semibold shadow-sm self-center sm:self-auto" />
         </div>
       </Card>
     </div>
   );
 }
+

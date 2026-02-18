@@ -69,7 +69,12 @@ Dev server defaults to `http://localhost:8080` (see `vite.config.ts`).
 VITE_API_URL=https://api.yourapp.com
 
 # Optional UI-only offline mode and demo data.
+# Ignored on production hosts unless VITE_ENABLE_OFFLINE_MODE=true.
 VITE_OFFLINE=true
+
+# Explicitly allow OFFLINE/demo mode on non-local hosts (debug only).
+# Keep unset/false in production.
+VITE_ENABLE_OFFLINE_MODE=true
 
 # Public origin used to build table URLs and QR links (supports {storeSlug}).
 VITE_PUBLIC_BASE_ORIGIN=https://{storeSlug}.yourapp.com

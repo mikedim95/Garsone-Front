@@ -36,6 +36,7 @@ import type {
   StoreOverview,
 } from "@/types";
 import { devMocks } from "./devMocks";
+import { isOfflineModeEnabled } from "./offlineMode";
 import { getStoredStoreSlug } from "./storeSlug";
 
 export type MenuBootstrapResponse = {
@@ -73,20 +74,7 @@ export const API_BASE = (() => {
 })();
 
 export function isOffline() {
-  try {
-    const ls =
-      typeof window !== "undefined"
-        ? window.localStorage?.getItem("OFFLINE")
-        : null;
-    if (ls === "1" || ls === "true") return true;
-  } catch (error) {
-    console.warn("Failed to read OFFLINE flag", error);
-  }
-  const v = import.meta.env.VITE_OFFLINE;
-  return (
-    String(v ?? "").toLowerCase() === "1" ||
-    String(v ?? "").toLowerCase() === "true"
-  );
+  return isOfflineModeEnabled();
 }
 
 export class ApiError extends Error {
