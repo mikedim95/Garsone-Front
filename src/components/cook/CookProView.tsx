@@ -56,11 +56,13 @@ export const CookProView = ({
   accepting,
   printing,
   actingIds,
+  selectedItemsByOrder,
   onAccept,
   onAcceptWithPrint,
   onCancel,
   onMarkReady,
   onViewModifiers,
+  onToggleItem,
   onUpdateItemStatus,
 }: CookProViewProps) => {
   const { t } = useTranslation();
@@ -279,6 +281,8 @@ export const CookProView = ({
                     onMarkAllReady={onMarkReady}
                     onViewModifiers={onViewModifiers}
                     onUpdateItemStatus={handleUpdateItemStatus}
+                    selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                    onToggleItem={onToggleItem}
                     isAccepting={accepting.has(order.id)}
                     isPrinting={printing.has(order.id)}
                     isActing={actingIds.has(`cancel:${order.id}`)}
@@ -328,6 +332,8 @@ export const CookProView = ({
                     onMarkAllReady={onMarkReady}
                     onViewModifiers={onViewModifiers}
                     onUpdateItemStatus={handleUpdateItemStatus}
+                    selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                    onToggleItem={onToggleItem}
                     isAccepting={accepting.has(order.id)}
                     isPrinting={printing.has(order.id)}
                     isActing={actingIds.has(`ready:${order.id}`)}

@@ -23,24 +23,25 @@ interface CookOrderItemProps {
 }
 
 const getItemStatusInfo = (
-  status: OrderItemStatus | undefined
+  status: OrderItemStatus | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string
 ): { label: string; color: string; icon: React.ReactNode } => {
   if (status === "SERVED") {
     return {
-      label: "Ready",
+      label: t("cook.ready", { defaultValue: "Ready" }),
       color: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
       icon: <CheckCircle2 className="h-3 w-3" />,
     };
   }
   if (status === "ACCEPTED") {
     return {
-      label: "Cooking",
+      label: t("cook.cooking", { defaultValue: "Cooking" }),
       color: "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30",
       icon: <ChefHat className="h-3 w-3" />,
     };
   }
   return {
-    label: "Pending",
+    label: t("cook.pending", { defaultValue: "Pending" }),
     color: "bg-muted text-muted-foreground border-border",
     icon: <Clock className="h-3 w-3" />,
   };
@@ -56,7 +57,7 @@ export const CookOrderItem = ({
 
   const orderItemId = item.orderItemId;
   const itemStatus = item.status;
-  const statusInfo = getItemStatusInfo(itemStatus);
+  const statusInfo = getItemStatusInfo(itemStatus, t);
 
   const isServed = itemStatus === "SERVED";
   const isAccepted = itemStatus === "ACCEPTED";
@@ -129,7 +130,7 @@ export const CookOrderItem = ({
               isServed ? "line-through text-muted-foreground" : "text-foreground"
             )}
           >
-            {item.item?.name || "Item"}
+            {item.item?.name || t("menu.item", { defaultValue: "Item" })}
           </span>
           <Badge
             variant="outline"
@@ -188,7 +189,7 @@ export const CookOrderItem = ({
               onClick={handleMarkReady}
             >
               <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-              {t("cook.item_ready", { defaultValue: "Ready" })}
+              {t("cook.ready", { defaultValue: "Ready" })}
             </Button>
           </motion.div>
         ) : isServed ? (

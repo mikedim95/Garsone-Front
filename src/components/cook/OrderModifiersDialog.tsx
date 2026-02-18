@@ -117,7 +117,7 @@ export function OrderModifiersDialog({
               <Badge variant="outline">{formatTableLabel(order.tableLabel)}</Badge>
             )}
             <Badge variant="secondary" className="ml-auto">
-              {resolvedItems.length} items
+              {resolvedItems.length} {t("cook.items", { defaultValue: "items" })}
             </Badge>
           </DialogTitle>
           <div className="text-xs text-muted-foreground flex items-center gap-3">

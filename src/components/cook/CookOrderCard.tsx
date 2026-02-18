@@ -6,6 +6,7 @@ import type { Order, CartItem, OrderItemStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CookOrderItem } from "./CookOrderItem";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import {
@@ -34,6 +35,8 @@ interface CookOrderCardProps {
     orderItemId: string,
     status: OrderItemStatus
   ) => Promise<void>;
+  selectedItems?: Record<string, boolean>;
+  onToggleItem?: (orderId: string, orderItemId: string, selected: boolean) => void;
   isAccepting: boolean;
   isPrinting: boolean;
   isActing: boolean;
@@ -67,6 +70,8 @@ export const CookOrderCard = ({
   onMarkAllReady,
   onViewModifiers,
   onUpdateItemStatus,
+  selectedItems = {},
+  onToggleItem,
   isAccepting,
   isPrinting,
   isActing,
@@ -101,6 +106,18 @@ export const CookOrderCard = ({
   const hasCookingItems = visibleItems.some(
     (item) => item.status === "ACCEPTED"
   );
+  const readyShortLabel = t("cook.ready_short", { defaultValue: "ready" });
+  const itemsLabel = t("cook.items", { defaultValue: "items" });
+  const progressLabel = t("cook.progress", { defaultValue: "Progress" });
+  const readyRatioLabel = t("cook.ready_ratio", {
+    defaultValue: "{{served}}/{{total}} ready",
+    served: servedItems,
+    total: totalItems,
+  });
+  const elapsedLabel = t("cook.minutes_short", {
+    defaultValue: "{{count}}m",
+    count: elapsed,
+  });
 
   if (visibleItems.length === 0) return null;
 
@@ -169,7 +186,7 @@ export const CookOrderCard = ({
                     urgency === "warning" && "text-amber-600"
                   )}
                 >
-                  ({elapsed}m)
+                  ({elapsedLabel})
                 </span>
               </div>
             </div>
@@ -180,7 +197,7 @@ export const CookOrderCard = ({
             <div className="hidden sm:flex flex-col items-end gap-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span>{servedItems}/{totalItems}</span>
-                <span className="text-muted-foreground/60">ready</span>
+                <span className="text-muted-foreground/60">{readyShortLabel}</span>
               </div>
               <Progress value={progressPercent} className="h-1.5 w-20" />
             </div>
@@ -193,7 +210,7 @@ export const CookOrderCard = ({
                   : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
               )}
             >
-              {visibleItems.length} items
+              {visibleItems.length} {itemsLabel}
             </Badge>
 
             <button
@@ -216,8 +233,8 @@ export const CookOrderCard = ({
         {/* Mobile progress */}
         <div className="sm:hidden mt-3">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span>Progress</span>
-            <span>{servedItems}/{totalItems} ready</span>
+            <span>{progressLabel}</span>
+            <span>{readyRatioLabel}</span>
           </div>
           <Progress value={progressPercent} className="h-1.5" />
         </div>
@@ -245,14 +262,51 @@ export const CookOrderCard = ({
           >
             <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
               <AnimatePresence mode="popLayout">
-                {visibleItems.map((item: CartItem) => (
-                  <CookOrderItem
-                    key={item.orderItemId || `${item.item?.id}-${item.quantity}`}
-                    item={item}
-                    orderId={order.id}
-                    onUpdateItemStatus={onUpdateItemStatus}
-                  />
-                ))}
+                {visibleItems.map((item: CartItem) => {
+                  const orderItemId = item.orderItemId;
+                  const isServed = item.status === "SERVED";
+                  const isAccepted = item.status === "ACCEPTED";
+                  const canSelect =
+                    Boolean(orderItemId) &&
+                    (orderStatus === "PLACED"
+                      ? !isAccepted && !isServed
+                      : !isServed);
+                  const isSelected = Boolean(
+                    orderItemId ? selectedItems[orderItemId] : false
+                  );
+                  const itemName =
+                    item.item?.name ??
+                    item.item?.title ??
+                    t("menu.item", { defaultValue: "Item" });
+
+                  return (
+                    <div
+                      key={orderItemId || `${item.item?.id}-${item.quantity}`}
+                      className="flex items-start gap-2"
+                    >
+                      <Checkbox
+                        className="mt-3"
+                        checked={isSelected}
+                        disabled={!canSelect}
+                        onCheckedChange={(checked) => {
+                          if (!orderItemId || !onToggleItem) return;
+                          onToggleItem(order.id, orderItemId, checked === true);
+                        }}
+                        aria-label={t("cook.select_item", {
+                          defaultValue: "Select {{item}}",
+                          item: itemName,
+                        })}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <CookOrderItem
+                          item={item}
+                          orderId={order.id}
+                          onUpdateItemStatus={onUpdateItemStatus}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           </motion.div>

@@ -607,14 +607,18 @@ export default function CookDashboard() {
             shouldAdvance = false;
             toast({
               title: t("toasts.update_failed"),
-              description: "Unable to update some item statuses",
+              description: t("cook.unable_update_some_item_statuses", {
+                defaultValue: "Unable to update some item statuses",
+              }),
             });
           }
         } catch (error) {
           shouldAdvance = false;
           toast({
             title: t("toasts.update_failed"),
-            description: "Unable to update item statuses",
+            description: t("cook.unable_update_item_statuses", {
+              defaultValue: "Unable to update item statuses",
+            }),
           });
         }
       }
@@ -622,8 +626,11 @@ export default function CookDashboard() {
       if (!shouldAdvance) return false;
       await setOrderPreparing(id, options);
       toast({
-        title: "Preparing",
-        description: `Order ${id} is now PREPARING`,
+        title: t("status.PREPARING", { defaultValue: "Preparing" }),
+        description: t("cook.order_now_preparing", {
+          defaultValue: "Order {{orderId}} is now PREPARING",
+          orderId: id,
+        }),
       });
       clearAllSelectionsForOrder(id);
       return true;
@@ -646,7 +653,9 @@ export default function CookDashboard() {
       console.error("Failed to publish print job", error);
       toast({
         title: t("toasts.update_failed"),
-        description: "Unable to send order to printer",
+        description: t("cook.unable_send_to_printer", {
+          defaultValue: "Unable to send order to printer",
+        }),
       });
     }
   };
@@ -672,7 +681,13 @@ export default function CookDashboard() {
       } else {
         updateLocalStatus(id, "CANCELLED");
       }
-      toast({ title: "Cancelled", description: `Order ${id} cancelled` });
+      toast({
+        title: t("status.CANCELLED", { defaultValue: "Cancelled" }),
+        description: t("cook.order_cancelled_description", {
+          defaultValue: "Order {{orderId}} cancelled",
+          orderId: id,
+        }),
+      });
     } finally {
       setActingIds((s) => {
         const n = new Set(s);
@@ -706,14 +721,18 @@ export default function CookDashboard() {
             shouldAdvance = false;
             toast({
               title: t("toasts.update_failed"),
-              description: "Unable to update some item statuses",
+              description: t("cook.unable_update_some_item_statuses", {
+                defaultValue: "Unable to update some item statuses",
+              }),
             });
           }
         } catch (error) {
           shouldAdvance = false;
           toast({
             title: t("toasts.update_failed"),
-            description: "Unable to update item statuses",
+            description: t("cook.unable_update_item_statuses", {
+              defaultValue: "Unable to update item statuses",
+            }),
           });
         }
       }
@@ -726,7 +745,13 @@ export default function CookDashboard() {
       } else {
         updateLocalStatus(id, "READY");
       }
-      toast({ title: "Ready", description: `Order ${id} is READY` });
+      toast({
+        title: t("status.READY", { defaultValue: "Ready" }),
+        description: t("cook.order_now_ready", {
+          defaultValue: "Order {{orderId}} is READY",
+          orderId: id,
+        }),
+      });
       clearAllSelectionsForOrder(id);
     } finally {
       setActingIds((s) => {
@@ -819,6 +844,14 @@ export default function CookDashboard() {
   const acceptWithPrintLabel = t('actions.accept_with_print', { defaultValue: 'Accept with print' });
   const cancelLabel = t('actions.cancel');
   const markReadyLabel = t('actions.mark_ready');
+  const switchToProLabel = t("cook.switch_to_pro", {
+    defaultValue: "Switch to Pro view",
+  });
+  const switchToClassicLabel = t("cook.switch_to_classic", {
+    defaultValue: "Switch to Classic view",
+  });
+  const proViewLabel = t("cook.pro_view", { defaultValue: "Pro" });
+  const classicViewLabel = t("cook.classic_view", { defaultValue: "Classic" });
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const storeTitle =
@@ -844,17 +877,17 @@ export default function CookDashboard() {
                 type="button"
                 onClick={toggleViewMode}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card/80 hover:bg-accent transition-colors text-sm font-medium"
-                aria-label={viewMode === "classic" ? "Switch to Pro view" : "Switch to Classic view"}
+                aria-label={viewMode === "classic" ? switchToProLabel : switchToClassicLabel}
               >
                 {viewMode === "classic" ? (
                   <>
                     <LayoutGrid className="h-4 w-4" />
-                    <span className="hidden sm:inline">Pro</span>
+                    <span className="hidden sm:inline">{proViewLabel}</span>
                   </>
                 ) : (
                   <>
                     <List className="h-4 w-4" />
-                    <span className="hidden sm:inline">Classic</span>
+                    <span className="hidden sm:inline">{classicViewLabel}</span>
                   </>
                 )}
               </button>
@@ -919,7 +952,10 @@ export default function CookDashboard() {
                             <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
                               <span>{formatTableLabel(o.tableLabel)}</span>
                               <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
-                                Priority #{idx + 1}
+                                {t("cook.priority_number", {
+                                  defaultValue: "Priority #{{priority}}",
+                                  priority: idx + 1,
+                                })}
                               </span>
                             </div>
                             <div className="text-xs text-muted-foreground">
@@ -931,7 +967,10 @@ export default function CookDashboard() {
                       <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
                         {visibleItems.map((line, idx: number) => {
                           const qty = line.quantity;
-                          const name = line.item?.name ?? line.item?.title ?? 'Item';
+                          const name =
+                            line.item?.name ??
+                            line.item?.title ??
+                            t("menu.item", { defaultValue: "Item" });
                           const orderItemId = line.orderItemId;
                           const isServed = line.status === 'SERVED';
                           const isSelected = isItemSelected(o.id, orderItemId);
@@ -1061,7 +1100,10 @@ export default function CookDashboard() {
                               {formatTableLabel(o.tableLabel)}
                               {typeof o.priority === 'number' && (
                                 <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
-                                  Priority #{o.priority}
+                                  {t("cook.priority_number", {
+                                    defaultValue: "Priority #{{priority}}",
+                                    priority: o.priority,
+                                  })}
                                 </span>
                               )}
                             </div>
@@ -1074,7 +1116,10 @@ export default function CookDashboard() {
                       <div className="space-y-2 text-xs sm:text-sm bg-card/50 rounded-lg p-2 sm:p-3 border border-border">
                         {visibleItems.map((line, idx: number) => {
                           const qty = line.quantity;
-                          const name = line.item?.name ?? line.item?.title ?? 'Item';
+                          const name =
+                            line.item?.name ??
+                            line.item?.title ??
+                            t("menu.item", { defaultValue: "Item" });
                           const orderItemId = line.orderItemId;
                           const isServed = line.status === 'SERVED';
                           const isSelected = isItemSelected(o.id, orderItemId);
