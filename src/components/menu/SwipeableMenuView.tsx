@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil } from 'lucide-react';
@@ -54,6 +61,8 @@ interface ItemGridProps {
 }
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
+const SWIPE_DISTANCE_PX = 56;
+const SWIPE_AXIS_LOCK_RATIO = 1.25;
 
 const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active = false }: ItemGridProps) => (
   <div className="grid grid-cols-2 gap-3 sm:gap-4 [content-visibility:auto] [contain-intrinsic-size:1px_600px]">
@@ -139,10 +148,13 @@ export const SwipeableMenuView = ({
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isRinging, setIsRinging] = useState(false);
   const [bellDialogOpen, setBellDialogOpen] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState(1);
   
   // Ref for category tabs container to scroll active tab into view
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const suppressClickAfterSwipeRef = useRef(false);
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
@@ -153,6 +165,85 @@ export const SwipeableMenuView = ({
   );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+  const handleCategorySelect = (categoryId: string) => {
+    if (categoryId === selectedCategory) return;
+
+    const nextIndex = allCategories.findIndex((category) => category.id === categoryId);
+    if (nextIndex >= 0 && nextIndex !== safeSelectedIndex) {
+      setSwipeDirection(nextIndex > safeSelectedIndex ? 1 : -1);
+    }
+    onCategoryChange(categoryId);
+  };
+
+  const handleSwipeCategory = (offset: -1 | 1) => {
+    const nextCategory = allCategories[safeSelectedIndex + offset];
+    if (!nextCategory) return;
+
+    setSwipeDirection(offset);
+    onCategoryChange(nextCategory.id);
+  };
+
+  const handleContentPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+    swipeStartRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    suppressClickAfterSwipeRef.current = false;
+  };
+
+  const handleContentPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * SWIPE_AXIS_LOCK_RATIO) {
+      suppressClickAfterSwipeRef.current = true;
+    }
+  };
+
+  const handleContentPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+
+    swipeStartRef.current = null;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    const horizontalSwipe =
+      Math.abs(dx) >= SWIPE_DISTANCE_PX &&
+      Math.abs(dx) > Math.abs(dy) * SWIPE_AXIS_LOCK_RATIO;
+
+    if (horizontalSwipe) {
+      suppressClickAfterSwipeRef.current = true;
+      handleSwipeCategory(dx < 0 ? 1 : -1);
+      window.setTimeout(() => {
+        suppressClickAfterSwipeRef.current = false;
+      }, 160);
+      return;
+    }
+
+    window.setTimeout(() => {
+      suppressClickAfterSwipeRef.current = false;
+    }, 0);
+  };
+
+  const handleContentPointerCancel = () => {
+    swipeStartRef.current = null;
+    window.setTimeout(() => {
+      suppressClickAfterSwipeRef.current = false;
+    }, 0);
+  };
+
+  const handleContentClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressClickAfterSwipeRef.current) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   // Scroll active tab into view when category changes
   useEffect(() => {
@@ -393,7 +484,7 @@ export const SwipeableMenuView = ({
                     if (el) tabRefs.current.set(cat.id, el);
                   }}
                   type="button"
-                  onClick={() => onCategoryChange(cat.id)}
+                  onClick={() => handleCategorySelect(cat.id)}
                   className={`relative shrink-0 h-9 px-4 text-[13px] tracking-wide whitespace-nowrap rounded-full transition-colors duration-200 ${
                     isActive
                       ? 'text-primary-foreground font-medium'
@@ -416,66 +507,53 @@ export const SwipeableMenuView = ({
       </motion.div>
 
       {/* Selected category content */}
-      <div className="menu-content-frame pb-32">
-        {visibleGroupedItems.map((group) => {
-          const subgroups = buildSubgroups(group.items);
-          const hasNamedSubgroups = subgroups.some((s) => s.title);
+      <div
+        className="menu-content-frame pb-32"
+        onPointerDown={handleContentPointerDown}
+        onPointerMove={handleContentPointerMove}
+        onPointerUp={handleContentPointerUp}
+        onPointerCancel={handleContentPointerCancel}
+        onClickCapture={handleContentClickCapture}
+      >
+        <AnimatePresence initial={false} mode="wait" custom={swipeDirection}>
+          <motion.div
+            key={activeCategoryId}
+            custom={swipeDirection}
+            initial={(direction: number) => ({ opacity: 0, x: direction > 0 ? 28 : -28 })}
+            animate={{ opacity: 1, x: 0 }}
+            exit={(direction: number) => ({ opacity: 0, x: direction > 0 ? -28 : 28 })}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {visibleGroupedItems.map((group) => {
+              const subgroups = buildSubgroups(group.items);
+              const hasNamedSubgroups = subgroups.some((s) => s.title);
 
-          return (
-            <section key={group.category.id} className="menu-section mb-10">
-              {activeCategoryId === 'all' && (
-                <header className="flex items-baseline justify-between mb-5 px-1">
-                  <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
-                    {group.category.title}
-                  </h2>
-                  <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                    {group.items.length}
-                  </span>
-                </header>
-              )}
+              return (
+                <section key={group.category.id} className="menu-section mb-10">
+                  {activeCategoryId === 'all' && (
+                    <header className="flex items-baseline justify-between mb-5 px-1">
+                      <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
+                        {group.category.title}
+                      </h2>
+                      <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                        {group.items.length}
+                      </span>
+                    </header>
+                  )}
 
-              {hasNamedSubgroups ? (
-                <Accordion
-                  type="multiple"
-                  defaultValue={subgroups
-                    .filter((s) => s.title)
-                    .map((s) => s.title)}
-                  className="space-y-2"
-                >
-                  {subgroups
-                    .filter((s) => !s.title)
-                    .map((s) => (
-                      <ItemGrid
-                        key="__no-sub__"
-                        items={s.items}
-                        onAdd={handleAddItemClick}
-                        formatPrice={formatPrice}
-                        getPrice={getPrice}
-                        fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                        active
-                      />
-                    ))}
-                  {subgroups
-                    .filter((s) => s.title)
-                    .map((s) => (
-                      <AccordionItem
-                        key={s.title}
-                        value={s.title}
-                        className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
-                      >
-                        <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                          <div className="flex items-center gap-3">
-                            <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                            <span className="text-sm font-medium text-foreground tracking-wide">
-                              {s.title}
-                            </span>
-                            <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                              {s.items.length}
-                            </span>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="px-3 pb-4 pt-0">
+                  {hasNamedSubgroups ? (
+                    <Accordion
+                      type="multiple"
+                      defaultValue={subgroups
+                        .filter((s) => s.title)
+                        .map((s) => s.title)}
+                      className="space-y-2"
+                    >
+                      {subgroups
+                        .filter((s) => !s.title)
+                        .map((s) => (
                           <ItemGrid
+                            key="__no-sub__"
                             items={s.items}
                             onAdd={handleAddItemClick}
                             formatPrice={formatPrice}
@@ -483,23 +561,54 @@ export const SwipeableMenuView = ({
                             fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                             active
                           />
-                        </AccordionContent>
-                      </AccordionItem>
-                    ))}
-                </Accordion>
-              ) : (
-                <ItemGrid
-                  items={group.items}
-                  onAdd={handleAddItemClick}
-                  formatPrice={formatPrice}
-                  getPrice={getPrice}
-                  fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                  active
-                />
-              )}
-            </section>
-          );
-        })}
+                        ))}
+                      {subgroups
+                        .filter((s) => s.title)
+                        .map((s) => (
+                          <AccordionItem
+                            key={s.title}
+                            value={s.title}
+                            className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
+                          >
+                            <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                              <div className="flex items-center gap-3">
+                                <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                                <span className="text-sm font-medium text-foreground tracking-wide">
+                                  {s.title}
+                                </span>
+                                <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                                  {s.items.length}
+                                </span>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="px-3 pb-4 pt-0">
+                              <ItemGrid
+                                items={s.items}
+                                onAdd={handleAddItemClick}
+                                formatPrice={formatPrice}
+                                getPrice={getPrice}
+                                fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                active
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+                        ))}
+                    </Accordion>
+                  ) : (
+                    <ItemGrid
+                      items={group.items}
+                      onAdd={handleAddItemClick}
+                      formatPrice={formatPrice}
+                      getPrice={getPrice}
+                      fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                      active
+                    />
+                  )}
+                </section>
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Delicate Floating Action Bar */}

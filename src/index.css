@@ -708,10 +708,20 @@ html body[data-scroll-locked]:not(:root) {
 
 /* Keep the selected menu pane clipped to the viewport and avoid painting offscreen sections. */
 .menu-content-frame {
+  position: relative;
   width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
   overflow-x: clip;
   isolation: isolate;
+  box-sizing: border-box;
+  overscroll-behavior-x: contain;
+  touch-action: pan-y pinch-zoom;
+}
+
+.menu-content-frame > * {
+  width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
