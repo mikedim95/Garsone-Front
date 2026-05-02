@@ -706,26 +706,13 @@ html body[data-scroll-locked]:not(:root) {
   display: none;
 }
 
-/* Keep menu swipes on the compositor and avoid painting offscreen menu sections. */
-.menu-swipe-viewport {
+/* Keep the selected menu pane clipped to the viewport and avoid painting offscreen sections. */
+.menu-content-frame {
   width: 100%;
   max-width: 100%;
-  clip-path: inset(0);
+  overflow-x: clip;
   isolation: isolate;
-  overscroll-behavior-x: contain;
-  touch-action: pan-y pinch-zoom;
-}
-
-.menu-swipe-container {
-  backface-visibility: hidden;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
-}
-
-.menu-swipe-slide {
   box-sizing: border-box;
-  flex-basis: 100%;
-  max-width: 100%;
 }
 
 .menu-item-card {

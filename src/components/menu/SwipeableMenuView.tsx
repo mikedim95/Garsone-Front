@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import useEmblaCarousel from 'embla-carousel-react';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil } from 'lucide-react';
@@ -140,7 +139,6 @@ export const SwipeableMenuView = ({
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isRinging, setIsRinging] = useState(false);
   const [bellDialogOpen, setBellDialogOpen] = useState(false);
-  const [contentDragging, setContentDragging] = useState(false);
   
   // Ref for category tabs container to scroll active tab into view
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -155,87 +153,6 @@ export const SwipeableMenuView = ({
   );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
-  const initialEmblaIndexRef = useRef(safeSelectedIndex);
-  const carouselOptions = useMemo(
-    () => ({
-      startIndex: initialEmblaIndexRef.current,
-      loop: false,
-      // Hard snap to the nearest slide — prevents the tab/carousel ping-pong.
-      skipSnaps: false,
-      duration: 20,
-      align: 'start' as const,
-    }),
-    []
-  );
-
-  // Content carousel for swipeable menu pages
-  const [contentEmblaRef, contentEmblaApi] = useEmblaCarousel(carouselOptions);
-
-  // Track whether the most recent carousel movement was driven by a tab click
-  // (vs. a real user swipe). When it's programmatic, we ignore the resulting
-  // `select` event so we don't fight against the parent's `selectedCategory`
-  // and cause the back-and-forth glitch.
-  const programmaticScrollRef = useRef(false);
-
-  // User swipe → notify parent of the new category.
-  useEffect(() => {
-    if (!contentEmblaApi) return;
-
-    const onSelect = () => {
-      if (programmaticScrollRef.current) return;
-      const index = contentEmblaApi.selectedScrollSnap();
-      const next = allCategories[index];
-      if (next && next.id !== selectedCategory) {
-        onCategoryChange(next.id);
-      }
-    };
-    const onSettle = () => {
-      // Re-enable user-driven sync once any programmatic animation has finished.
-      programmaticScrollRef.current = false;
-    };
-
-    contentEmblaApi.on('select', onSelect);
-    contentEmblaApi.on('settle', onSettle);
-    return () => {
-      contentEmblaApi.off('select', onSelect);
-      contentEmblaApi.off('settle', onSettle);
-    };
-  }, [contentEmblaApi, allCategories, selectedCategory, onCategoryChange]);
-
-  useEffect(() => {
-    if (!contentEmblaApi) return;
-
-    let pointerUpTimeout: number | undefined;
-    const onPointerDown = () => setContentDragging(true);
-    const onPointerUp = () => {
-      window.clearTimeout(pointerUpTimeout);
-      pointerUpTimeout = window.setTimeout(() => setContentDragging(false), 320);
-    };
-    const onSettle = () => {
-      window.clearTimeout(pointerUpTimeout);
-      setContentDragging(false);
-    };
-
-    contentEmblaApi.on('pointerDown', onPointerDown);
-    contentEmblaApi.on('pointerUp', onPointerUp);
-    contentEmblaApi.on('settle', onSettle);
-    return () => {
-      window.clearTimeout(pointerUpTimeout);
-      contentEmblaApi.off('pointerDown', onPointerDown);
-      contentEmblaApi.off('pointerUp', onPointerUp);
-      contentEmblaApi.off('settle', onSettle);
-    };
-  }, [contentEmblaApi]);
-
-  // Tab click / external category change → scroll carousel to match.
-  useEffect(() => {
-    if (!contentEmblaApi) return;
-    const targetIndex = allCategories.findIndex((c) => c.id === selectedCategory);
-    if (targetIndex < 0) return;
-    if (contentEmblaApi.selectedScrollSnap() === targetIndex) return;
-    programmaticScrollRef.current = true;
-    contentEmblaApi.scrollTo(targetIndex);
-  }, [selectedCategory, contentEmblaApi, allCategories]);
 
   // Scroll active tab into view when category changes
   useEffect(() => {
@@ -415,33 +332,19 @@ export const SwipeableMenuView = ({
     return grouped;
   }, [categories, itemsByCategory]);
 
-  const imageUrlsByCategoryId = useMemo(() => {
-    const mapped = new Map<string, string[]>();
-    const allUrls: string[] = [];
-
-    for (const category of categories) {
-      const urls = (itemsByCategory.get(category.id) ?? [])
-        .map((item) => item.image)
-        .filter((url): url is string => Boolean(url));
-      mapped.set(category.id, urls);
-      allUrls.push(...urls);
-    }
-
-    mapped.set('all', allUrls);
-    return mapped;
-  }, [categories, itemsByCategory]);
+  const activeCategoryId = allCategories[safeSelectedIndex]?.id ?? 'all';
+  const visibleGroupedItems = groupedByCategoryId.get(activeCategoryId) ?? [];
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const urls = new Set<string>();
-    for (const index of [safeSelectedIndex - 1, safeSelectedIndex + 1]) {
-      const category = allCategories[index];
-      if (!category) continue;
-      for (const url of (imageUrlsByCategoryId.get(category.id) ?? []).slice(0, 6)) {
-        urls.add(url);
-      }
-    }
+    const urls = new Set(
+      visibleGroupedItems
+        .flatMap((group) => group.items)
+        .map((item) => item.image)
+        .filter((url): url is string => Boolean(url))
+        .slice(0, 6)
+    );
 
     if (urls.size === 0) return;
 
@@ -455,7 +358,7 @@ export const SwipeableMenuView = ({
     }, 160);
 
     return () => window.clearTimeout(timeoutId);
-  }, [safeSelectedIndex, allCategories, imageUrlsByCategoryId]);
+  }, [visibleGroupedItems]);
 
   return (
     <>
@@ -464,9 +367,7 @@ export const SwipeableMenuView = ({
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className={`sticky top-0 z-30 px-4 pt-3 pb-3 mb-4 border-b border-border/40 transition-[background-color,backdrop-filter] duration-150 ${
-          contentDragging ? 'bg-background/95 backdrop-blur-0' : 'bg-background/80 backdrop-blur-md'
-        }`}
+        className="sticky top-0 z-30 px-4 pt-3 pb-3 mb-4 border-b border-border/40 bg-background/80 backdrop-blur-md"
       >
         <div className="flex items-center gap-3">
           <Button
@@ -514,113 +415,91 @@ export const SwipeableMenuView = ({
         </div>
       </motion.div>
 
-      {/* Swipeable Content Carousel */}
-      <div className="menu-swipe-viewport overflow-hidden pb-32" ref={contentEmblaRef}>
-        <div className="menu-swipe-container flex">
-          {allCategories.map((cat, catIdx) => {
-            const shouldRenderSlide = Math.abs(catIdx - safeSelectedIndex) <= 1;
-            const isActiveSlide = catIdx === safeSelectedIndex;
-            const groupedItems = shouldRenderSlide
-              ? groupedByCategoryId.get(cat.id) ?? []
-              : [];
-            
-            return (
-              <div
-                key={cat.id}
-                className="menu-swipe-slide flex-[0_0_100%] min-w-0 overflow-hidden"
-              >
-                {!shouldRenderSlide ? (
-                  <div className="min-h-[50vh]" aria-hidden="true" />
-                ) : (
-                  groupedItems.map((group) => {
-                    const subgroups = buildSubgroups(group.items);
-                    const hasNamedSubgroups = subgroups.some((s) => s.title);
+      {/* Selected category content */}
+      <div className="menu-content-frame pb-32">
+        {visibleGroupedItems.map((group) => {
+          const subgroups = buildSubgroups(group.items);
+          const hasNamedSubgroups = subgroups.some((s) => s.title);
 
-                    return (
-                      <section key={group.category.id} className="menu-section mb-10">
-                        {cat.id === 'all' && (
-                          <header className="flex items-baseline justify-between mb-5 px-1">
-                            <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
-                              {group.category.title}
-                            </h2>
-                            <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                              {group.items.length}
+          return (
+            <section key={group.category.id} className="menu-section mb-10">
+              {activeCategoryId === 'all' && (
+                <header className="flex items-baseline justify-between mb-5 px-1">
+                  <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
+                    {group.category.title}
+                  </h2>
+                  <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                    {group.items.length}
+                  </span>
+                </header>
+              )}
+
+              {hasNamedSubgroups ? (
+                <Accordion
+                  type="multiple"
+                  defaultValue={subgroups
+                    .filter((s) => s.title)
+                    .map((s) => s.title)}
+                  className="space-y-2"
+                >
+                  {subgroups
+                    .filter((s) => !s.title)
+                    .map((s) => (
+                      <ItemGrid
+                        key="__no-sub__"
+                        items={s.items}
+                        onAdd={handleAddItemClick}
+                        formatPrice={formatPrice}
+                        getPrice={getPrice}
+                        fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                        active
+                      />
+                    ))}
+                  {subgroups
+                    .filter((s) => s.title)
+                    .map((s) => (
+                      <AccordionItem
+                        key={s.title}
+                        value={s.title}
+                        className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
+                      >
+                        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                          <div className="flex items-center gap-3">
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                            <span className="text-sm font-medium text-foreground tracking-wide">
+                              {s.title}
                             </span>
-                          </header>
-                        )}
-
-                        {hasNamedSubgroups ? (
-                          <Accordion
-                            type="multiple"
-                            defaultValue={subgroups
-                              .filter((s) => s.title)
-                              .map((s) => s.title)}
-                            className="space-y-2"
-                          >
-                            {/* Items without a subcategory go first, ungrouped */}
-                            {subgroups
-                              .filter((s) => !s.title)
-                              .map((s) => (
-                                <ItemGrid
-                                  key="__no-sub__"
-                                  items={s.items}
-                                  onAdd={handleAddItemClick}
-                                  formatPrice={formatPrice}
-                                  getPrice={getPrice}
-                                  fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                                  active={isActiveSlide}
-                                />
-                              ))}
-                            {subgroups
-                              .filter((s) => s.title)
-                              .map((s) => (
-                                <AccordionItem
-                                  key={s.title}
-                                  value={s.title}
-                                  className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
-                                >
-                                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                                    <div className="flex items-center gap-3">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                                      <span className="text-sm font-medium text-foreground tracking-wide">
-                                        {s.title}
-                                      </span>
-                                      <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                                        {s.items.length}
-                                      </span>
-                                    </div>
-                                  </AccordionTrigger>
-                                  <AccordionContent className="px-3 pb-4 pt-0">
-                                    <ItemGrid
-                                      items={s.items}
-                                      onAdd={handleAddItemClick}
-                                      formatPrice={formatPrice}
-                                      getPrice={getPrice}
-                                      fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                                      active={isActiveSlide}
-                                    />
-                                  </AccordionContent>
-                                </AccordionItem>
-                              ))}
-                          </Accordion>
-                        ) : (
+                            <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                              {s.items.length}
+                            </span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-3 pb-4 pt-0">
                           <ItemGrid
-                            items={group.items}
+                            items={s.items}
                             onAdd={handleAddItemClick}
                             formatPrice={formatPrice}
                             getPrice={getPrice}
                             fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                            active={isActiveSlide}
+                            active
                           />
-                        )}
-                      </section>
-                    );
-                  })
-                )}
-              </div>
-            );
-          })}
-        </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                </Accordion>
+              ) : (
+                <ItemGrid
+                  items={group.items}
+                  onAdd={handleAddItemClick}
+                  formatPrice={formatPrice}
+                  getPrice={getPrice}
+                  fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                  active
+                />
+              )}
+            </section>
+          );
+        })}
       </div>
 
       {/* Delicate Floating Action Bar */}
@@ -629,9 +508,7 @@ export const SwipeableMenuView = ({
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
-          className={`pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full border border-border/20 shadow-lg transition-[background-color,backdrop-filter] duration-150 ${
-            contentDragging ? 'bg-card/95 backdrop-blur-0' : 'bg-card/70 backdrop-blur-md'
-          }`}
+          className="pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full border border-border/20 shadow-lg bg-card/70 backdrop-blur-md"
         >
           {/* Call Waiter Button - Minimal */}
           <motion.button
