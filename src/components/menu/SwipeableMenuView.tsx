@@ -464,7 +464,7 @@ export const SwipeableMenuView = ({
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className={`sticky top-0 z-30 -mx-4 px-4 pt-3 pb-3 mb-4 border-b border-border/40 transition-[background-color,backdrop-filter] duration-150 ${
+        className={`sticky top-0 z-30 px-4 pt-3 pb-3 mb-4 border-b border-border/40 transition-[background-color,backdrop-filter] duration-150 ${
           contentDragging ? 'bg-background/95 backdrop-blur-0' : 'bg-background/80 backdrop-blur-md'
         }`}
       >
@@ -527,7 +527,7 @@ export const SwipeableMenuView = ({
             return (
               <div
                 key={cat.id}
-                className="menu-swipe-slide flex-[0_0_100%] min-w-0"
+                className="menu-swipe-slide flex-[0_0_100%] min-w-0 overflow-hidden"
               >
                 {!shouldRenderSlide ? (
                   <div className="min-h-[50vh]" aria-hidden="true" />
