@@ -1352,7 +1352,7 @@ export default function ArchitectQrTiles() {
                                   size={44}
                                   bgColor="#ffffff"
                                   fgColor="#111827"
-                                  marginSize={1}
+                                  includeMargin={true}
                                 />
                               </button>
                             </TableCell>
@@ -1615,7 +1615,7 @@ export default function ArchitectQrTiles() {
                                       size={44}
                                       bgColor="#ffffff"
                                       fgColor="#111827"
-                                      marginSize={1}
+                                      includeMargin={true}
                                     />
                                   </button>
                                 </TableCell>
@@ -2010,7 +2010,7 @@ export default function ArchitectQrTiles() {
                   size={240}
                   bgColor="#ffffff"
                   fgColor="#111827"
-                  marginSize={2}
+                  includeMargin={true}
                 />
               </div>
             ) : null}

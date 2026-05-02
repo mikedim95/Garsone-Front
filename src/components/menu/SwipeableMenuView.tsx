@@ -57,7 +57,7 @@ interface ItemGridProps {
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
 
 const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active = false }: ItemGridProps) => (
-  <div className="grid grid-cols-2 gap-3 sm:gap-4">
+  <div className="grid grid-cols-2 gap-3 sm:gap-4 [content-visibility:auto] [contain-intrinsic-size:1px_600px]">
     {items.map((item, index) => {
       const price = getPrice(item);
       const displayName = item.name ?? item.title ?? fallbackLabel;
@@ -67,9 +67,10 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active =
         <Card
           key={item.id}
           interactive={false}
-          className={`menu-item-card group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm hover:shadow-xl transition-all duration-300 ${
-            unavailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-0.5 hover:border-primary/30'
+          className={`menu-item-card group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm ${
+            unavailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-primary/30'
           }`}
+          style={{ contain: 'layout paint style' }}
           onClick={() => onAdd(item)}
         >
           <div className="relative aspect-[4/5] overflow-hidden">
@@ -84,7 +85,7 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active =
                 decoding="async"
                 fetchPriority={eagerImage ? 'high' : 'low'}
                 draggable={false}
-                className="menu-card-image w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                className="menu-card-image w-full h-full object-cover"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
@@ -98,7 +99,7 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active =
                 <span className="text-base sm:text-lg font-semibold text-white drop-shadow tabular-nums">
                   {formatPrice(price)}
                 </span>
-                <div className="w-7 h-7 rounded-full bg-white/15 backdrop-blur-md border border-white/25 flex items-center justify-center transition-all duration-300 group-hover:bg-primary group-hover:border-primary group-hover:scale-105">
+                <div className="w-7 h-7 rounded-full bg-white/25 border border-white/30 flex items-center justify-center group-hover:bg-primary group-hover:border-primary">
                   <span className="text-white text-base font-light leading-none">+</span>
                 </div>
               </div>
@@ -517,7 +518,7 @@ export const SwipeableMenuView = ({
       <div className="menu-swipe-viewport overflow-hidden pb-32" ref={contentEmblaRef}>
         <div className="menu-swipe-container flex">
           {allCategories.map((cat, catIdx) => {
-            const shouldRenderSlide = Math.abs(catIdx - safeSelectedIndex) <= 2;
+            const shouldRenderSlide = Math.abs(catIdx - safeSelectedIndex) <= 1;
             const isActiveSlide = catIdx === safeSelectedIndex;
             const groupedItems = shouldRenderSlide
               ? groupedByCategoryId.get(cat.id) ?? []
@@ -526,7 +527,7 @@ export const SwipeableMenuView = ({
             return (
               <div
                 key={cat.id}
-                className="menu-swipe-slide flex-[0_0_100%] min-w-0 px-1"
+                className="menu-swipe-slide flex-[0_0_100%] min-w-0"
               >
                 {!shouldRenderSlide ? (
                   <div className="min-h-[50vh]" aria-hidden="true" />
@@ -576,7 +577,7 @@ export const SwipeableMenuView = ({
                                 <AccordionItem
                                   key={s.title}
                                   value={s.title}
-                                  className="border border-border/40 rounded-xl bg-card/30 backdrop-blur-sm overflow-hidden"
+                                  className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
                                 >
                                   <AccordionTrigger className="px-4 py-3 hover:no-underline">
                                     <div className="flex items-center gap-3">

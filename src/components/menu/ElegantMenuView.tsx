@@ -159,7 +159,7 @@ export const ElegantMenuView = ({
         return (
           <Card
             key={item.id}
-            className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
+            className="group relative overflow-hidden border-border/40 bg-card hover:border-primary/30"
           >
             <div
               className="relative aspect-square overflow-hidden cursor-pointer"
@@ -172,7 +172,9 @@ export const ElegantMenuView = ({
               <img
                 src={item.image}
                 alt={displayName}
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
               />
               <div className="absolute inset-x-0 top-0 z-20 p-2 sm:p-2.5 bg-gradient-to-b from-black/70 via-black/40 to-transparent flex items-start gap-2">
                 <div className="flex-1 min-w-0">
@@ -182,7 +184,7 @@ export const ElegantMenuView = ({
                 </div>
                 <Badge
                   variant="secondary"
-                  className="shrink-0 bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
+                  className="shrink-0 bg-primary text-primary-foreground border-0 font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
                 >
                   {formatPrice(price)}
                 </Badge>
@@ -319,7 +321,7 @@ export const ElegantMenuView = ({
                     <AccordionItem
                       key={entry.title}
                       value={entry.title}
-                      className="border border-border/40 rounded-xl bg-card/30 backdrop-blur-sm overflow-hidden"
+                      className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
                     >
                       <AccordionTrigger className="px-4 py-3 hover:no-underline">
                         <div className="flex items-center gap-3">

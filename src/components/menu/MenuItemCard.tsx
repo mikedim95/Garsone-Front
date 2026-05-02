@@ -71,7 +71,7 @@ export const MenuItemCard = ({ item, onAdd }: Props) => {
               size="icon"
               onClick={() => onAdd(item)}
               disabled={item.available === false}
-              className="h-10 w-10 rounded-full shrink-0 bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30 hover:scale-110 transition-all duration-300 shadow-lg"
+              className="h-10 w-10 rounded-full shrink-0 bg-white/30 border border-white/40 text-white hover:bg-white/40 shadow-lg"
               aria-label={t('menu.add_to_cart')}
             >
               <Plus className="h-5 w-5" />
