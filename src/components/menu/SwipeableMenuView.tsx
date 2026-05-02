@@ -91,7 +91,7 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active =
                 sizes={MENU_CARD_IMAGE_SIZES}
                 loading={eagerImage ? 'eager' : 'lazy'}
                 decoding="async"
-                fetchPriority={eagerImage ? 'high' : 'low'}
+                {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
                 draggable={false}
                 className="menu-card-image w-full h-full object-cover"
               />

@@ -321,7 +321,9 @@ export default function TableMenu() {
 
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const clearMenuCache = useMenuStore((s) => s.clear);
-  const navMarkRef = useRef(false);
+  const menuPerfStartRef = useRef(
+    typeof performance !== "undefined" ? performance.now() : 0
+  );
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
   const cartChangeRef = useRef(false);
@@ -480,21 +482,10 @@ export default function TableMenu() {
     if (!dataMarkRef.current && typeof performance !== "undefined") {
       dataMarkRef.current = true;
       try {
-        performance.mark("menu:data-ready");
-        if (performance.getEntriesByName("menu:nav-start").length) {
-          performance.measure(
-            "menu:nav-to-data",
-            "menu:nav-start",
-            "menu:data-ready"
-          );
-          const entry = performance.getEntriesByName("menu:nav-to-data").pop();
-          if (entry) {
-            console.log(
-              "[perf] menu:data-ready",
-              `${entry.duration.toFixed(1)}ms`
-            );
-          }
-        }
+        console.log(
+          "[perf] menu:data-ready",
+          `${(performance.now() - menuPerfStartRef.current).toFixed(1)}ms`
+        );
       } catch {}
     }
   }, [bootstrap, preferGreek, setMenuCache]);
@@ -731,32 +722,18 @@ export default function TableMenu() {
   };
 
   useEffect(() => {
-    if (typeof performance === "undefined" || navMarkRef.current) return;
-    navMarkRef.current = true;
+    if (typeof performance === "undefined" || paintMarkRef.current) return;
     try {
-      performance.mark("menu:nav-start");
+      menuPerfStartRef.current = performance.now();
     } catch {}
     const raf = requestAnimationFrame(() => {
       if (paintMarkRef.current) return;
       paintMarkRef.current = true;
       try {
-        performance.mark("menu:first-paint");
-        if (performance.getEntriesByName("menu:nav-start").length) {
-          performance.measure(
-            "menu:first-paint-delay",
-            "menu:nav-start",
-            "menu:first-paint"
-          );
-          const entry = performance
-            .getEntriesByName("menu:first-paint-delay")
-            .pop();
-          if (entry) {
-            console.log(
-              "[perf] menu:first-paint",
-              `${entry.duration.toFixed(1)}ms`
-            );
-          }
-        }
+        console.log(
+          "[perf] menu:first-paint",
+          `${(performance.now() - menuPerfStartRef.current).toFixed(1)}ms`
+        );
       } catch {}
     });
     return () => cancelAnimationFrame(raf);
