@@ -129,6 +129,11 @@ const buildMenuState = (
         item.titleEl,
         item.name || item.title
       );
+      const subcategory = localizeText(
+        item.subcategoryEn ?? undefined,
+        item.subcategoryEl ?? undefined,
+        item.subcategory ?? undefined
+      );
       const description = localizeText(
         item.descriptionEn,
         item.descriptionEl,
@@ -138,6 +143,7 @@ const buildMenuState = (
       return {
         ...item,
         name,
+        subcategory: subcategory || null,
         displayName: name,
         displayDescription: description,
         description,

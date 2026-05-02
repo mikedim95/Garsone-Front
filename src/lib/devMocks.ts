@@ -13,7 +13,7 @@ type Category = {
   sortOrder: number;
   printerTopic?: string | null;
 };
-type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string; printerTopic?: string | null };
+type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; subcategory?: string | null; subcategoryEn?: string | null; subcategoryEl?: string | null; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string; printerTopic?: string | null };
 type ModifierOption = { id: Id; title: string; titleEn?: string; titleEl?: string; label: string; priceDeltaCents: number; sortOrder: number };
 type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; name: string; minSelect: number; maxSelect: number | null; isAvailable?: boolean; options: ModifierOption[] };
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
@@ -36,7 +36,7 @@ type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'REA
 
 type QRTileRecord = {
   id: Id;
-  storeId: Id;
+  storeId: Id | null;
   publicCode: string;
   label?: string | null;
   tableId?: Id | null;
@@ -215,7 +215,7 @@ const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
     };
   });
 
-const normalizeQrTileRecord = (tile: unknown, storeId: string): QRTileRecord => {
+const normalizeQrTileRecord = (tile: unknown, storeId: string | null): QRTileRecord => {
   if (!isRecord(tile)) {
     const now = Date.now();
     return {
@@ -384,10 +384,13 @@ function load(): Db {
     { id: uid('opt'), title: '1 tsp', label: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
     { id: uid('opt'), title: '2 tsp', label: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
   ]};
-  const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true, printerTopic: catCoffee.printerTopic ?? null };
+  const itemEsp: Item = { id: uid('item'), title: 'Espresso', subcategory: 'Coffee Classics', subcategoryEn: 'Coffee Classics', subcategoryEl: 'Coffee Classics', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true, printerTopic: catCoffee.printerTopic ?? null };
   const itemCap: Item = {
     id: uid('item'),
     title: 'Cappuccino',
+    subcategory: 'Coffee Classics',
+    subcategoryEn: 'Coffee Classics',
+    subcategoryEl: 'Coffee Classics',
     description: 'Classic foam',
     priceCents: 350,
     categoryId: catCoffee.id,
@@ -633,8 +636,9 @@ function serializeQrTile(db: Db, tile: QRTileRecord) {
   const table = tile.tableId ? db.tables.find((t) => t.id === tile.tableId) : null;
   return {
     id: tile.id,
-    storeId: tile.storeId,
-    storeSlug: db.store.slug || undefined,
+    storeId: tile.storeId ?? null,
+    storeSlug: tile.storeId ? db.store.slug || undefined : null,
+    storeName: tile.storeId ? db.store.name : null,
     publicCode: tile.publicCode,
     label: tile.label ?? null,
     isActive: tile.isActive,
@@ -688,6 +692,13 @@ export const devMocks = {
       ],
     });
   },
+  adminListAllQrTiles() {
+    const db = snapshot();
+    seedQrTilesIfEmpty(db);
+    return Promise.resolve({
+      tiles: db.qrTiles.map((tile) => serializeQrTile(db, tile)),
+    });
+  },
   adminUpdateStoreOrderingMode(storeId: string, orderingMode: OrderingMode) {
     const db = snapshot();
     if (db.store.id !== storeId) {
@@ -737,7 +748,7 @@ export const devMocks = {
     const db = snapshot();
     seedQrTilesIfEmpty(db);
     const tiles = db.qrTiles
-      .filter((tile) => tile.storeId === storeId || tile.storeId === db.store.id)
+      .filter((tile) => tile.storeId === storeId)
       .map((tile) => serializeQrTile(db, tile));
     return Promise.resolve({
       store: { id: db.store.id, name: db.store.name, slug: db.store.slug },
@@ -781,13 +792,61 @@ export const devMocks = {
     save(db);
     return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
   },
-  adminUpdateQrTile(id: string, data: { tableId?: string | null; isActive?: boolean; label?: string }) {
+  adminGenerateGlobalQrTiles(data: { count: number }) {
+    const db = snapshot();
+    const requestedCount = Number.isFinite(data?.count)
+      ? Math.trunc(Number(data.count))
+      : 0;
+    if (requestedCount < 1) {
+      return Promise.reject(new Error('Count must be at least 1'));
+    }
+    if (requestedCount > 500) {
+      return Promise.reject(new Error('Too many codes (max 500)'));
+    }
+    const existing = new Set(
+      db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
+    );
+
+    const created: QRTileRecord[] = [];
+    const now = Date.now();
+    while (created.length < requestedCount) {
+      const publicCode = generateMockPublicCode();
+      if (!QR_CODE_REGEX.test(publicCode) || existing.has(publicCode)) continue;
+      existing.add(publicCode);
+      const tile: QRTileRecord = {
+        id: uid('qr'),
+        storeId: null,
+        publicCode,
+        label: null,
+        tableId: null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.qrTiles.unshift(tile);
+      created.push(tile);
+    }
+    save(db);
+    return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
+  },
+  adminUpdateQrTile(id: string, data: { storeId?: string | null; tableId?: string | null; isActive?: boolean; label?: string | null }) {
     const db = snapshot();
     const tile = db.qrTiles.find((t) => t.id === id);
     if (!tile) return Promise.reject(new Error('QR tile not found'));
     if (typeof data.isActive === 'boolean') tile.isActive = data.isActive;
-    if (typeof data.label !== 'undefined') tile.label = null;
-    if (typeof data.tableId !== 'undefined') tile.tableId = data.tableId || null;
+    if (typeof data.label !== 'undefined') tile.label = data.label?.trim() || null;
+    if (typeof data.storeId !== 'undefined') {
+      tile.storeId = data.storeId || null;
+      if (!tile.storeId) {
+        tile.tableId = null;
+      }
+    }
+    if (typeof data.tableId !== 'undefined') {
+      tile.tableId = data.tableId || null;
+      if (tile.tableId && !tile.storeId) {
+        tile.storeId = db.store.id;
+      }
+    }
     tile.updatedAt = Date.now();
     save(db);
     return Promise.resolve({ tile: serializeQrTile(db, tile) });
@@ -1421,7 +1480,28 @@ export const devMocks = {
     const printerTopic = normalizePrinterTopic(
       typeof rawPrinter === 'string' && rawPrinter.trim().length > 0 ? rawPrinter : fallbackPrinter
     ) || null;
-    const it: Item = { id: uid('item'), title: data.titleEn || data.title || 'Item', titleEn: data.titleEn || data.title || 'Item', titleEl: (data as any).titleEl || data.title || 'Item', description: (data as any).descriptionEn || data.description, descriptionEn: (data as any).descriptionEn, descriptionEl: (data as any).descriptionEl, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl, printerTopic };
+    const rawSubcategoryEn =
+      typeof (data as any).subcategoryEn === 'string' ? (data as any).subcategoryEn.trim() : '';
+    const rawSubcategoryEl =
+      typeof (data as any).subcategoryEl === 'string' ? (data as any).subcategoryEl.trim() : '';
+    const fallbackSubcategory = rawSubcategoryEn || rawSubcategoryEl || null;
+    const it: Item = {
+      id: uid('item'),
+      title: data.titleEn || data.title || 'Item',
+      titleEn: data.titleEn || data.title || 'Item',
+      titleEl: (data as any).titleEl || data.title || 'Item',
+      subcategory: fallbackSubcategory,
+      subcategoryEn: rawSubcategoryEn || null,
+      subcategoryEl: rawSubcategoryEl || null,
+      description: (data as any).descriptionEn || data.description,
+      descriptionEn: (data as any).descriptionEn,
+      descriptionEl: (data as any).descriptionEl,
+      priceCents: data.priceCents || 0,
+      categoryId: data.categoryId as Id,
+      isAvailable: data.isAvailable !== false,
+      imageUrl: data.imageUrl,
+      printerTopic,
+    };
     db.items.push(it); save(db); return Promise.resolve({ item: it });
   },
   updateItem(id: Id, data: Partial<Item>) {
@@ -1435,7 +1515,18 @@ export const devMocks = {
             ? null
             : normalizePrinterTopic(data.printerTopic) || null;
       }
+      if (data.subcategoryEn !== undefined) {
+        payload.subcategoryEn = data.subcategoryEn?.trim() || null;
+      }
+      if (data.subcategoryEl !== undefined) {
+        payload.subcategoryEl = data.subcategoryEl?.trim() || null;
+      }
+      if (data.subcategory !== undefined) {
+        payload.subcategory = data.subcategory?.trim() || null;
+      }
       Object.assign(it, payload);
+      it.subcategory =
+        it.subcategoryEn?.trim() || it.subcategoryEl?.trim() || it.subcategory?.trim() || null;
     }
     save(db);
     return Promise.resolve({ item: it });

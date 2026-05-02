@@ -111,9 +111,10 @@ type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
 type ModifierUpdatePayload = Partial<Modifier>;
 type EditOrderPayload = CreateOrderPayload;
 type QRTileUpdatePayload = {
+  storeId?: string | null;
   tableId?: string | null;
   isActive?: boolean;
-  label?: string;
+  label?: string | null;
 };
 type GenerateTilePayload = { count: number };
 type LocalityApprovalPayload = {
@@ -797,6 +798,10 @@ export const api = {
     isOffline()
       ? devMocks.adminListStoreOverview()
       : fetchApi<{ stores: StoreOverview[] }>("/admin/stores/overview"),
+  adminListAllQrTiles: (): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminListAllQrTiles()
+      : fetchApi<{ tiles: QRTile[] }>("/admin/qr-tiles"),
   adminListStoreTables: (
     storeId: string
   ): Promise<{ tables: ManagerTableSummary[] }> =>
@@ -826,6 +831,15 @@ export const api = {
             body: JSON.stringify(data),
           }
         ),
+  adminGenerateGlobalQrTiles: (
+    data: GenerateTilePayload
+  ): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminGenerateGlobalQrTiles(data)
+      : fetchApi<{ tiles: QRTile[] }>("/admin/qr-tiles/bulk", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
   adminUpdateQrTile: (
     id: string,
     data: QRTileUpdatePayload

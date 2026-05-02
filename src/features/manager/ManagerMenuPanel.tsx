@@ -14,6 +14,8 @@ type CustomModifier = { id?: string; titleEn: string; titleEl: string; required:
 type ItemForm = {
   titleEn: string;
   titleEl: string;
+  subcategoryEn: string;
+  subcategoryEl: string;
   descriptionEn: string;
   descriptionEl: string;
   imageUrl: string;
@@ -40,6 +42,8 @@ export const ManagerMenuPanel = () => {
   const [form, setForm] = useState<ItemForm>({
     titleEn: '',
     titleEl: '',
+    subcategoryEn: '',
+    subcategoryEl: '',
     descriptionEn: '',
     descriptionEl: '',
     imageUrl: '',
@@ -212,6 +216,8 @@ export const ManagerMenuPanel = () => {
     setForm({
       titleEn: '',
       titleEl: '',
+      subcategoryEn: '',
+      subcategoryEl: '',
       descriptionEn: '',
       descriptionEl: '',
       imageUrl: '',
@@ -221,6 +227,8 @@ export const ManagerMenuPanel = () => {
       isAvailable: true,
       printerTopic: resolveItemPrinter(),
     });
+    setImageFile(null);
+    setImagePreview('');
     setCustomMods([]);
     setOriginalModifierIds(new Set());
     setModalOpen(true);
@@ -232,6 +240,8 @@ export const ManagerMenuPanel = () => {
     setForm({
       titleEn: item.titleEn ?? item.title ?? item.name ?? '',
       titleEl: item.titleEl ?? item.title ?? item.name ?? '',
+      subcategoryEn: item.subcategoryEn ?? item.subcategory ?? '',
+      subcategoryEl: item.subcategoryEl ?? item.subcategory ?? '',
       descriptionEn: item.descriptionEn ?? item.description ?? '',
       descriptionEl: item.descriptionEl ?? item.description ?? '',
       // Prefer the backend URL so images load directly via /menu response.
@@ -242,6 +252,8 @@ export const ManagerMenuPanel = () => {
       isAvailable: item.isAvailable ?? true,
       printerTopic: selectedPrinter,
     });
+    setImageFile(null);
+    setImagePreview(item.imageUrl ?? item.image ?? '');
     try {
       const detail = await api.getItemDetail(item.id);
       const links = detail.links || [];
@@ -337,6 +349,11 @@ export const ManagerMenuPanel = () => {
                   <div>
                     <div className="font-medium">
                       {item.titleEn || item.titleEl || item.title || item.name}
+                      {(item.subcategoryEn || item.subcategoryEl || item.subcategory) && (
+                        <span className="block text-[11px] uppercase tracking-[0.16em] text-primary/80">
+                          {item.subcategoryEn || item.subcategoryEl || item.subcategory}
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         €{((item.priceCents ?? 0) / 100).toFixed(2)}
                       </span>
@@ -488,6 +505,10 @@ export const ManagerMenuPanel = () => {
               <Input placeholder="Title (EL)" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
             </div>
             <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Subcategory (EN)" value={form.subcategoryEn} onChange={(e)=>setForm({...form, subcategoryEn: e.target.value})}/>
+              <Input placeholder="Subcategory (EL)" value={form.subcategoryEl} onChange={(e)=>setForm({...form, subcategoryEl: e.target.value})}/>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <Textarea placeholder="Description (EN)" value={form.descriptionEn} onChange={(e)=>setForm({...form, descriptionEn: e.target.value})}/>
               <Textarea placeholder="Description (EL)" value={form.descriptionEl} onChange={(e)=>setForm({...form, descriptionEl: e.target.value})}/>
             </div>
@@ -626,6 +647,8 @@ export const ManagerMenuPanel = () => {
                       const payload: ManagerItemPayload = {
                         titleEn: form.titleEn.trim(),
                         titleEl: form.titleEl.trim(),
+                        subcategoryEn: form.subcategoryEn.trim() || null,
+                        subcategoryEl: form.subcategoryEl.trim() || null,
                         descriptionEn: form.descriptionEn,
                         descriptionEl: form.descriptionEl,
                         priceCents: Math.round((parseFloat(form.price || '0') || 0) * 100),

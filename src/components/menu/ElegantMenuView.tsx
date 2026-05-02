@@ -7,6 +7,7 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { ModifierDialog } from './ModifierDialog';
@@ -135,6 +136,64 @@ export const ElegantMenuView = ({
       })).filter(group => group.items.length > 0)
     : [{ category: categories.find(c => c.id === selectedCategory) || { id: selectedCategory, title: '' }, items: filteredItems }];
 
+  const buildSubgroups = (list: MenuItem[]) => {
+    const groups = new Map<string, MenuItem[]>();
+    for (const item of list) {
+      const key = (item.subcategory ?? '').trim();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    return Array.from(groups.entries()).map(([title, subgroupItems]) => ({
+      title,
+      items: subgroupItems,
+    }));
+  };
+
+  const renderItemGrid = (list: MenuItem[]) => (
+    <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+      {list.map((item) => {
+        const price = getPrice(item);
+        const displayName =
+          item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+
+        return (
+          <Card
+            key={item.id}
+            className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
+          >
+            <div
+              className="relative aspect-square overflow-hidden cursor-pointer"
+              role="button"
+              tabIndex={item.available === false ? -1 : 0}
+              aria-disabled={item.available === false}
+              onClick={() => handleAddItemClick(item)}
+              onKeyDown={(event) => handleImageKeyDown(event, item)}
+            >
+              <img
+                src={item.image}
+                alt={displayName}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+              <div className="absolute inset-x-0 top-0 z-20 p-2 sm:p-2.5 bg-gradient-to-b from-black/70 via-black/40 to-transparent flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-xs sm:text-sm text-foreground drop-shadow-lg line-clamp-2 leading-tight">
+                    {displayName}
+                  </h3>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
+                >
+                  {formatPrice(price)}
+                </Badge>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+
   const handleCheckout = async () => {
     if (checkoutBusy) return;
     const res = await onCheckout(orderNote);
@@ -230,7 +289,14 @@ export const ElegantMenuView = ({
     <>
       {/* Menu Section */}
       <div className="w-full pb-32">
-        {itemsByCategory.map((group, groupIdx) => (
+        {itemsByCategory.map((group) => {
+          const subgroups = buildSubgroups(group.items);
+          const namedSubgroups = subgroups.filter((entry) => entry.title);
+          const ungroupedItems = subgroups
+            .filter((entry) => !entry.title)
+            .flatMap((entry) => entry.items);
+
+          return (
           <div key={group.category.id}>
             {selectedCategory === 'all' && (
               <div className="flex items-center gap-4 my-8">
@@ -241,50 +307,41 @@ export const ElegantMenuView = ({
                 <Separator className="flex-1 h-[2px] bg-border" />
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
-          {group.items.map((item) => {
-            const price = getPrice(item);
-            const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
-            const description = item.description ?? '';
-
-            return (
-              <Card
-                key={item.id}
-                className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
-              >
-                <div
-                  className="relative aspect-square overflow-hidden cursor-pointer"
-                  role="button"
-                  tabIndex={item.available === false ? -1 : 0}
-                  aria-disabled={item.available === false}
-                  onClick={() => handleAddItemClick(item)}
-                  onKeyDown={(e) => handleImageKeyDown(e, item)}
+            <div className="mb-6 sm:mb-8 space-y-4">
+              {ungroupedItems.length > 0 ? renderItemGrid(ungroupedItems) : null}
+              {namedSubgroups.length > 0 ? (
+                <Accordion
+                  type="multiple"
+                  defaultValue={namedSubgroups.map((entry) => entry.title)}
+                  className="space-y-2"
                 >
-                  <img
-                    src={item.image}
-                    alt={displayName}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-x-0 top-0 z-20 p-2 sm:p-2.5 bg-gradient-to-b from-black/70 via-black/40 to-transparent flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-xs sm:text-sm text-foreground drop-shadow-lg line-clamp-2 leading-tight">
-                        {displayName}
-                      </h3>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
+                  {namedSubgroups.map((entry) => (
+                    <AccordionItem
+                      key={entry.title}
+                      value={entry.title}
+                      className="border border-border/40 rounded-xl bg-card/30 backdrop-blur-sm overflow-hidden"
                     >
-                      {formatPrice(price)}
-                    </Badge>
-                  </div>
-                </div>
-              </Card>
-              );
-            })}
+                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                        <div className="flex items-center gap-3">
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                          <span className="text-sm font-medium text-foreground tracking-wide">
+                            {entry.title}
+                          </span>
+                          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                            {entry.items.length}
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-3 pb-4 pt-0">
+                        {renderItemGrid(entry.items)}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              ) : null}
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Floating Cart Button */}

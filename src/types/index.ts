@@ -9,6 +9,9 @@ export interface MenuItem {
   title?: string;
   titleEn?: string;
   titleEl?: string;
+  subcategory?: string | null;
+  subcategoryEn?: string | null;
+  subcategoryEl?: string | null;
   description?: string;
   descriptionEn?: string;
   descriptionEl?: string;
@@ -108,8 +111,9 @@ export interface Table {
 
 export interface QRTile {
   id: string;
-  storeId: string;
-  storeSlug?: string;
+  storeId?: string | null;
+  storeSlug?: string | null;
+  storeName?: string | null;
   publicCode: string;
   label?: string | null;
   isActive: boolean;
@@ -258,6 +262,9 @@ export interface ManagerItemSummary {
   titleEn?: string;
   titleEl?: string;
   name?: string;
+  subcategory?: string | null;
+  subcategoryEn?: string | null;
+  subcategoryEl?: string | null;
   description?: string;
   descriptionEn?: string;
   descriptionEl?: string;
@@ -274,6 +281,8 @@ export interface ManagerItemSummary {
 export interface ManagerItemPayload {
   titleEn: string;
   titleEl: string;
+  subcategoryEn?: string | null;
+  subcategoryEl?: string | null;
   descriptionEn?: string;
   descriptionEl?: string;
   priceCents: number;
