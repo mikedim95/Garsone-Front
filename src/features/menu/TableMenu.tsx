@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
+import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
 import { Button } from "@/components/ui/button";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -32,7 +33,6 @@ import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { Sun, Moon } from "lucide-react";
 import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 import { useQuery } from "@tanstack/react-query";
-import { MenuSkeleton } from "./MenuSkeleton";
 import {
   clearStoredLocalityApproval,
   getDeviceContext,
@@ -44,11 +44,6 @@ import {
 const ModifierDialog = lazy(() =>
   import("@/components/menu/ModifierDialog").then((mod) => ({
     default: mod.ModifierDialog,
-  }))
-);
-const SwipeableMenuView = lazy(() =>
-  import("@/components/menu/SwipeableMenuView").then((mod) => ({
-    default: mod.SwipeableMenuView,
   }))
 );
 const LocalityApprovalModal = lazy(() =>
@@ -1521,28 +1516,26 @@ export default function TableMenu() {
               </Button>
             </div>
           ) : (
-            <Suspense fallback={<MenuSkeleton />}>
-              <SwipeableMenuView
-                categories={categories}
-                items={menuData?.items ?? []}
-                selectedCategory={selectedCategory || "all"}
-                onCategoryChange={(catId) => setSelectedCategory(catId)}
-                onBack={() => {
-                  setCategorySelected(false);
-                  setSelectedCategory(null);
-                }}
-                onAddItem={handleAddItem}
-                onCheckout={handleCheckout}
-                onImmediateCheckout={handleImmediateCheckout}
-                orderPlacedSignal={orderPlacedSignal}
-                checkoutBusy={checkoutBusy}
-                callButtonLabel={callButtonLabel}
-                callStatus={calling}
-                callPrompted={callPrompted}
-                onCallClick={handleFloatingCallClick}
-                showCartButton={guestOrderingEnabled}
-              />
-            </Suspense>
+            <SwipeableMenuView
+              categories={categories}
+              items={menuData?.items ?? []}
+              selectedCategory={selectedCategory || "all"}
+              onCategoryChange={(catId) => setSelectedCategory(catId)}
+              onBack={() => {
+                setCategorySelected(false);
+                setSelectedCategory(null);
+              }}
+              onAddItem={handleAddItem}
+              onCheckout={handleCheckout}
+              onImmediateCheckout={handleImmediateCheckout}
+              orderPlacedSignal={orderPlacedSignal}
+              checkoutBusy={checkoutBusy}
+              callButtonLabel={callButtonLabel}
+              callStatus={calling}
+              callPrompted={callPrompted}
+              onCallClick={handleFloatingCallClick}
+              showCartButton={guestOrderingEnabled}
+            />
           )}
         </div>
 
