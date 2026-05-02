@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dia
 import { Textarea } from '../ui/textarea';
 import { useCartStore } from '@/store/cartStore';
 import { ModifierDialog } from './ModifierDialog';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +44,62 @@ interface Props {
   orderPlacedSignal?: number;
   showCartButton?: boolean;
 }
+
+interface ItemGridProps {
+  items: MenuItem[];
+  onAdd: (item: MenuItem) => void;
+  formatPrice: (n: number) => string;
+  getPrice: (item: MenuItem) => number;
+  fallbackLabel: string;
+}
+
+const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel }: ItemGridProps) => (
+  <div className="grid grid-cols-2 gap-3 sm:gap-4">
+    {items.map((item) => {
+      const price = getPrice(item);
+      const displayName = item.name ?? item.title ?? fallbackLabel;
+      const unavailable = item.available === false;
+      return (
+        <Card
+          key={item.id}
+          interactive={false}
+          className={`group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm hover:shadow-xl transition-all duration-300 ${
+            unavailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-0.5 hover:border-primary/30'
+          }`}
+          onClick={() => onAdd(item)}
+        >
+          <div className="relative aspect-[4/5] overflow-hidden">
+            {item.image ? (
+              <img
+                src={item.image}
+                alt={displayName}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
+            <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+              <h3 className="font-semibold text-[13px] sm:text-sm text-white drop-shadow leading-snug mb-1.5 line-clamp-2 tracking-tight">
+                {displayName}
+              </h3>
+              <div className="flex items-center justify-between">
+                <span className="text-base sm:text-lg font-semibold text-white drop-shadow tabular-nums">
+                  {formatPrice(price)}
+                </span>
+                <div className="w-7 h-7 rounded-full bg-white/15 backdrop-blur-md border border-white/25 flex items-center justify-center transition-all duration-300 group-hover:bg-primary group-hover:border-primary group-hover:scale-105">
+                  <span className="text-white text-base font-light leading-none">+</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    })}
+  </div>
+);
 
 export const SwipeableMenuView = ({
   categories,
@@ -92,10 +149,10 @@ export const SwipeableMenuView = ({
     () => ({
       startIndex: initialEmblaIndexRef.current,
       loop: false,
-      // Allow a more natural settle instead of forcing a hard snap.
-      skipSnaps: true,
-      // Slow down snap animation slightly for smoother feel on release.
-      duration: 34,
+      // Hard snap to the nearest slide — prevents the tab/carousel ping-pong.
+      skipSnaps: false,
+      duration: 28,
+      align: 'start' as const,
     }),
     []
   );
@@ -103,33 +160,45 @@ export const SwipeableMenuView = ({
   // Content carousel for swipeable menu pages
   const [contentEmblaRef, contentEmblaApi] = useEmblaCarousel(carouselOptions);
 
-  // Sync category selection with carousel
+  // Track whether the most recent carousel movement was driven by a tab click
+  // (vs. a real user swipe). When it's programmatic, we ignore the resulting
+  // `select` event so we don't fight against the parent's `selectedCategory`
+  // and cause the back-and-forth glitch.
+  const programmaticScrollRef = useRef(false);
+
+  // User swipe → notify parent of the new category.
   useEffect(() => {
     if (!contentEmblaApi) return;
-    
-    const onSettle = () => {
+
+    const onSelect = () => {
+      if (programmaticScrollRef.current) return;
       const index = contentEmblaApi.selectedScrollSnap();
-      if (allCategories[index] && allCategories[index].id !== selectedCategory) {
-        onCategoryChange(allCategories[index].id);
+      const next = allCategories[index];
+      if (next && next.id !== selectedCategory) {
+        onCategoryChange(next.id);
       }
     };
+    const onSettle = () => {
+      // Re-enable user-driven sync once any programmatic animation has finished.
+      programmaticScrollRef.current = false;
+    };
 
+    contentEmblaApi.on('select', onSelect);
     contentEmblaApi.on('settle', onSettle);
-    contentEmblaApi.on('reInit', onSettle);
-    onSettle();
     return () => {
+      contentEmblaApi.off('select', onSelect);
       contentEmblaApi.off('settle', onSettle);
-      contentEmblaApi.off('reInit', onSettle);
     };
   }, [contentEmblaApi, allCategories, selectedCategory, onCategoryChange]);
 
-  // Scroll carousel when category tab is clicked
+  // Tab click / external category change → scroll carousel to match.
   useEffect(() => {
     if (!contentEmblaApi) return;
-    const targetIndex = allCategories.findIndex(c => c.id === selectedCategory);
-    if (targetIndex >= 0 && contentEmblaApi.selectedScrollSnap() !== targetIndex) {
-      contentEmblaApi.scrollTo(targetIndex);
-    }
+    const targetIndex = allCategories.findIndex((c) => c.id === selectedCategory);
+    if (targetIndex < 0) return;
+    if (contentEmblaApi.selectedScrollSnap() === targetIndex) return;
+    programmaticScrollRef.current = true;
+    contentEmblaApi.scrollTo(targetIndex);
   }, [selectedCategory, contentEmblaApi, allCategories]);
 
   // Scroll active tab into view when category changes
@@ -271,6 +340,23 @@ export const SwipeableMenuView = ({
     return mapped;
   }, [categories, items]);
 
+  // Build subcategory groups for a given list of items.
+  // Reads an optional `subcategory` field; falls back to "" (no subcategory).
+  const buildSubgroups = (list: MenuItem[]) => {
+    const groups = new Map<string, MenuItem[]>();
+    for (const it of list) {
+      const sub =
+        ((it as unknown as { subcategory?: string; subCategory?: string }).subcategory ??
+          (it as unknown as { subCategory?: string }).subCategory ??
+          '') ||
+        '';
+      const key = sub.trim();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(it);
+    }
+    return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
+  };
+
   const groupedByCategoryId = useMemo(() => {
     const grouped = new Map<string, Array<{ category: Pick<MenuCategory, 'id' | 'title'>; items: MenuItem[] }>>();
     grouped.set(
@@ -295,49 +381,56 @@ export const SwipeableMenuView = ({
 
   return (
     <>
-      {/* Luxury Category Navigation */}
+      {/* Refined Category Navigation */}
       <motion.div
-        initial={{ opacity: 0, y: -10 }}
+        initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="relative mb-6"
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        className="sticky top-0 z-30 -mx-4 px-4 pt-3 pb-3 mb-4 bg-background/80 backdrop-blur-xl border-b border-border/40"
       >
-        <div 
-          ref={tabsContainerRef}
-          className="relative flex gap-2 overflow-x-auto pb-2 items-center scrollbar-hide scroll-smooth"
-        >
+        <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
             onClick={onBack}
-            className="shrink-0 h-10 w-10 rounded-full bg-card/80 backdrop-blur-md border border-border/20 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300"
+            aria-label={t('common.back', { defaultValue: 'Back' })}
+            className="shrink-0 h-10 w-10 rounded-full hover:bg-muted/60 text-foreground/70 hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          
-          {allCategories.map((cat, idx) => (
-            <motion.div
-              key={cat.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.03, duration: 0.25 }}
-            >
-              <Button
-                ref={(el) => {
-                  if (el) tabRefs.current.set(cat.id, el);
-                }}
-                variant={selectedCategory === cat.id ? "default" : "ghost"}
-                onClick={() => onCategoryChange(cat.id)}
-                className={`shrink-0 rounded-full h-9 px-5 text-sm tracking-wide transition-all duration-300 whitespace-nowrap ${
-                  selectedCategory === cat.id
-                    ? 'shadow-md shadow-primary/20 font-medium'
-                    : 'bg-card/60 backdrop-blur-md border border-border/15 hover:bg-card/80 hover:border-primary/20 font-normal text-muted-foreground'
-                }`}
-              >
-                {cat.title}
-              </Button>
-            </motion.div>
-          ))}
+
+          <div
+            ref={tabsContainerRef}
+            className="relative flex gap-1.5 overflow-x-auto items-center scrollbar-hide scroll-smooth flex-1"
+          >
+            {allCategories.map((cat) => {
+              const isActive = selectedCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  ref={(el) => {
+                    if (el) tabRefs.current.set(cat.id, el);
+                  }}
+                  type="button"
+                  onClick={() => onCategoryChange(cat.id)}
+                  className={`relative shrink-0 h-9 px-4 text-[13px] tracking-wide whitespace-nowrap rounded-full transition-colors duration-200 ${
+                    isActive
+                      ? 'text-primary-foreground font-medium'
+                      : 'text-muted-foreground hover:text-foreground font-normal'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="active-category-pill"
+                      className="absolute inset-0 rounded-full bg-primary shadow-sm"
+                      transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10">{cat.title}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </motion.div>
 
@@ -358,82 +451,87 @@ export const SwipeableMenuView = ({
                 {!shouldRenderSlide ? (
                   <div className="min-h-[50vh]" aria-hidden="true" />
                 ) : (
-                  groupedItems.map((group) => (
-                    <div key={group.category.id}>
-                      {cat.id === 'all' && (
-                        <div className="relative flex items-center gap-4 my-8">
-                          {/* Elegant category divider */}
-                          <div className="flex-1 flex items-center gap-2">
-                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-border/30" />
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                          </div>
-                          <h2 className="text-lg font-semibold text-foreground tracking-wide uppercase px-2">
-                            {group.category.title}
-                          </h2>
-                          <div className="flex-1 flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                            <div className="h-px flex-1 bg-gradient-to-l from-transparent via-border to-border/30" />
-                          </div>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
-                        {group.items.map((item) => {
-                          const price = getPrice(item);
-                          const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+                  groupedItems.map((group) => {
+                    const subgroups = buildSubgroups(group.items);
+                    const hasNamedSubgroups = subgroups.some((s) => s.title);
 
-                          return (
-                            <Card
-                              key={item.id}
-                              className="group relative overflow-hidden rounded-2xl border-0 bg-card/40 backdrop-blur-sm hover:bg-card/60 transition-all duration-500 cursor-pointer shadow-lg hover:shadow-2xl hover:-translate-y-1"
-                              onClick={() => handleAddItemClick(item)}
-                            >
-                              {/* Image container with luxury overlay */}
-                              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl">
-                                <img
-                                  src={item.image}
-                                  alt={displayName}
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    return (
+                      <section key={group.category.id} className="mb-10">
+                        {cat.id === 'all' && (
+                          <header className="flex items-baseline justify-between mb-5 px-1">
+                            <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
+                              {group.category.title}
+                            </h2>
+                            <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                              {group.items.length}
+                            </span>
+                          </header>
+                        )}
+
+                        {hasNamedSubgroups ? (
+                          <Accordion
+                            type="multiple"
+                            defaultValue={subgroups
+                              .filter((s) => s.title)
+                              .map((s) => s.title)}
+                            className="space-y-2"
+                          >
+                            {/* Items without a subcategory go first, ungrouped */}
+                            {subgroups
+                              .filter((s) => !s.title)
+                              .map((s) => (
+                                <ItemGrid
+                                  key="__no-sub__"
+                                  items={s.items}
+                                  onAdd={handleAddItemClick}
+                                  formatPrice={formatPrice}
+                                  getPrice={getPrice}
+                                  fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                                 />
-                                
-                                {/* Premium gradient overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10 pointer-events-none" />
-                                
-                                {/* Subtle top shine */}
-                                <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                                
-                                {/* Content overlay at bottom */}
-                                <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
-                                  {/* Title with elegant typography */}
-                                  <h3 className="font-semibold text-sm sm:text-base text-white drop-shadow-lg leading-tight mb-2 line-clamp-2 tracking-tight">
-                                    {displayName}
-                                  </h3>
-                                  
-                                  {/* Price with luxury styling */}
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-lg sm:text-xl font-bold text-white drop-shadow-lg tracking-tight">
-                                      {formatPrice(price)}
-                                    </span>
-                                    
-                                    {/* Subtle add indicator */}
-                                    <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:scale-110">
-                                      <span className="text-white text-lg font-light">+</span>
+                              ))}
+                            {subgroups
+                              .filter((s) => s.title)
+                              .map((s) => (
+                                <AccordionItem
+                                  key={s.title}
+                                  value={s.title}
+                                  className="border border-border/40 rounded-xl bg-card/30 backdrop-blur-sm overflow-hidden"
+                                >
+                                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                    <div className="flex items-center gap-3">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                                      <span className="text-sm font-medium text-foreground tracking-wide">
+                                        {s.title}
+                                      </span>
+                                      <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                                        {s.items.length}
+                                      </span>
                                     </div>
-                                  </div>
-                                </div>
-                                
-                                {/* Corner accent */}
-                                <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg">
-                                  <span className="text-primary-foreground text-xs font-bold">+</span>
-                                </div>
-                              </div>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
+                                  </AccordionTrigger>
+                                  <AccordionContent className="px-3 pb-4 pt-0">
+                                    <ItemGrid
+                                      items={s.items}
+                                      onAdd={handleAddItemClick}
+                                      formatPrice={formatPrice}
+                                      getPrice={getPrice}
+                                      fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                    />
+                                  </AccordionContent>
+                                </AccordionItem>
+                              ))}
+                          </Accordion>
+                        ) : (
+                          <ItemGrid
+                            items={group.items}
+                            onAdd={handleAddItemClick}
+                            formatPrice={formatPrice}
+                            getPrice={getPrice}
+                            fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                          />
+                        )}
+                      </section>
+                    );
+                  })
                 )}
               </div>
             );
