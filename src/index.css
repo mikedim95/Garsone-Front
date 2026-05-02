@@ -708,6 +708,10 @@ html body[data-scroll-locked]:not(:root) {
 
 /* Keep menu swipes on the compositor and avoid painting offscreen menu sections. */
 .menu-swipe-viewport {
+  width: 100%;
+  max-width: 100%;
+  clip-path: inset(0);
+  isolation: isolate;
   overscroll-behavior-x: contain;
   touch-action: pan-y pinch-zoom;
 }
@@ -718,7 +722,12 @@ html body[data-scroll-locked]:not(:root) {
   will-change: transform;
 }
 
-.menu-swipe-slide,
+.menu-swipe-slide {
+  box-sizing: border-box;
+  flex-basis: 100%;
+  max-width: 100%;
+}
+
 .menu-item-card {
   contain: layout paint style;
 }

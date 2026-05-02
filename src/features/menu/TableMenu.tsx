@@ -304,10 +304,9 @@ export default function TableMenu() {
   const [placedError, setPlacedError] = useState<string | null>(null);
   const [activeOrdersOpen, setActiveOrdersOpen] = useState(true);
   const [tableLabel, setTableLabel] = useState<string | null>(null);
-  const [tableId, setTableId] = useState<string | null>(() =>
-    tableParam ? tableParam : null
-  );
-  const activeTableId = tableId || tableParam || null;
+  const [tableId, setTableId] = useState<string | null>(null);
+  const tableLookupCode = tableParam || tableId || null;
+  const activeTableId = tableId;
   const guestOrderingEnabled = orderingMode !== "waiter";
   const isEditingExisting = Boolean(editingOrderId);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
@@ -340,19 +339,19 @@ export default function TableMenu() {
   const [localitySessionId] = useState(() => getLocalitySessionId());
   const deviceContext = getDeviceContext();
   const bootstrapQueryEnabled =
-    Boolean(activeTableId) && !isFallbackSlug(storeSlug);
+    Boolean(tableLookupCode) && !isFallbackSlug(storeSlug);
   const {
     data: bootstrap,
     isLoading: bootstrapLoading,
     isFetching: bootstrapFetching,
     error: bootstrapError,
   } = useQuery({
-    queryKey: ["menu-bootstrap", storeSlug || null, activeTableId, languageCode],
+    queryKey: ["menu-bootstrap", storeSlug || null, tableLookupCode, languageCode],
     queryFn: async () => {
-      if (!activeTableId) {
+      if (!tableLookupCode) {
         throw new Error("Missing table identifier");
       }
-      return api.getMenuBootstrap(activeTableId, {
+      return api.getMenuBootstrap(tableLookupCode, {
         storeSlug: storeSlug || undefined,
         lang: languageCode,
       });
@@ -369,7 +368,7 @@ export default function TableMenu() {
   const { data: storeMeta } = useQuery({
     queryKey: ["store-meta", storeSlug || null],
     queryFn: async () => api.getStore(),
-    enabled: Boolean(storeSlug || activeTableId),
+    enabled: Boolean(storeSlug || tableLookupCode),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     refetchOnMount: false,
@@ -449,7 +448,7 @@ export default function TableMenu() {
       setTableLabel(bootstrap.table.label);
     }
     if (bootstrap.table?.id) {
-      setTableId((prev) => prev || bootstrap.table?.id || null);
+      setTableId(bootstrap.table.id);
     }
     setOrderingMode(normalizeOrderingMode(bootstrap.store?.orderingMode));
     if (bootstrap.store?.name || bootstrap.store?.slug) {
@@ -515,12 +514,12 @@ export default function TableMenu() {
 
   // If no usable storeSlug yet (or only the fallback), try to resolve it via public table lookup
   useEffect(() => {
-    if (isFallbackSlug(storeSlug) && activeTableId) {
+    if (isFallbackSlug(storeSlug) && tableLookupCode) {
       (async () => {
         try {
           const res = await fetch(
             `${API_BASE.replace(/\/$/, "")}/public/table/${encodeURIComponent(
-              activeTableId
+              tableLookupCode
             )}`
           );
           if (!res.ok) return;
@@ -542,7 +541,7 @@ export default function TableMenu() {
         }
       })();
     }
-  }, [storeSlug, activeTableId, clearMenuCache]);
+  }, [storeSlug, tableLookupCode, clearMenuCache]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
