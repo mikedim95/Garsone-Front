@@ -705,3 +705,30 @@ html body[data-scroll-locked]:not(:root) {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Keep menu swipes on the compositor and avoid painting offscreen menu sections. */
+.menu-swipe-viewport {
+  overscroll-behavior-x: contain;
+  touch-action: pan-y pinch-zoom;
+}
+
+.menu-swipe-container {
+  backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.menu-swipe-slide,
+.menu-item-card {
+  contain: layout paint style;
+}
+
+.menu-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 680px;
+}
+
+.menu-card-image {
+  backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+}

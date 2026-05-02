@@ -51,19 +51,23 @@ interface ItemGridProps {
   formatPrice: (n: number) => string;
   getPrice: (item: MenuItem) => number;
   fallbackLabel: string;
+  active?: boolean;
 }
 
-const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel }: ItemGridProps) => (
+const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
+
+const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active = false }: ItemGridProps) => (
   <div className="grid grid-cols-2 gap-3 sm:gap-4">
-    {items.map((item) => {
+    {items.map((item, index) => {
       const price = getPrice(item);
       const displayName = item.name ?? item.title ?? fallbackLabel;
       const unavailable = item.available === false;
+      const eagerImage = active && index < 4;
       return (
         <Card
           key={item.id}
           interactive={false}
-          className={`group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm hover:shadow-xl transition-all duration-300 ${
+          className={`menu-item-card group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm hover:shadow-xl transition-all duration-300 ${
             unavailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-0.5 hover:border-primary/30'
           }`}
           onClick={() => onAdd(item)}
@@ -73,9 +77,14 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel }: ItemGr
               <img
                 src={item.image}
                 alt={displayName}
-                loading="lazy"
+                width={320}
+                height={400}
+                sizes={MENU_CARD_IMAGE_SIZES}
+                loading={eagerImage ? 'eager' : 'lazy'}
                 decoding="async"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                fetchPriority={eagerImage ? 'high' : 'low'}
+                draggable={false}
+                className="menu-card-image w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
@@ -130,6 +139,7 @@ export const SwipeableMenuView = ({
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isRinging, setIsRinging] = useState(false);
   const [bellDialogOpen, setBellDialogOpen] = useState(false);
+  const [contentDragging, setContentDragging] = useState(false);
   
   // Ref for category tabs container to scroll active tab into view
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -151,7 +161,7 @@ export const SwipeableMenuView = ({
       loop: false,
       // Hard snap to the nearest slide — prevents the tab/carousel ping-pong.
       skipSnaps: false,
-      duration: 28,
+      duration: 20,
       align: 'start' as const,
     }),
     []
@@ -190,6 +200,31 @@ export const SwipeableMenuView = ({
       contentEmblaApi.off('settle', onSettle);
     };
   }, [contentEmblaApi, allCategories, selectedCategory, onCategoryChange]);
+
+  useEffect(() => {
+    if (!contentEmblaApi) return;
+
+    let pointerUpTimeout: number | undefined;
+    const onPointerDown = () => setContentDragging(true);
+    const onPointerUp = () => {
+      window.clearTimeout(pointerUpTimeout);
+      pointerUpTimeout = window.setTimeout(() => setContentDragging(false), 320);
+    };
+    const onSettle = () => {
+      window.clearTimeout(pointerUpTimeout);
+      setContentDragging(false);
+    };
+
+    contentEmblaApi.on('pointerDown', onPointerDown);
+    contentEmblaApi.on('pointerUp', onPointerUp);
+    contentEmblaApi.on('settle', onSettle);
+    return () => {
+      window.clearTimeout(pointerUpTimeout);
+      contentEmblaApi.off('pointerDown', onPointerDown);
+      contentEmblaApi.off('pointerUp', onPointerUp);
+      contentEmblaApi.off('settle', onSettle);
+    };
+  }, [contentEmblaApi]);
 
   // Tab click / external category change → scroll carousel to match.
   useEffect(() => {
@@ -379,6 +414,48 @@ export const SwipeableMenuView = ({
     return grouped;
   }, [categories, itemsByCategory]);
 
+  const imageUrlsByCategoryId = useMemo(() => {
+    const mapped = new Map<string, string[]>();
+    const allUrls: string[] = [];
+
+    for (const category of categories) {
+      const urls = (itemsByCategory.get(category.id) ?? [])
+        .map((item) => item.image)
+        .filter((url): url is string => Boolean(url));
+      mapped.set(category.id, urls);
+      allUrls.push(...urls);
+    }
+
+    mapped.set('all', allUrls);
+    return mapped;
+  }, [categories, itemsByCategory]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const urls = new Set<string>();
+    for (const index of [safeSelectedIndex - 1, safeSelectedIndex + 1]) {
+      const category = allCategories[index];
+      if (!category) continue;
+      for (const url of (imageUrlsByCategoryId.get(category.id) ?? []).slice(0, 6)) {
+        urls.add(url);
+      }
+    }
+
+    if (urls.size === 0) return;
+
+    const timeoutId = window.setTimeout(() => {
+      for (const url of urls) {
+        const image = new Image();
+        image.decoding = 'async';
+        image.src = url;
+        image.decode?.().catch(() => undefined);
+      }
+    }, 160);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [safeSelectedIndex, allCategories, imageUrlsByCategoryId]);
+
   return (
     <>
       {/* Refined Category Navigation */}
@@ -386,7 +463,9 @@ export const SwipeableMenuView = ({
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="sticky top-0 z-30 -mx-4 px-4 pt-3 pb-3 mb-4 bg-background/80 backdrop-blur-xl border-b border-border/40"
+        className={`sticky top-0 z-30 -mx-4 px-4 pt-3 pb-3 mb-4 border-b border-border/40 transition-[background-color,backdrop-filter] duration-150 ${
+          contentDragging ? 'bg-background/95 backdrop-blur-0' : 'bg-background/80 backdrop-blur-md'
+        }`}
       >
         <div className="flex items-center gap-3">
           <Button
@@ -435,10 +514,11 @@ export const SwipeableMenuView = ({
       </motion.div>
 
       {/* Swipeable Content Carousel */}
-      <div className="overflow-hidden pb-32" ref={contentEmblaRef}>
-        <div className="flex">
+      <div className="menu-swipe-viewport overflow-hidden pb-32" ref={contentEmblaRef}>
+        <div className="menu-swipe-container flex">
           {allCategories.map((cat, catIdx) => {
             const shouldRenderSlide = Math.abs(catIdx - safeSelectedIndex) <= 2;
+            const isActiveSlide = catIdx === safeSelectedIndex;
             const groupedItems = shouldRenderSlide
               ? groupedByCategoryId.get(cat.id) ?? []
               : [];
@@ -446,7 +526,7 @@ export const SwipeableMenuView = ({
             return (
               <div
                 key={cat.id}
-                className="flex-[0_0_100%] min-w-0 px-1"
+                className="menu-swipe-slide flex-[0_0_100%] min-w-0 px-1"
               >
                 {!shouldRenderSlide ? (
                   <div className="min-h-[50vh]" aria-hidden="true" />
@@ -456,7 +536,7 @@ export const SwipeableMenuView = ({
                     const hasNamedSubgroups = subgroups.some((s) => s.title);
 
                     return (
-                      <section key={group.category.id} className="mb-10">
+                      <section key={group.category.id} className="menu-section mb-10">
                         {cat.id === 'all' && (
                           <header className="flex items-baseline justify-between mb-5 px-1">
                             <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
@@ -487,6 +567,7 @@ export const SwipeableMenuView = ({
                                   formatPrice={formatPrice}
                                   getPrice={getPrice}
                                   fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                  active={isActiveSlide}
                                 />
                               ))}
                             {subgroups
@@ -515,6 +596,7 @@ export const SwipeableMenuView = ({
                                       formatPrice={formatPrice}
                                       getPrice={getPrice}
                                       fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                      active={isActiveSlide}
                                     />
                                   </AccordionContent>
                                 </AccordionItem>
@@ -527,6 +609,7 @@ export const SwipeableMenuView = ({
                             formatPrice={formatPrice}
                             getPrice={getPrice}
                             fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                            active={isActiveSlide}
                           />
                         )}
                       </section>
@@ -545,7 +628,9 @@ export const SwipeableMenuView = ({
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
-          className="pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full bg-card/70 backdrop-blur-xl border border-border/20 shadow-lg"
+          className={`pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full border border-border/20 shadow-lg transition-[background-color,backdrop-filter] duration-150 ${
+            contentDragging ? 'bg-card/95 backdrop-blur-0' : 'bg-card/70 backdrop-blur-md'
+          }`}
         >
           {/* Call Waiter Button - Minimal */}
           <motion.button
