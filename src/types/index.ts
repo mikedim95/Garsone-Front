@@ -186,6 +186,63 @@ export interface StoreInfo {
    printers?: string[];
 }
 
+export type RemoteNodeStatus = 'PENDING' | 'ONLINE' | 'APPLYING' | 'DEGRADED' | 'ERROR' | 'OFFLINE';
+export type RemotePrinterType = '58' | '80';
+
+export interface RemoteNodePrinter {
+  id?: string;
+  type: RemotePrinterType;
+  ordinal: number;
+  mac: string;
+  topicSuffix: string;
+  interface?: string;
+  label?: string;
+}
+
+export interface RemoteNodeConfig {
+  displayName: string;
+  nodeSlug: string;
+  tailscaleHostname?: string;
+  localHostname?: string;
+  wifiSsid?: string;
+  wifiPassword?: string;
+  wifiPasswordSet?: boolean;
+  mqttHost: string;
+  mqttPort: number;
+  mqttTls: boolean;
+  mqttInsecure: boolean;
+  mqttUser?: string;
+  mqttPass?: string;
+  mqttPassSet?: boolean;
+  dockerImage?: string;
+  encoding?: string;
+  codepage?: string;
+  feedLines?: number;
+  pollSeconds?: number;
+  timezone?: string;
+  supportPhone?: string;
+  supportWhatsapp?: string;
+  supportUrl?: string;
+  notes?: string;
+  printers: RemoteNodePrinter[];
+}
+
+export interface RemoteNode {
+  id: string;
+  storeId: string;
+  slug: string;
+  displayName: string;
+  desiredConfigVersion: number;
+  lastAppliedVersion?: number | null;
+  lastSeenAt?: string | null;
+  status: RemoteNodeStatus;
+  statusMessage?: string | null;
+  lastLog?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  config: Partial<RemoteNodeConfig>;
+}
+
 export interface StoreOverview {
   id: string;
   name: string;
