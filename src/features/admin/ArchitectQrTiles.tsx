@@ -9,7 +9,6 @@ import {
   Link as LinkIcon,
   Loader2,
   Plus,
-  Printer,
   QrCode,
   RefreshCcw,
   Search,
@@ -71,6 +70,7 @@ import type {
   RemoteNode,
   RemoteNodeConfig,
   RemoteNodePrinter,
+  RemoteNodeWifi,
   StoreInfo,
   StoreOverview,
 } from "@/types";
@@ -95,6 +95,15 @@ const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
   localHostname: "",
   wifiSsid: "",
   wifiPassword: "",
+  wifiNetworks: [
+    {
+      id: "wifi-1",
+      ssid: "",
+      password: "",
+      priority: 1,
+      hidden: false,
+    },
+  ],
   mqttHost: "",
   mqttPort: 8883,
   mqttTls: true,
@@ -311,7 +320,6 @@ export default function ArchitectQrTiles() {
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
   const [deletingTileId, setDeletingTileId] = useState<string | null>(null);
   const [updatingMode, setUpdatingMode] = useState(false);
-  const [savingPrinters, setSavingPrinters] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [poolSearch, setPoolSearch] = useState("");
   const [storeSearch, setStoreSearch] = useState("");
@@ -623,6 +631,21 @@ export default function ArchitectQrTiles() {
         setRemoteNode(node);
         setNodeToken(null);
         if (node?.config) {
+          const configWifi =
+            node.config.wifiNetworks?.length
+              ? node.config.wifiNetworks
+              : node.config.wifiSsid
+              ? [
+                  {
+                    id: "wifi-1",
+                    ssid: node.config.wifiSsid,
+                    password: "",
+                    passwordSet: node.config.wifiPasswordSet,
+                    priority: 1,
+                    hidden: false,
+                  },
+                ]
+              : defaultRemoteNodeConfig().wifiNetworks;
           setNodeConfig({
             ...defaultRemoteNodeConfig(),
             ...node.config,
@@ -631,6 +654,7 @@ export default function ArchitectQrTiles() {
             printers: node.config.printers?.length
               ? node.config.printers
               : defaultRemoteNodeConfig().printers,
+            wifiNetworks: configWifi,
             wifiPassword: "",
             mqttPass: "",
           });
@@ -895,40 +919,6 @@ export default function ArchitectQrTiles() {
     [selectedStoreId, toast]
   );
 
-  const handleSavePrinters = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setSavingPrinters(true);
-    try {
-      const cleaned = Array.from(
-        new Set(printers.map((printer) => printer.trim()).filter(Boolean))
-      );
-      const res = await api.adminUpdateStorePrinters(selectedStoreId, cleaned);
-      const nextPrinters = res.store.printers ?? [];
-      setPrinters(nextPrinters);
-      setStores((current) =>
-        current.map((store) =>
-          store.id === selectedStoreId
-            ? { ...store, printers: nextPrinters }
-            : store
-        )
-      );
-      toast({
-        title: "Printers saved",
-        description: "Venue printer topics are up to date.",
-      });
-    } catch (error) {
-      console.error("Failed to save printers", error);
-      toast({
-        variant: "destructive",
-        title: "Save failed",
-        description:
-          error instanceof ApiError ? error.message : "Please try again.",
-      });
-    } finally {
-      setSavingPrinters(false);
-    }
-  }, [printers, selectedStoreId, toast]);
-
   const updateNodeField = useCallback(
     <K extends keyof RemoteNodeConfig>(key: K, value: RemoteNodeConfig[K]) => {
       setNodeConfig((current) => ({ ...current, [key]: value }));
@@ -947,6 +937,47 @@ export default function ArchitectQrTiles() {
     },
     []
   );
+
+  const updateWifiNetwork = useCallback(
+    (index: number, patch: Partial<RemoteNodeWifi>) => {
+      setNodeConfig((current) => ({
+        ...current,
+        wifiNetworks: (current.wifiNetworks ?? []).map((wifi, wifiIndex) =>
+          wifiIndex === index ? { ...wifi, ...patch } : wifi
+        ),
+      }));
+    },
+    []
+  );
+
+  const addWifiNetwork = useCallback(() => {
+    setNodeConfig((current) => {
+      const existing = current.wifiNetworks ?? [];
+      const index = existing.length;
+      return {
+        ...current,
+        wifiNetworks: [
+          ...existing,
+          {
+            id: `wifi-${index + 1}`,
+            ssid: "",
+            password: "",
+            priority: index + 1,
+            hidden: false,
+          },
+        ],
+      };
+    });
+  }, []);
+
+  const removeWifiNetwork = useCallback((index: number) => {
+    setNodeConfig((current) => ({
+      ...current,
+      wifiNetworks: (current.wifiNetworks ?? []).filter(
+        (_, wifiIndex) => wifiIndex !== index
+      ),
+    }));
+  }, []);
 
   const addNodePrinter = useCallback(() => {
     setNodeConfig((current) => {
@@ -982,6 +1013,15 @@ export default function ArchitectQrTiles() {
     try {
       const payload: RemoteNodeConfig = {
         ...nodeConfig,
+        wifiNetworks: (nodeConfig.wifiNetworks ?? [])
+          .map((wifi, index) => ({
+            ...wifi,
+            id: wifi.id || `wifi-${index + 1}`,
+            ssid: wifi.ssid.trim(),
+            priority: Number(wifi.priority || index + 1),
+            hidden: Boolean(wifi.hidden),
+          }))
+          .filter((wifi) => wifi.ssid.length > 0),
         printers: nodeConfig.printers.map((printer, index) => ({
           ...printer,
           id: printer.id || `printer-${index + 1}`,
@@ -1006,6 +1046,13 @@ export default function ArchitectQrTiles() {
         ...(res.node.config as Partial<RemoteNodeConfig>),
         wifiPassword: "",
         mqttPass: "",
+        wifiNetworks:
+          (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
+            ?.length
+            ? (res.node.config?.wifiNetworks as RemoteNodeWifi[])
+            : payload.wifiNetworks?.length
+            ? payload.wifiNetworks.map((wifi) => ({ ...wifi, password: "" }))
+            : defaultRemoteNodeConfig().wifiNetworks,
         printers:
           (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
             ? (res.node.config?.printers as RemoteNodePrinter[])
@@ -1688,77 +1735,6 @@ export default function ArchitectQrTiles() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <CardTitle className="flex items-center gap-2 text-base">
-                          <Printer className="h-4 w-4 text-primary" />
-                          Printers
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Configure printer topics for this venue.
-                        </CardDescription>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPrinters((current) => [...current, ""])}
-                        >
-                          <Plus className="mr-1.5 h-4 w-4" />
-                          Add
-                        </Button>
-                        <Button size="sm" onClick={handleSavePrinters}>
-                          {savingPrinters ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : null}
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {printers.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border/70 px-4 py-10 text-center text-muted-foreground">
-                        No printers configured yet.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {printers.map((printer, index) => (
-                          <div key={`${index}-${printer}`} className="flex gap-2">
-                            <Input
-                              value={printer}
-                              onChange={(event) =>
-                                setPrinters((current) =>
-                                  current.map((value, itemIndex) =>
-                                    itemIndex === index
-                                      ? event.target.value
-                                      : value
-                                  )
-                                )
-                              }
-                              placeholder={`printer_${index + 1}`}
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-10 w-10 text-muted-foreground hover:text-destructive"
-                              onClick={() =>
-                                setPrinters((current) =>
-                                  current.filter((_, itemIndex) => itemIndex !== index)
-                                )
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base">
                           <ServerCog className="h-4 w-4 text-primary" />
                           Remote Node Pi
                         </CardTitle>
@@ -1825,22 +1801,67 @@ export default function ArchitectQrTiles() {
 
                     <Separator />
 
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
                         <Label className="flex items-center gap-1.5">
                           <Wifi className="h-3.5 w-3.5" />
-                          Local Wi-Fi SSID
+                          Local Wi-Fi connections
                         </Label>
-                        <Input value={nodeConfig.wifiSsid || ""} onChange={(event) => updateNodeField("wifiSsid", event.target.value)} />
+                        <Button variant="outline" size="sm" onClick={addWifiNetwork}>
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          Add Wi-Fi
+                        </Button>
                       </div>
-                      <div>
-                        <Label>Local Wi-Fi password {nodeConfig.wifiPasswordSet ? "(saved)" : ""}</Label>
-                        <Input
-                          type="password"
-                          value={nodeConfig.wifiPassword || ""}
-                          onChange={(event) => updateNodeField("wifiPassword", event.target.value)}
-                          placeholder={nodeConfig.wifiPasswordSet ? "Leave blank to keep existing" : ""}
-                        />
+                      <div className="space-y-2">
+                        {(nodeConfig.wifiNetworks ?? []).map((wifi, index) => (
+                          <div key={wifi.id || index} className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12">
+                            <div className="md:col-span-4">
+                              <Label>SSID</Label>
+                              <Input
+                                value={wifi.ssid}
+                                onChange={(event) => updateWifiNetwork(index, { ssid: event.target.value })}
+                                placeholder={`Venue Wi-Fi ${index + 1}`}
+                              />
+                            </div>
+                            <div className="md:col-span-4">
+                              <Label>Password {wifi.passwordSet ? "(saved)" : ""}</Label>
+                              <Input
+                                type="password"
+                                value={wifi.password || ""}
+                                onChange={(event) => updateWifiNetwork(index, { password: event.target.value })}
+                                placeholder={wifi.passwordSet ? "Leave blank to keep existing" : ""}
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <Label>Priority</Label>
+                              <Input
+                                type="number"
+                                value={wifi.priority ?? index + 1}
+                                onChange={(event) => updateWifiNetwork(index, { priority: Number(event.target.value || index + 1) })}
+                              />
+                            </div>
+                            <div className="flex items-end gap-3 pb-2 md:col-span-1">
+                              <label className="flex items-center gap-2 text-sm">
+                                <Switch
+                                  checked={Boolean(wifi.hidden)}
+                                  onCheckedChange={(checked) => updateWifiNetwork(index, { hidden: checked })}
+                                />
+                                Hidden
+                              </label>
+                            </div>
+                            <div className="flex items-end justify-end md:col-span-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() => removeWifiNetwork(index)}
+                                disabled={(nodeConfig.wifiNetworks ?? []).length <= 1}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 

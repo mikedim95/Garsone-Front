@@ -203,6 +203,15 @@ export interface RemoteNodePrinter {
   label?: string;
 }
 
+export interface RemoteNodeWifi {
+  id?: string;
+  ssid: string;
+  password?: string;
+  passwordSet?: boolean;
+  priority?: number;
+  hidden?: boolean;
+}
+
 export interface RemoteNodeConfig {
   displayName: string;
   nodeSlug: string;
@@ -211,6 +220,7 @@ export interface RemoteNodeConfig {
   wifiSsid?: string;
   wifiPassword?: string;
   wifiPasswordSet?: boolean;
+  wifiNetworks?: RemoteNodeWifi[];
   mqttHost: string;
   mqttPort: number;
   mqttTls: boolean;
