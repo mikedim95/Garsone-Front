@@ -291,6 +291,44 @@ export const ManagerMenuPanel = () => {
       .filter((item) => item.categoryId === category.id || item.category === category.title)
       .filter((item) => (showDisabled ? true : item.isAvailable !== false)),
   }));
+  const subcategoryOptions = useMemo(() => {
+    const byCategory = new Map<string, { en: string; el: string }[]>();
+    for (const category of categories) {
+      const seen = new Set<string>();
+      const options = items
+        .filter((item) => item.categoryId === category.id || item.category === category.title)
+        .map((item) => ({
+          en: (item.subcategoryEn || item.subcategory || '').trim(),
+          el: (item.subcategoryEl || item.subcategory || '').trim(),
+        }))
+        .filter((option) => option.en || option.el)
+        .filter((option) => {
+          const key = `${option.en.toLowerCase()}|${option.el.toLowerCase()}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => (a.en || a.el).localeCompare(b.en || b.el));
+      byCategory.set(category.id, options);
+    }
+    return byCategory;
+  }, [categories, items]);
+  const selectedSubcategoryOptions = subcategoryOptions.get(form.categoryId) ?? [];
+  const groupItemsBySubcategory = (categoryItems: ManagerItemSummary[]) => {
+    const groups = new Map<string, { label: string; items: ManagerItemSummary[] }>();
+    for (const item of categoryItems) {
+      const label = (item.subcategoryEn || item.subcategoryEl || item.subcategory || '').trim() || 'Uncategorized';
+      const key = label.toLowerCase();
+      const group = groups.get(key) ?? { label, items: [] };
+      group.items.push(item);
+      groups.set(key, group);
+    }
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.label === 'Uncategorized') return 1;
+      if (b.label === 'Uncategorized') return -1;
+      return a.label.localeCompare(b.label);
+    });
+  };
 
   return (
     <Card className="p-6">
@@ -344,7 +382,10 @@ export const ManagerMenuPanel = () => {
             <div className="space-y-2">
               {items.length === 0 ? (
                 <div className="text-xs text-muted-foreground">No items in this category.</div>
-              ) : items.map((item)=> (
+              ) : groupItemsBySubcategory(items).map((group) => (
+                <div key={group.label} className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">{group.label}</div>
+                  {group.items.map((item)=> (
                 <div key={item.id} className={`flex items-center justify-between border rounded-lg p-3 ${item.isAvailable === false ? 'opacity-60' : ''}`}>
                   <div>
                     <div className="font-medium">
@@ -447,6 +488,8 @@ export const ManagerMenuPanel = () => {
                     </Button>
                   </div>
                 </div>
+                  ))}
+                </div>
               ))}
             </div>
           </section>
@@ -504,6 +547,24 @@ export const ManagerMenuPanel = () => {
               <Input placeholder="Title (EN)" value={form.titleEn} onChange={(e)=>setForm({...form, titleEn: e.target.value})}/>
               <Input placeholder="Title (EL)" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
             </div>
+            {selectedSubcategoryOptions.length > 0 && (
+              <select
+                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                value=""
+                onChange={(e) => {
+                  const option = selectedSubcategoryOptions[Number(e.target.value)];
+                  if (!option) return;
+                  setForm({ ...form, subcategoryEn: option.en, subcategoryEl: option.el });
+                }}
+              >
+                <option value="">Choose existing subcategory</option>
+                {selectedSubcategoryOptions.map((option, index) => (
+                  <option key={`${option.en}-${option.el}`} value={index}>
+                    {option.en || option.el}{option.el && option.el !== option.en ? ` / ${option.el}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Input placeholder="Subcategory (EN)" value={form.subcategoryEn} onChange={(e)=>setForm({...form, subcategoryEn: e.target.value})}/>
               <Input placeholder="Subcategory (EL)" value={form.subcategoryEl} onChange={(e)=>setForm({...form, subcategoryEl: e.target.value})}/>
