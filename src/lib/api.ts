@@ -34,6 +34,8 @@ import type {
   WaiterTableOverview,
   OrderingMode,
   StoreOverview,
+  RemoteNode,
+  RemoteNodeConfig,
 } from "@/types";
 import { devMocks } from "./devMocks";
 import { isOfflineModeEnabled } from "./offlineMode";
@@ -117,6 +119,11 @@ type QRTileUpdatePayload = {
   label?: string | null;
 };
 type GenerateTilePayload = { count: number };
+type RemoteNodeSaveResponse = {
+  node: RemoteNode;
+  token?: string | null;
+  tokenOnlyShownOnce?: boolean;
+};
 type LocalityApprovalPayload = {
   publicCode: string;
   tableId: string;
@@ -896,6 +903,52 @@ export const api = {
       : fetchApi<{ store: StoreInfo }>(`/admin/stores/${storeId}/printers`, {
           method: "PATCH",
           body: JSON.stringify({ printers }),
+        }),
+  adminListStoreNodes: (
+    storeId: string
+  ): Promise<{ nodes: RemoteNode[] }> =>
+    isOffline()
+      ? Promise.resolve({ nodes: [] })
+      : fetchApi<{ nodes: RemoteNode[] }>(`/admin/stores/${storeId}/nodes`),
+  adminSaveStoreMainNode: (
+    storeId: string,
+    data: RemoteNodeConfig
+  ): Promise<RemoteNodeSaveResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          node: {
+            id: "offline-node",
+            storeId,
+            slug: data.nodeSlug || "main",
+            displayName: data.displayName,
+            desiredConfigVersion: 1,
+            status: "PENDING",
+            config: data,
+          },
+          token: "offline-token",
+          tokenOnlyShownOnce: true,
+        })
+      : fetchApi<RemoteNodeSaveResponse>(`/admin/stores/${storeId}/nodes/main`, {
+          method: "PUT",
+          body: JSON.stringify(data),
+        }),
+  adminRotateNodeToken: (nodeId: string): Promise<RemoteNodeSaveResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          node: {
+            id: nodeId,
+            storeId: "offline-store",
+            slug: "main",
+            displayName: "Offline node",
+            desiredConfigVersion: 1,
+            status: "PENDING",
+            config: {},
+          },
+          token: "offline-token",
+          tokenOnlyShownOnce: true,
+        })
+      : fetchApi<RemoteNodeSaveResponse>(`/admin/nodes/${nodeId}/rotate-token`, {
+          method: "POST",
         }),
 
   // Payment: Viva payment
