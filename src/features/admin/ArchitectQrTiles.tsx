@@ -133,6 +133,31 @@ const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
   ],
 });
 
+const normalizeRemoteNodeWifi = (
+  wifi: Partial<RemoteNodeWifi>,
+  index: number
+): RemoteNodeWifi => ({
+  id: wifi.id || `wifi-${index + 1}`,
+  ssid: wifi.ssid || "",
+  password: wifi.password || "",
+  passwordSet: Boolean(wifi.passwordSet),
+  priority: Number(wifi.priority || index + 1),
+  hidden: Boolean(wifi.hidden),
+});
+
+const normalizeRemoteNodePrinter = (
+  printer: Partial<RemoteNodePrinter>,
+  index: number
+): RemoteNodePrinter => ({
+  id: printer.id || `printer-${index + 1}`,
+  type: printer.type === "80" ? "80" : "58",
+  ordinal: Number(printer.ordinal || index + 1),
+  mac: printer.mac || "",
+  topicSuffix: printer.topicSuffix || `printer_${index + 1}`,
+  interface: printer.interface || `/dev/rfcomm${index}`,
+  label: printer.label || printer.topicSuffix || `Printer ${index + 1}`,
+});
+
 const formatDate = (value?: string) => {
   if (!value) return "—";
   const date = new Date(value);
@@ -633,17 +658,17 @@ export default function ArchitectQrTiles() {
         if (node?.config) {
           const configWifi =
             node.config.wifiNetworks?.length
-              ? node.config.wifiNetworks
+              ? node.config.wifiNetworks.map(normalizeRemoteNodeWifi)
               : node.config.wifiSsid
               ? [
-                  {
+                  normalizeRemoteNodeWifi({
                     id: "wifi-1",
                     ssid: node.config.wifiSsid,
                     password: "",
                     passwordSet: node.config.wifiPasswordSet,
                     priority: 1,
                     hidden: false,
-                  },
+                  }, 0),
                 ]
               : defaultRemoteNodeConfig().wifiNetworks;
           setNodeConfig({
@@ -652,7 +677,7 @@ export default function ArchitectQrTiles() {
             displayName: node.config.displayName || node.displayName,
             nodeSlug: node.config.nodeSlug || node.slug,
             printers: node.config.printers?.length
-              ? node.config.printers
+              ? node.config.printers.map(normalizeRemoteNodePrinter)
               : defaultRemoteNodeConfig().printers,
             wifiNetworks: configWifi,
             wifiPassword: "",
@@ -1049,14 +1074,16 @@ export default function ArchitectQrTiles() {
         wifiNetworks:
           (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
             ?.length
-            ? (res.node.config?.wifiNetworks as RemoteNodeWifi[])
+            ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(normalizeRemoteNodeWifi)
             : payload.wifiNetworks?.length
-            ? payload.wifiNetworks.map((wifi) => ({ ...wifi, password: "" }))
+            ? payload.wifiNetworks.map((wifi, index) =>
+                normalizeRemoteNodeWifi({ ...wifi, password: "" }, index)
+              )
             : defaultRemoteNodeConfig().wifiNetworks,
         printers:
           (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
-            ? (res.node.config?.printers as RemoteNodePrinter[])
-            : payload.printers,
+            ? (res.node.config?.printers as RemoteNodePrinter[]).map(normalizeRemoteNodePrinter)
+            : payload.printers.map(normalizeRemoteNodePrinter),
       });
       toast({
         title: "Remote node saved",
@@ -1217,7 +1244,7 @@ export default function ArchitectQrTiles() {
         tone="secondary"
         rightContent={
           <Select
-            value={selectedStoreId || undefined}
+            value={selectedStoreId}
             onValueChange={setSelectedStoreId}
             disabled={loadingStores || stores.length === 0}
           >
@@ -1672,7 +1699,7 @@ export default function ArchitectQrTiles() {
                         </CardDescription>
                       </div>
                       <Select
-                        value={storeOrderingMode}
+                        value={storeOrderingMode || "qr"}
                         onValueChange={handleModeChange}
                         disabled={updatingMode}
                       >
@@ -1920,7 +1947,7 @@ export default function ArchitectQrTiles() {
                           <div key={printer.id || index} className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12">
                             <div className="md:col-span-1">
                               <Label>Type</Label>
-                              <Select value={printer.type} onValueChange={(value) => updateNodePrinter(index, { type: value as "58" | "80" })}>
+                              <Select value={printer.type || "58"} onValueChange={(value) => updateNodePrinter(index, { type: value as "58" | "80" })}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="58">58mm</SelectItem>
