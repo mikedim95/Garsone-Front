@@ -415,7 +415,6 @@ export default function ArchitectQrTiles() {
   );
   const [loadingNode, setLoadingNode] = useState(false);
   const [savingNode, setSavingNode] = useState(false);
-  const [nodeToken, setNodeToken] = useState<string | null>(null);
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
 
   const isArchitect = user?.role === "architect";
@@ -728,7 +727,6 @@ export default function ArchitectQrTiles() {
         const res = await api.adminListStoreNodes(storeId);
         const node = res.nodes?.[0] ?? null;
         setRemoteNode(node);
-        setNodeToken(null);
         if (node?.config) {
           const configWifi =
             node.config.wifiNetworks?.length
@@ -1186,7 +1184,6 @@ export default function ArchitectQrTiles() {
       const payload = buildNodeConfigPayload(nodeConfig);
       const res = await api.adminSaveStoreMainNode(selectedStoreId, payload);
       setRemoteNode(res.node);
-      if (res.token) setNodeToken(res.token);
       const topics = payload.printers
         .map((printer) => printer.topicSuffix.trim())
         .filter(Boolean);
@@ -1242,7 +1239,6 @@ export default function ArchitectQrTiles() {
           selectedStoreId
         );
         setRemoteNode(res.node);
-        setNodeToken(res.token || null);
         setPendingNodes((current) =>
           current.map((node) =>
             node.id === pendingNode.id
@@ -1295,10 +1291,9 @@ export default function ArchitectQrTiles() {
     try {
       const res = await api.adminRotateNodeToken(remoteNode.id);
       setRemoteNode(res.node);
-      setNodeToken(res.token || null);
       toast({
         title: "Node token rotated",
-        description: "The next MQTT config push will carry the new token.",
+        description: "The new token was sent to the Pi over MQTT.",
       });
     } catch (error) {
       console.error("Failed to rotate node token", error);
@@ -2082,18 +2077,6 @@ export default function ArchitectQrTiles() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    {nodeToken ? (
-                      <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                        <Label>Node token shown once</Label>
-                        <div className="mt-2 flex gap-2">
-                          <Input value={nodeToken} readOnly className="font-mono text-xs" />
-                          <Button variant="outline" size="icon" onClick={() => void copyText(nodeToken)}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-
                     <div className="grid gap-3 md:grid-cols-2">
                       <div>
                         <Label>Display name</Label>
