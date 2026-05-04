@@ -43,10 +43,7 @@ import {
   ListChecks,
   Users,
   UtensilsCrossed,
-  ChevronDown,
-  ChevronUp,
   RefreshCcw,
-  Search,
   ChefHat,
   Tag,
 } from "lucide-react";
@@ -400,7 +397,6 @@ export default function ManagerDashboard() {
   const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
   const [loadingQrTiles, setLoadingQrTiles] = useState(false);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
-  const [qrTileSearch, setQrTileSearch] = useState("");
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
@@ -459,9 +455,11 @@ export default function ManagerDashboard() {
     id?: string;
     label: string;
     isActive: boolean;
+    qrTileId: string;
   }>({
     label: "",
     isActive: true,
+    qrTileId: "unassigned",
   });
   const [savingTable, setSavingTable] = useState(false);
   const [tableDeletingId, setTableDeletingId] = useState<string | null>(null);
@@ -514,7 +512,6 @@ export default function ManagerDashboard() {
     const toInput = (d: Date) => d.toISOString().slice(0, 10);
     return { start: toInput(start), end: toInput(end) };
   });
-  const [tablesCollapsed, setTablesCollapsed] = useState(false);
   const [menuCategoryMode, setMenuCategoryMode] =
     useState<MenuCategoryMode>("units");
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(
@@ -898,21 +895,24 @@ export default function ManagerDashboard() {
     );
   }, [managerTables]);
 
-  const filteredQrTiles = useMemo(() => {
-    const term = qrTileSearch.trim().toLowerCase();
-    if (!term) return qrTiles;
-    return qrTiles.filter((tile) => {
-      const assignedLabel =
-        tile.tableId && tablesById.get(tile.tableId)?.label
-          ? tablesById.get(tile.tableId)?.label
-          : tile.tableLabel ?? "";
-      return (
-        tile.publicCode.toLowerCase().includes(term) ||
-        (tile.label ?? "").toLowerCase().includes(term) ||
-        (assignedLabel ?? "").toLowerCase().includes(term)
-      );
+  const assignedQrTileByTableId = useMemo(() => {
+    const map = new Map<string, QRTile>();
+    qrTiles.forEach((tile) => {
+      if (!tile.tableId || map.has(tile.tableId)) return;
+      map.set(tile.tableId, tile);
     });
-  }, [qrTiles, qrTileSearch, tablesById]);
+    return map;
+  }, [qrTiles]);
+
+  const tableQrTileOptions = useMemo(() => {
+    return qrTiles
+      .filter((tile) => !tile.tableId || tile.tableId === tableForm.id)
+      .sort((a, b) =>
+        `${a.label ?? ""}${a.publicCode}`.localeCompare(
+          `${b.label ?? ""}${b.publicCode}`
+        )
+      );
+  }, [qrTiles, tableForm.id]);
 
   const currencyCode =
     typeof window !== "undefined"
@@ -1829,20 +1829,6 @@ export default function ManagerDashboard() {
     });
   }, [sortedWaiters, waiterAssignmentsMap, tablesById, ordersByTable]);
 
-  const workloadDistribution = useMemo(() => {
-    const total = waiterDetails.reduce(
-      (sum, detail) => sum + detail.ordersHandled,
-      0
-    );
-    if (!total)
-      return [] as Array<{ name: string; percent: number; count: number }>;
-    return waiterDetails.map((detail) => ({
-      name: detail.waiter.displayName || detail.waiter.email || "Waiter",
-      percent: Number(((detail.ordersHandled / total) * 100).toFixed(1)),
-      count: detail.ordersHandled,
-    }));
-  }, [waiterDetails]);
-
   // Personnel: Pro analytics (depends on waiterDetails)
   const topAndAttentionWaiters = useMemo(() => {
     const withP90 = waiterDetails
@@ -2163,7 +2149,12 @@ export default function ManagerDashboard() {
   );
 
   const openCreateTable = () => {
-    setTableForm({ id: undefined, label: "", isActive: true });
+    setTableForm({
+      id: undefined,
+      label: "",
+      isActive: true,
+      qrTileId: "unassigned",
+    });
     setTableModalOpen(true);
   };
 
@@ -2171,7 +2162,13 @@ export default function ManagerDashboard() {
     table: TableSummary | (ManagerTableSummary & { openOrders: number })
   ) => {
     const isActive = "active" in table ? table.active : table.isActive;
-    setTableForm({ id: table.id, label: table.label, isActive });
+    const assignedTileId = assignedQrTileByTableId.get(table.id)?.id ?? "unassigned";
+    setTableForm({
+      id: table.id,
+      label: table.label,
+      isActive,
+      qrTileId: assignedTileId,
+    });
     setTableModalOpen(true);
   };
 
@@ -2180,18 +2177,53 @@ export default function ManagerDashboard() {
     if (!label) return;
     setSavingTable(true);
     try {
+      let targetTableId = tableForm.id;
       if (tableForm.id) {
-        await api.managerUpdateTable(tableForm.id, {
+        const response = await api.managerUpdateTable(tableForm.id, {
           label,
           isActive: tableForm.isActive,
         });
+        targetTableId = response.table.id;
       } else {
-        await api.managerCreateTable({ label, isActive: tableForm.isActive });
+        const response = await api.managerCreateTable({
+          label,
+          isActive: tableForm.isActive,
+        });
+        targetTableId = response.table.id;
       }
+
+      if (targetTableId) {
+        const selectedQrTileId =
+          tableForm.qrTileId !== "unassigned" ? tableForm.qrTileId : null;
+        const currentTableTiles = qrTiles.filter(
+          (tile) => tile.tableId === targetTableId
+        );
+
+        for (const tile of currentTableTiles) {
+          if (tile.id !== selectedQrTileId) {
+            await api.managerUpdateQrTile(tile.id, { tableId: null });
+          }
+        }
+
+        if (selectedQrTileId) {
+          await api.managerUpdateQrTile(selectedQrTileId, {
+            tableId: targetTableId,
+          });
+        }
+      }
+
       await loadManagerTables();
+      if (storeId) {
+        await loadQrTiles(storeId);
+      }
       await loadWaiterData();
       setTableModalOpen(false);
-      setTableForm({ id: undefined, label: "", isActive: true });
+      setTableForm({
+        id: undefined,
+        label: "",
+        isActive: true,
+        qrTileId: "unassigned",
+      });
     } catch (error) {
       console.error("Failed to save table", error);
     } finally {
@@ -4014,150 +4046,6 @@ export default function ManagerDashboard() {
                     </Tabs>
                   </Card>
 
-                  {/* Workload Distribution Card */}
-                  <Card className="p-4 sm:p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          {t("manager.load", { defaultValue: "Load" })}
-                        </p>
-                        <h3 className="text-lg font-semibold">
-                          {t("manager.workload_distribution", {
-                            defaultValue: "Workload distribution",
-                          })}
-                        </h3>
-                      </div>
-                    </div>
-                    {workloadDistribution.length ? (
-                      <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                        <div className="h-full w-full max-w-2xl mx-auto">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart 
-                              data={workloadDistribution}
-                              margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-                            >
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                              <YAxis
-                                domain={[0, 100]}
-                                tickFormatter={(value) => `${value}%`}
-                                tick={{ fontSize: 12 }}
-                                width={40}
-                              />
-                              <Tooltip
-                                formatter={(
-                                  value: ValueType,
-                                  _name: NameType,
-                                  ctx?: TooltipPayload<ValueType, NameType>
-                                ) => {
-                                  const numericValue =
-                                    typeof value === "number"
-                                      ? value
-                                      : Number(value ?? 0);
-                                  const count =
-                                    typeof ctx?.payload?.count === "number"
-                                      ? ctx.payload.count
-                                      : 0;
-                                  return [
-                                    `${numericValue}% (${count})`,
-                                    "Orders",
-                                  ];
-                                }}
-                              />
-                              <Bar dataKey="percent" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-8">
-                        {t("manager.need_orders_for_workload", {
-                          defaultValue:
-                            "Need order history to calculate workload.",
-                        })}
-                      </p>
-                    )}
-                  </Card>
-
-                  <Card className="p-4 sm:p-6">
-                    <div className="mb-4">
-                      <p className="text-sm text-muted-foreground">
-                        {t("manager.benchmarks", {
-                          defaultValue: "Benchmarks",
-                        })}
-                      </p>
-                      <h3 className="text-lg font-semibold">
-                        {t("manager.performance", {
-                          defaultValue: "Performance",
-                        })}
-                      </h3>
-                    </div>
-                    <div className="overflow-x-auto -mx-4 sm:mx-0">
-                      <table className="w-full text-sm min-w-[480px]">
-                        <thead>
-                          <tr className="text-left text-xs text-muted-foreground border-b">
-                            <th className="py-2 px-4 sm:px-2">
-                              {t("manager.waiter", { defaultValue: "Staff" })}
-                            </th>
-                            <th className="py-2 px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.avg_serve_min", { defaultValue: "Avg Serve" })}</span>
-                              <span className="sm:hidden">Avg</span>
-                            </th>
-                            <th className="py-2 px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.p90_serve_min", { defaultValue: "P90 Serve" })}</span>
-                              <span className="sm:hidden">P90</span>
-                            </th>
-                            <th className="py-2 px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.orders_handled", { defaultValue: "Orders" })}</span>
-                              <span className="sm:hidden">#</span>
-                            </th>
-                            <th className="py-2 px-4 sm:px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.ready_served", { defaultValue: "Ready→Served" })}</span>
-                              <span className="sm:hidden">%</span>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {waiterDetails.map((detail) => (
-                            <tr
-                              key={detail.waiter.id}
-                              className="border-b last:border-b-0 hover:bg-muted/30"
-                            >
-                              <td className="py-2.5 px-4 sm:px-2 font-medium">
-                                <span className="truncate max-w-[120px] sm:max-w-none block">
-                                  {detail.waiter.displayName || detail.waiter.email}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-2 text-right tabular-nums">
-                                {formatMinutesValue(detail.avgServe)}
-                              </td>
-                              <td className="py-2.5 px-2 text-right tabular-nums">
-                                {formatMinutesValue(detail.p90Serve)}
-                              </td>
-                              <td className="py-2.5 px-2 text-right tabular-nums">{detail.ordersHandled}</td>
-                              <td className="py-2.5 px-4 sm:px-2 text-right tabular-nums">
-                                {detail.readyServedPercent != null
-                                  ? `${detail.readyServedPercent}%`
-                                  : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                          {waiterDetails.length === 0 && (
-                            <tr>
-                              <td
-                                className="py-6 px-4 text-muted-foreground text-center"
-                                colSpan={5}
-                              >
-                                {t("manager.no_waiter_data", {
-                                  defaultValue: "No waiter data yet.",
-                                })}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
 
                   {managerMode === "pro" && (
                     <>
@@ -4315,50 +4203,65 @@ export default function ManagerDashboard() {
                   )}
 
                   <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">Floor</p>
                         <h3 className="text-lg font-semibold">
-                          Tables overview
+                          Tables and QR tiles
                         </h3>
+                        <p className="text-sm text-muted-foreground">
+                          Create tables and link each one to a QR tile already assigned from Architect.
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
+                      <div className="flex items-center gap-2 self-start">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            await loadManagerTables();
+                            if (storeId) await loadQrTiles(storeId);
+                          }}
+                          disabled={loadingTables || loadingQrTiles}
+                          className="inline-flex items-center gap-2"
+                        >
+                          {loadingTables || loadingQrTiles ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="h-4 w-4" />
+                          )}
+                          Refresh
+                        </Button>
                         <Button
                           onClick={openCreateTable}
                           className="inline-flex items-center gap-2"
                         >
-                          <Plus className="h-4 w-4" /> {t("actions.add_table")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setTablesCollapsed((prev) => !prev)}
-                          aria-label={
-                            tablesCollapsed
-                              ? "Expand tables"
-                              : "Collapse tables"
-                          }
-                        >
-                          {tablesCollapsed ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronUp className="h-4 w-4" />
-                          )}
+                          <Plus className="h-4 w-4" /> {t("actions.create_table")}
                         </Button>
                       </div>
                     </div>
-                    {loadingTables ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-border/60 bg-card p-4">
+                        <p className="text-xs text-muted-foreground">Tables</p>
+                        <p className="mt-2 text-2xl font-semibold">{tablesOverview.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-card p-4">
+                        <p className="text-xs text-muted-foreground">Linked QR tiles</p>
+                        <p className="mt-2 text-2xl font-semibold">
+                          {Array.from(assignedQrTileByTableId.keys()).length}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-card p-4">
+                        <p className="text-xs text-muted-foreground">Available QR tiles</p>
+                        <p className="mt-2 text-2xl font-semibold">
+                          {qrTiles.filter((tile) => !tile.tableId).length}
+                        </p>
+                      </div>
+                    </div>
+                    {loadingTables || loadingQrTiles ? (
                       <DashboardGridSkeleton
                         count={4}
                         className="grid sm:grid-cols-2"
                       />
-                    ) : tablesCollapsed ? (
-                      <p className="text-sm text-muted-foreground">
-                        {t("manager.tables_collapsed_hint", {
-                          defaultValue:
-                            "Tables hidden. Expand to manage assignments.",
-                        })}
-                      </p>
                     ) : tablesOverview.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
                         {t("manager.no_tables", {
@@ -4368,203 +4271,80 @@ export default function ManagerDashboard() {
                       </p>
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {tablesOverview.map((table) => (
-                          <div
-                            key={table.id}
-                            className={`border border-border/60 rounded-xl p-4 bg-card space-y-3 ${
-                              table.isActive ? "" : "opacity-70"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-4">
-                              <div>
-                                <p className="font-semibold text-foreground">
-                                  {t("manager.table", {
-                                    defaultValue: "Table",
-                                  })}{" "}
-                                  {table.label}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {table.openOrders} open order
-                                  {table.openOrders === 1 ? "" : "s"}
-                                </p>
-                              </div>
-                              <Badge
-                                variant={
-                                  table.isActive ? "secondary" : "outline"
-                                }
-                              >
-                                {table.isActive
-                                  ? t("manager.active", {
-                                      defaultValue: "Active",
-                                    })
-                                  : t("manager.inactive", {
-                                      defaultValue: "Inactive",
-                                    })}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-col sm:flex-row gap-2 w-full">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                onClick={() => openEditTable(table)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />{" "}
-                                {t("actions.edit")}
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                onClick={() => handleDeleteTable(table.id)}
-                                disabled={tableDeletingId === table.id}
-                              >
-                                {tableDeletingId === table.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                )}
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          QR tiles
-                        </p>
-                        <h3 className="text-lg font-semibold">
-                          Bind QR public codes to tables
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          Assign printed QR tiles to tables so scans map to the
-                          right venue spots.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <div className="relative">
-                          <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-                          <Input
-                            value={qrTileSearch}
-                            onChange={(e) => setQrTileSearch(e.target.value)}
-                            placeholder="Search code, label, or table"
-                            className="pl-9 w-full md:w-64"
-                          />
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => storeId && loadQrTiles(storeId)}
-                          disabled={loadingQrTiles || !storeId}
-                          className="inline-flex items-center gap-2"
-                        >
-                          {loadingQrTiles ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <RefreshCcw className="h-4 w-4" />
-                          )}
-                          Refresh
-                        </Button>
-                      </div>
-                    </div>
-                    {!storeId ? (
-                      <p className="text-sm text-muted-foreground">
-                        Load store info first to manage QR tiles.
-                      </p>
-                    ) : loadingQrTiles ? (
-                      <DashboardGridSkeleton
-                        count={3}
-                        className="grid md:grid-cols-2"
-                      />
-                    ) : qrTiles.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No QR tiles found. Ask your architect to generate tiles,
-                        then bind them here.
-                      </p>
-                    ) : filteredQrTiles.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No tiles match this search.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {filteredQrTiles.map((tile) => {
-                          const assignedLabel =
-                            tile.tableId && tablesById.get(tile.tableId)?.label
-                              ? tablesById.get(tile.tableId)?.label
-                              : tile.tableLabel ?? null;
+                        {tablesOverview.map((table) => {
+                          const assignedTile = assignedQrTileByTableId.get(table.id) ?? null;
                           return (
                             <div
-                              key={tile.id}
-                              className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
+                              key={table.id}
+                              className={`rounded-xl border border-border/60 bg-card p-4 space-y-3 ${
+                                table.isActive ? "" : "opacity-70"
+                              }`}
                             >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                <div>
-                                  <p className="font-mono text-sm text-foreground">
-                                    {tile.publicCode}
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="space-y-1">
+                                  <p className="font-semibold text-foreground">
+                                    {t("manager.table", { defaultValue: "Table" })} {table.label}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {tile.label || "Unlabeled"} ·{" "}
-                                    {assignedLabel || "Unassigned"}
+                                    {table.openOrders} open order
+                                    {table.openOrders === 1 ? "" : "s"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    QR tile:{" "}
+                                    <span className="text-foreground">
+                                      {assignedTile
+                                        ? `${assignedTile.label || assignedTile.publicCode} (${assignedTile.publicCode})`
+                                        : "Not assigned"}
+                                    </span>
                                   </p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-muted-foreground">
-                                    Active
-                                  </span>
-                                  <Switch
-                                    checked={tile.isActive}
-                                    onCheckedChange={(checked) =>
-                                      handleUpdateQrTile(tile.id, {
-                                        isActive: checked,
-                                      })
-                                    }
-                                    disabled={updatingTileId === tile.id}
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                                <Label className="text-sm text-muted-foreground">
-                                  Assigned table
-                                </Label>
-                                <Select
-                                  value={tile.tableId ?? "unassigned"}
-                                  onValueChange={(value) =>
-                                    handleUpdateQrTile(tile.id, {
-                                      tableId:
-                                        value === "unassigned" ? null : value,
-                                    })
-                                  }
+                                <Badge
+                                  variant={table.isActive ? "secondary" : "outline"}
                                 >
-                                  <SelectTrigger className="w-full sm:w-64">
-                                    <SelectValue placeholder="Pick table" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="unassigned">
-                                      Unassigned
-                                    </SelectItem>
-                                    {sortedTables.map((table) => (
-                                      <SelectItem
-                                        key={table.id}
-                                        value={table.id}
-                                      >
-                                        {table.label}{" "}
-                                        {table.isActive ? "" : "(inactive)"}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  {table.isActive
+                                    ? t("manager.active", { defaultValue: "Active" })
+                                    : t("manager.inactive", { defaultValue: "Inactive" })}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => openEditTable(table)}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  {t("actions.edit")}
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => handleDeleteTable(table.id)}
+                                  disabled={tableDeletingId === table.id}
+                                >
+                                  {tableDeletingId === table.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                  )}
+                                  Delete
+                                </Button>
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     )}
+                    {!storeId ? (
+                      <p className="text-sm text-muted-foreground">
+                        Load store info first to manage QR tiles.
+                      </p>
+                    ) : qrTiles.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No QR tiles found. Ask your architect to generate and assign tiles to this store first.
+                      </p>
+                    ) : null}
                   </Card>
                 </TabsContent>
 
@@ -5825,7 +5605,12 @@ export default function ManagerDashboard() {
           onOpenChange={(open) => {
             setTableModalOpen(open);
             if (!open) {
-              setTableForm({ id: undefined, label: "", isActive: true });
+              setTableForm({
+                id: undefined,
+                label: "",
+                isActive: true,
+                qrTileId: "unassigned",
+              });
             }
           }}
         >
@@ -5849,6 +5634,32 @@ export default function ManagerDashboard() {
                     setTableForm((prev) => ({ ...prev, label: e.target.value }))
                   }
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label>{t("manager.qr_tile", { defaultValue: "QR tile" })}</Label>
+                <Select
+                  value={tableForm.qrTileId}
+                  onValueChange={(value) =>
+                    setTableForm((prev) => ({ ...prev, qrTileId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select QR tile" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">
+                      No QR tile
+                    </SelectItem>
+                    {tableQrTileOptions.map((tile) => (
+                      <SelectItem key={tile.id} value={tile.id}>
+                        {tile.label || tile.publicCode} ({tile.publicCode})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Pick from the QR tiles assigned to this store in Architect.
+                </p>
               </div>
               <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3 py-2">
                 <div>
