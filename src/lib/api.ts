@@ -943,7 +943,7 @@ export const api = {
   adminClaimPendingNode: (
     pendingNodeId: string,
     storeId: string,
-    config: RemoteNodeConfig
+    config?: Partial<RemoteNodeConfig>
   ): Promise<RemoteNodeSaveResponse> =>
     isOffline()
       ? Promise.resolve({
@@ -961,7 +961,7 @@ export const api = {
         })
       : fetchApi<RemoteNodeSaveResponse>(`/admin/pending-nodes/${pendingNodeId}/claim`, {
           method: "POST",
-          body: JSON.stringify({ storeId, config }),
+          body: JSON.stringify({ storeId, ...(config ? { config } : {}) }),
         }),
   adminSaveStoreMainNode: (
     storeId: string,

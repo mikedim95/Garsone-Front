@@ -1237,24 +1237,9 @@ export default function ArchitectQrTiles() {
       if (!selectedStoreId) return;
       setClaimingNodeId(pendingNode.id);
       try {
-        const firstMac = pendingNode.macAddresses[0] || "";
-        const payload = buildNodeConfigPayload({
-          ...nodeConfig,
-          displayName: nodeConfig.displayName || pendingNode.displayName || "Venue Pi",
-          nodeSlug: nodeConfig.nodeSlug || pendingNode.localHostname || "main",
-          tailscaleHostname:
-            nodeConfig.tailscaleHostname || pendingNode.tailscaleHostname || "",
-          localHostname: nodeConfig.localHostname || pendingNode.localHostname || "",
-          printers: nodeConfig.printers.map((printer, index) =>
-            index === 0 && !printer.mac
-              ? { ...printer, mac: firstMac }
-              : printer
-          ),
-        });
         const res = await api.adminClaimPendingNode(
           pendingNode.id,
-          selectedStoreId,
-          payload
+          selectedStoreId
         );
         setRemoteNode(res.node);
         setNodeToken(res.token || null);
@@ -1279,15 +1264,11 @@ export default function ArchitectQrTiles() {
             (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
               ?.length
               ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(normalizeRemoteNodeWifi)
-              : payload.wifiNetworks?.length
-              ? payload.wifiNetworks.map((wifi, index) =>
-                  normalizeRemoteNodeWifi({ ...wifi, password: "" }, index)
-                )
               : defaultRemoteNodeConfig().wifiNetworks,
           printers:
             (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
               ? (res.node.config?.printers as RemoteNodePrinter[]).map(normalizeRemoteNodePrinter)
-              : payload.printers.map(normalizeRemoteNodePrinter),
+              : defaultRemoteNodeConfig().printers,
         });
         toast({
           title: "Pi associated",
@@ -1305,7 +1286,7 @@ export default function ArchitectQrTiles() {
         setClaimingNodeId(null);
       }
     },
-    [nodeConfig, selectedStoreId, toast]
+    [selectedStoreId, toast]
   );
 
   const handleRotateNodeToken = useCallback(async () => {
