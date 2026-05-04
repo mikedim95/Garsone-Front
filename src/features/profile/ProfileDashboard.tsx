@@ -217,6 +217,15 @@ export default function ProfileDashboard() {
   const initials = getInitials(user?.displayName, user?.email);
   const roleLabel = user?.role ? ROLE_LABELS[user.role] || user.role : "User";
   const maskedPassword = "************";
+  const dashboardPath =
+    user?.role === "manager"
+      ? "/manager"
+      : user?.role === "waiter"
+        ? "/waiter"
+        : user?.role === "cook"
+          ? "/cook"
+          : "/";
+  const showStaffType = user?.role !== "manager";
 
   const handlePasswordModalChange = (open: boolean) => {
     setPasswordModalOpen(open);
@@ -325,45 +334,47 @@ export default function ProfileDashboard() {
                     </Label>
                     <Input id="profile-role" value={roleLabel} disabled />
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="profile-type">
-                      {t("profile.type", { defaultValue: "Type" })}
-                    </Label>
-                    <Input
-                      id="profile-type"
-                      value={profileForm.staffTitle}
-                      disabled={!staffTypeEditable}
-                      onChange={(event) =>
-                        setProfileForm((prev) => ({
-                          ...prev,
-                          staffTitle: event.target.value,
-                        }))
-                      }
-                      placeholder={
-                        staffTypeEditable
-                          ? t("profile.type_placeholder", {
-                              defaultValue: "Staff type",
-                            })
-                          : t("profile.type_unassigned", {
-                              defaultValue: "Assigned by manager",
-                            })
-                      }
-                    />
-                    {!staffTypeEditable && (
-                      <p className="text-xs text-muted-foreground">
-                        {t("profile.type_note", {
-                          defaultValue: "Only managers can change staff types.",
-                        })}
-                      </p>
-                    )}
-                    {staffTypeEditable && !staffTitleValid && (
-                      <p className="text-xs text-destructive">
-                        {t("profile.type_error", {
-                          defaultValue: "Use at least 2 characters.",
-                        })}
-                      </p>
-                    )}
-                  </div>
+                  {showStaffType && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="profile-type">
+                        {t("profile.type", { defaultValue: "Type" })}
+                      </Label>
+                      <Input
+                        id="profile-type"
+                        value={profileForm.staffTitle}
+                        disabled={!staffTypeEditable}
+                        onChange={(event) =>
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            staffTitle: event.target.value,
+                          }))
+                        }
+                        placeholder={
+                          staffTypeEditable
+                            ? t("profile.type_placeholder", {
+                                defaultValue: "Staff type",
+                              })
+                            : t("profile.type_unassigned", {
+                                defaultValue: "Assigned by manager",
+                              })
+                        }
+                      />
+                      {!staffTypeEditable && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("profile.type_note", {
+                            defaultValue: "Only managers can change staff types.",
+                          })}
+                        </p>
+                      )}
+                      {staffTypeEditable && !staffTitleValid && (
+                        <p className="text-xs text-destructive">
+                          {t("profile.type_error", {
+                            defaultValue: "Use at least 2 characters.",
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <Separator />
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -398,7 +409,16 @@ export default function ProfileDashboard() {
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="justify-end gap-2">
+              <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate(dashboardPath)}
+                >
+                  {t("profile.back_to_dashboard", {
+                    defaultValue: "Back to dashboard",
+                  })}
+                </Button>
+                <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
                   onClick={handleProfileReset}
@@ -411,6 +431,7 @@ export default function ProfileDashboard() {
                     defaultValue: "Save changes",
                   })}
                 </Button>
+                </div>
               </CardFooter>
             </Card>
           </div>
