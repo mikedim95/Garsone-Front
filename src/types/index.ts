@@ -100,6 +100,7 @@ export interface User {
   waiterTypeId?: string | null;
   cookType?: StaffType | null;
   waiterType?: StaffType | null;
+  mustChangePassword?: boolean;
 }
 
 export interface ArchitectStoreUser {

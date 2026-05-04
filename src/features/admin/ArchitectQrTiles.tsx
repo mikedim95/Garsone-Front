@@ -409,6 +409,7 @@ export default function ArchitectQrTiles() {
   const [loadingStoreUsers, setLoadingStoreUsers] = useState(false);
   const [savingStoreUser, setSavingStoreUser] = useState(false);
   const [editingStoreUserId, setEditingStoreUserId] = useState<string | null>(null);
+  const [storeUserDialogOpen, setStoreUserDialogOpen] = useState(false);
   const [storeUserForm, setStoreUserForm] = useState<StoreUserForm>(() =>
     defaultStoreUserForm()
   );
@@ -1145,12 +1146,18 @@ export default function ArchitectQrTiles() {
       displayName: storeUser.displayName,
       role: storeUser.role.toUpperCase() as StoreUserRoleInput,
     });
+    setStoreUserDialogOpen(true);
   }, []);
 
   const resetStoreUserForm = useCallback(() => {
     setEditingStoreUserId(null);
     setStoreUserForm(defaultStoreUserForm());
   }, []);
+
+  const startCreateStoreUser = useCallback(() => {
+    resetStoreUserForm();
+    setStoreUserDialogOpen(true);
+  }, [resetStoreUserForm]);
 
   const handleSaveStoreUser = useCallback(async () => {
     if (!selectedStoreId) return;
@@ -1186,6 +1193,7 @@ export default function ArchitectQrTiles() {
           : [...current, res.user];
       });
       resetStoreUserForm();
+      setStoreUserDialogOpen(false);
       toast({
         title: editingStoreUserId ? "User updated" : "User created",
         description: `${res.user.displayName} can access ${selectedStore?.name ?? "this store"}.`,
@@ -1224,6 +1232,30 @@ export default function ArchitectQrTiles() {
       }
     },
     [editingStoreUserId, loadOverview, resetStoreUserForm, selectedStoreId, toast]
+  );
+
+  const handleResetStoreUserPassword = useCallback(
+    async (storeUser: ArchitectStoreUser) => {
+      if (!selectedStoreId) return;
+      const confirmed = window.confirm(`Reset ${storeUser.displayName || storeUser.email}'s password to 1234?`);
+      if (!confirmed) return;
+      try {
+        const res = await api.adminUpdateStoreUser(selectedStoreId, storeUser.id, { password: "1234" });
+        setStoreUsers((current) => current.map((user) => (user.id === res.user.id ? res.user : user)));
+        toast({
+          title: "Password reset",
+          description: `${storeUser.displayName || storeUser.email} must change it after signing in with 1234.`,
+        });
+      } catch (error) {
+        console.error("Failed to reset store user password", error);
+        toast({
+          variant: "destructive",
+          title: "Password reset failed",
+          description: error instanceof ApiError ? error.message : "Please try again.",
+        });
+      }
+    },
+    [selectedStoreId, toast]
   );
 
   const updateNodeField = useCallback(
@@ -2249,78 +2281,23 @@ export default function ArchitectQrTiles() {
                           Create, edit and remove staff access for {selectedStore.name}.
                         </CardDescription>
                       </div>
-                      <Button variant="outline" size="sm" onClick={() => void loadStoreUsers(selectedStore.id)} disabled={loadingStoreUsers}>
-                        {loadingStoreUsers ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCcw className="mr-2 h-4 w-4" />
-                        )}
-                        Refresh
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => void loadStoreUsers(selectedStore.id)} disabled={loadingStoreUsers}>
+                          {loadingStoreUsers ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Refresh
+                        </Button>
+                        <Button size="sm" onClick={startCreateStoreUser}>
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          Add User
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid gap-3 rounded-lg border border-border/60 p-3 lg:grid-cols-12">
-                      <div className="lg:col-span-3">
-                        <Label>Email</Label>
-                        <Input
-                          value={storeUserForm.email}
-                          onChange={(event) =>
-                            setStoreUserForm((current) => ({ ...current, email: event.target.value }))
-                          }
-                          placeholder="staff@example.com"
-                        />
-                      </div>
-                      <div className="lg:col-span-3">
-                        <Label>Display name</Label>
-                        <Input
-                          value={storeUserForm.displayName}
-                          onChange={(event) =>
-                            setStoreUserForm((current) => ({ ...current, displayName: event.target.value }))
-                          }
-                          placeholder="Floor staff"
-                        />
-                      </div>
-                      <div className="lg:col-span-2">
-                        <Label>Role</Label>
-                        <Select
-                          value={storeUserForm.role}
-                          onValueChange={(value) =>
-                            setStoreUserForm((current) => ({ ...current, role: value as StoreUserRoleInput }))
-                          }
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="MANAGER">Manager</SelectItem>
-                            <SelectItem value="WAITER">Waiter</SelectItem>
-                            <SelectItem value="COOK">Cook</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="lg:col-span-2">
-                        <Label>Password</Label>
-                        <Input
-                          type="password"
-                          value={storeUserForm.password}
-                          onChange={(event) =>
-                            setStoreUserForm((current) => ({ ...current, password: event.target.value }))
-                          }
-                          placeholder={editingStoreUserId ? "Leave blank" : "Required"}
-                        />
-                      </div>
-                      <div className="flex items-end gap-2 lg:col-span-2">
-                        <Button size="sm" onClick={() => void handleSaveStoreUser()} disabled={savingStoreUser}>
-                          {savingStoreUser ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                          {editingStoreUserId ? "Update" : "Add"}
-                        </Button>
-                        {editingStoreUserId ? (
-                          <Button variant="outline" size="sm" onClick={resetStoreUserForm} disabled={savingStoreUser}>
-                            Cancel
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-
                     {storeUsers.length === 0 ? (
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
                         No store users yet.
@@ -2332,7 +2309,7 @@ export default function ArchitectQrTiles() {
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Role</TableHead>
-                            <TableHead className="w-[150px] text-right">Actions</TableHead>
+                            <TableHead className="w-[230px] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -2349,6 +2326,9 @@ export default function ArchitectQrTiles() {
                                 <div className="flex justify-end gap-2">
                                   <Button variant="outline" size="sm" onClick={() => startEditStoreUser(storeUser)}>
                                     Edit
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => void handleResetStoreUserPassword(storeUser)}>
+                                    Reset pass
                                   </Button>
                                   <Button
                                     variant="ghost"
@@ -2956,6 +2936,85 @@ export default function ArchitectQrTiles() {
                 <Building2 className="mr-2 h-4 w-4" />
               )}
               Create venue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={storeUserDialogOpen}
+        onOpenChange={(open) => {
+          setStoreUserDialogOpen(open);
+          if (!open && !savingStoreUser) resetStoreUserForm();
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{editingStoreUserId ? "Edit user" : "Add user"}</DialogTitle>
+            <DialogDescription>
+              {editingStoreUserId
+                ? "Update staff details. Use Reset pass from the table to set password to 1234."
+                : "Create staff access for the selected store."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>Email</Label>
+              <Input
+                value={storeUserForm.email}
+                onChange={(event) =>
+                  setStoreUserForm((current) => ({ ...current, email: event.target.value }))
+                }
+                placeholder="staff@example.com"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Display name</Label>
+              <Input
+                value={storeUserForm.displayName}
+                onChange={(event) =>
+                  setStoreUserForm((current) => ({ ...current, displayName: event.target.value }))
+                }
+                placeholder="Floor staff"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Role</Label>
+              <Select
+                value={storeUserForm.role}
+                onValueChange={(value) =>
+                  setStoreUserForm((current) => ({ ...current, role: value as StoreUserRoleInput }))
+                }
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MANAGER">Manager</SelectItem>
+                  <SelectItem value="WAITER">Waiter</SelectItem>
+                  <SelectItem value="COOK">Cook</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {!editingStoreUserId ? (
+              <div className="grid gap-2">
+                <Label>Initial password</Label>
+                <Input
+                  type="password"
+                  value={storeUserForm.password}
+                  onChange={(event) =>
+                    setStoreUserForm((current) => ({ ...current, password: event.target.value }))
+                  }
+                  placeholder="Required"
+                />
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStoreUserDialogOpen(false)} disabled={savingStoreUser}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSaveStoreUser()} disabled={savingStoreUser}>
+              {savingStoreUser ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {editingStoreUserId ? "Update user" : "Create user"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -302,6 +302,16 @@ export const api = {
           method: "POST",
           body: JSON.stringify({ email, password }),
         }),
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<OkResponse> =>
+    isOffline()
+      ? Promise.resolve({ ok: true })
+      : fetchApi<OkResponse>("/auth/change-password", {
+          method: "POST",
+          body: JSON.stringify({ currentPassword, newPassword }),
+        }),
 
   // Menu & orders (public device endpoints for create + call waiter)
   getMenu: (): Promise<MenuData> =>

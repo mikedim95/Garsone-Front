@@ -33,11 +33,16 @@ export default function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const offlineModeAllowed = isOfflineModeAllowed();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [currentPasswordForChange, setCurrentPasswordForChange] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   // Show dummy login choices instantly when Offline is toggled
   const envDebug =
     String(import.meta.env.VITE_ENABLE_DEBUG_LOGIN ?? "").toLowerCase() === "true";
@@ -83,6 +88,12 @@ export default function Login() {
       setLoading(true);
       const { accessToken, user } = await api.signIn(email, password);
       login(user, accessToken);
+      if (user.mustChangePassword) {
+        setCurrentPasswordForChange(password);
+        setMustChangePassword(true);
+        setPassword("");
+        return;
+      }
       if (user.role === "architect") navigate("/GarsoneAdmin");
       else if (user.role === "manager") navigate("/manager");
       else if (user.role === "cook") navigate("/cook");
@@ -100,10 +111,71 @@ export default function Login() {
     }
   };
 
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setError("New password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    try {
+      setError("");
+      setLoading(true);
+      await api.changePassword(currentPasswordForChange, newPassword);
+      updateUser({ mustChangePassword: false });
+      const user = useAuthStore.getState().user;
+      if (user?.role === "architect") navigate("/GarsoneAdmin");
+      else if (user?.role === "manager") navigate("/manager");
+      else if (user?.role === "cook") navigate("/cook");
+      else navigate("/waiter");
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message || "Password change failed.");
+      else setError("Password change failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-primary flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8 space-y-6">
         <h1 className="text-3xl font-bold text-center">{t("auth.login")}</h1>
+        {mustChangePassword ? (
+          <form onSubmit={handlePasswordChange} className="space-y-4">
+            {error && (
+              <div role="alert" aria-live="polite" className="text-sm text-destructive bg-destructive/10 border border-destructive/40 rounded-md px-3 py-2">
+                {error}
+              </div>
+            )}
+            <div className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+              Your password was reset. Set a new password to continue.
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">New password</label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => { setNewPassword(e.target.value); if (error) setError(""); }}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Confirm password</label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); if (error) setError(""); }}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Updating..." : "Set password"}
+            </Button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div role="alert" aria-live="polite" className="text-sm text-destructive bg-destructive/10 border border-destructive/40 rounded-md px-3 py-2">
@@ -138,6 +210,7 @@ export default function Login() {
             {loading ? "Signing in…" : t("auth.sign_in")}
           </Button>
         </form>
+        )}
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p>Demo waiters: {demoWaiter1} / {demoWaiter2}</p>
           <p>Manager dashboard: {demoManager} (password: changeme)</p>
