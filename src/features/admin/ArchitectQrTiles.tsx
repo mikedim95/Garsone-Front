@@ -264,7 +264,7 @@ const lifecycleCopy: Record<
   { label: string; variant: "outline" | "warning" | "info" | "success" }
 > = {
   inactive: { label: "Inactive", variant: "outline" },
-  unbound: { label: "URL only", variant: "warning" },
+  unbound: { label: "QR only", variant: "warning" },
   venue: { label: "Venue linked", variant: "info" },
   live: { label: "Live on table", variant: "success" },
 };
@@ -668,7 +668,7 @@ export default function ArchitectQrTiles() {
         console.error("Failed to load QR tile pool", error);
         toast({
           variant: "destructive",
-          title: "Failed to load URL pool",
+          title: "Failed to load QR pool",
           description:
             error instanceof ApiError ? error.message : "Please try again.",
         });
@@ -1030,8 +1030,8 @@ export default function ArchitectQrTiles() {
       toast({
         title:
           generateScope === "pool"
-            ? "URL pool extended"
-            : "Venue URLs generated",
+            ? "QR pool extended"
+            : "Store QR codes generated",
         description: `${created.length} tile${created.length === 1 ? "" : "s"} ready.`,
       });
     } catch (error) {
@@ -1236,11 +1236,22 @@ export default function ArchitectQrTiles() {
       if (!selectedStoreId) return;
       setClaimingNodeId(pendingNode.id);
       try {
+        const payload = buildNodeConfigPayload(nodeConfig);
         const res = await api.adminClaimPendingNode(
           pendingNode.id,
-          selectedStoreId
+          selectedStoreId,
+          payload
         );
         setRemoteNode(res.node);
+        const topics = payload.printers
+          .map((printer) => printer.topicSuffix.trim())
+          .filter(Boolean);
+        setPrinters(topics);
+        setStores((current) =>
+          current.map((store) =>
+            store.id === selectedStoreId ? { ...store, printers: topics } : store
+          )
+        );
         setPendingNodes((current) =>
           current.map((node) =>
             node.id === pendingNode.id
@@ -1262,11 +1273,15 @@ export default function ArchitectQrTiles() {
             (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
               ?.length
               ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(normalizeRemoteNodeWifi)
+              : payload.wifiNetworks?.length
+              ? payload.wifiNetworks.map((wifi, index) =>
+                  normalizeRemoteNodeWifi({ ...wifi, password: "" }, index)
+                )
               : defaultRemoteNodeConfig().wifiNetworks,
           printers:
             (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
               ? (res.node.config?.printers as RemoteNodePrinter[]).map(normalizeRemoteNodePrinter)
-              : defaultRemoteNodeConfig().printers,
+              : payload.printers.map(normalizeRemoteNodePrinter),
         });
         toast({
           title: "Pi associated",
@@ -1284,7 +1299,7 @@ export default function ArchitectQrTiles() {
         setClaimingNodeId(null);
       }
     },
-    [selectedStoreId, toast]
+    [nodeConfig, selectedStoreId, toast]
   );
 
   const handleRotateNodeToken = useCallback(async () => {
@@ -1396,6 +1411,11 @@ export default function ArchitectQrTiles() {
     );
   }, [storeTiles]);
 
+  const selectedStoreOverview = useMemo(
+    () => overview.find((store) => store.id === selectedStoreId) ?? null,
+    [overview, selectedStoreId]
+  );
+
   const filteredPoolTiles = useMemo(() => {
     const term = poolSearch.trim().toLowerCase();
     return poolTiles.filter((tile) => {
@@ -1441,18 +1461,18 @@ export default function ArchitectQrTiles() {
   const headerSubtitle =
     activeTab === "overview"
       ? "Cross-venue usage, staffing and QR footprint."
-      : activeTab === "pool"
-      ? "Generate URLs centrally, then bind them to venues and tables."
-      : selectedStore
+    : activeTab === "pool"
+      ? "Generate QR codes centrally, then bind them to venues and tables."
+    : selectedStore
       ? `Managing ${selectedStore.name}`
-      : "Select a venue to continue.";
+      : "Select a store to continue.";
 
   const openGenerateDialog = (scope: GenerateScope) => {
     if (scope === "store" && !selectedStoreId) {
       toast({
         variant: "destructive",
         title: "No venue selected",
-        description: "Pick a venue before generating venue-specific URLs.",
+        description: "Pick a store before generating store-specific QR codes.",
       });
       return;
     }
@@ -1473,34 +1493,10 @@ export default function ArchitectQrTiles() {
     <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
         supertitle="Architect"
-        title="QR Architect"
+        title="Garsone Architect"
         subtitle={headerSubtitle}
-        icon="QR"
+        icon="GA"
         tone="secondary"
-        rightContent={
-          <Select
-            value={selectedStoreId}
-            onValueChange={handleStoreSelect}
-            disabled={loadingStores}
-          >
-            <SelectTrigger className="h-9 w-56 bg-card/80">
-              <SelectValue placeholder="Select venue" />
-            </SelectTrigger>
-            <SelectContent>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
-                </SelectItem>
-              ))}
-              <SelectItem value={ADD_STORE_VALUE}>
-                <span className="flex items-center gap-2">
-                  <Plus className="h-3.5 w-3.5" />
-                  Add new store
-                </span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        }
         burgerActions={
           <div className="space-y-2">
             <Button
@@ -1532,7 +1528,7 @@ export default function ArchitectQrTiles() {
               onClick={() => openGenerateDialog("pool")}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Grow URL pool
+              Grow QR pool
             </Button>
           </div>
         }
@@ -1548,19 +1544,15 @@ export default function ArchitectQrTiles() {
             <TabsList className="w-full justify-start lg:w-auto">
               <TabsTrigger value="pool" className="gap-2">
                 <QrCode className="h-4 w-4" />
-                URL Pool
+                QR Pool
               </TabsTrigger>
-              <TabsTrigger
-                value="settings"
-                className="gap-2"
-                disabled={!selectedStoreId}
-              >
+              <TabsTrigger value="settings" className="gap-2">
                 <Settings className="h-4 w-4" />
-                Settings
+                Per Store Setting
               </TabsTrigger>
               <TabsTrigger value="overview" className="gap-2">
                 <Building2 className="h-4 w-4" />
-                Overview
+                Garsone Overview
               </TabsTrigger>
             </TabsList>
 
@@ -1583,7 +1575,7 @@ export default function ArchitectQrTiles() {
                 onClick={() => openGenerateDialog("pool")}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Generate URLs
+                Generate QR
               </Button>
             </div>
           </div>
@@ -1591,17 +1583,17 @@ export default function ArchitectQrTiles() {
           <TabsContent value="pool" className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard
-                title="Total URLs"
+                title="Total QR Codes"
                 value={poolStats.total}
                 description="Everything in the central pool."
               />
               <MetricCard
                 title="Unbound"
                 value={poolStats.unbound}
-                description="No venue attached yet."
+                description="No store attached yet."
               />
               <MetricCard
-                title="Venue Linked"
+                title="Store Linked"
                 value={poolStats.venue}
                 description="Ready for table binding."
               />
@@ -1616,22 +1608,22 @@ export default function ArchitectQrTiles() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Binding flow</CardTitle>
                 <CardDescription>
-                  URLs now live in a central pool. Generate once, bind to a venue
+                  QR codes now live in a central pool. Generate once, bind to a store
                   later, and only attach a table when the physical placement is
                   known.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                  <Badge variant="warning">1. URL only</Badge>
+                  <Badge variant="warning">1. QR only</Badge>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Create a public code with no venue or table assignment.
+                    Create a public code with no store or table assignment.
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                  <Badge variant="info">2. Venue linked</Badge>
+                  <Badge variant="info">2. Store linked</Badge>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Attach the code to a venue when inventory is allocated.
+                    Attach the code to a store when inventory is allocated.
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
@@ -1648,7 +1640,7 @@ export default function ArchitectQrTiles() {
                 <div className="relative flex-1 sm:max-w-sm">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Search code, alias, venue or table..."
+                    placeholder="Search code, alias, store or table..."
                     value={poolSearch}
                     onChange={(event) => setPoolSearch(event.target.value)}
                     className="pl-9"
@@ -1665,8 +1657,8 @@ export default function ArchitectQrTiles() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All statuses</SelectItem>
-                    <SelectItem value="unbound">URL only</SelectItem>
-                    <SelectItem value="venue">Venue linked</SelectItem>
+                    <SelectItem value="unbound">QR only</SelectItem>
+                    <SelectItem value="venue">Store linked</SelectItem>
                     <SelectItem value="live">Live on table</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                   </SelectContent>
@@ -1679,7 +1671,7 @@ export default function ArchitectQrTiles() {
                 </p>
                 <Button onClick={() => openGenerateDialog("pool")}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Generate URLs
+                  Generate QR
                 </Button>
               </div>
             </div>
@@ -1687,7 +1679,7 @@ export default function ArchitectQrTiles() {
             {recentScope === "pool" ? (
               <RecentTilesCard
                 tiles={recentTiles}
-                title="Fresh pool URLs"
+                title="Fresh pool QR codes"
                 onCopyCode={copyTileCode}
                 onCopyExport={copyRecentExport}
               />
@@ -1702,13 +1694,13 @@ export default function ArchitectQrTiles() {
                 ) : filteredPoolTiles.length === 0 ? (
                   <div className="py-16 text-center">
                     <QrCode className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
-                    <p className="text-muted-foreground">No URLs found.</p>
+                    <p className="text-muted-foreground">No QR codes found.</p>
                     <p className="mt-1 text-sm text-muted-foreground/70">
-                      Generate global URLs to start the pool.
+                      Generate global QR codes to start the pool.
                     </p>
                     <Button className="mt-4" onClick={() => openGenerateDialog("pool")}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Generate URLs
+                      Generate QR
                     </Button>
                   </div>
                 ) : (
@@ -1928,14 +1920,116 @@ export default function ArchitectQrTiles() {
             </Card>
           </TabsContent>
           <TabsContent value="settings" className="space-y-5">
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Building2 className="h-4 w-4 text-primary" />
+                      Store
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Pick the store to configure, or create a new one.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Select
+                      value={selectedStoreId}
+                      onValueChange={handleStoreSelect}
+                      disabled={loadingStores}
+                    >
+                      <SelectTrigger className="h-9 w-full sm:w-64">
+                        <SelectValue placeholder="Select store" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stores.map((store) => (
+                          <SelectItem key={store.id} value={store.id}>
+                            {store.name}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value={ADD_STORE_VALUE}>
+                          <span className="flex items-center gap-2">
+                            <Plus className="h-3.5 w-3.5" />
+                            Add new store
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="sm" onClick={() => setStoreDialogOpen(true)}>
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      Create store
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
             {!selectedStore ? (
               <Card interactive={false}>
                 <CardContent className="py-16 text-center text-muted-foreground">
-                  Select a venue to manage settings.
+                  Select a store to manage settings.
                 </CardContent>
               </Card>
             ) : (
-              <>
+              <Tabs defaultValue="store-overview" className="space-y-5">
+                <TabsList className="w-full justify-start lg:w-auto">
+                  <TabsTrigger value="store-overview" className="gap-2">
+                    <Grid3X3 className="h-4 w-4" />
+                    Store Overview
+                  </TabsTrigger>
+                  <TabsTrigger value="store-settings" className="gap-2">
+                    <Settings className="h-4 w-4" />
+                    Store Settings
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="store-overview" className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <MetricCard
+                      title="QR Tiles"
+                      value={selectedStoreOverview?.tilesCount ?? selectedStoreStats.total}
+                      description="Tiles linked to this store."
+                    />
+                    <MetricCard
+                      title="Live Tables"
+                      value={selectedStoreStats.live}
+                      description="Active QR codes bound to tables."
+                    />
+                    <MetricCard
+                      title="Users"
+                      value={selectedStoreOverview?.usersCount ?? 0}
+                      description="Profiles counted for this store."
+                    />
+                    <MetricCard
+                      title="Orders"
+                      value={selectedStoreOverview?.ordersCount ?? 0}
+                      description="Lifetime order volume snapshot."
+                    />
+                  </div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{selectedStore.name}</CardTitle>
+                      <CardDescription>
+                        {selectedStore.slug ? `${selectedStore.slug}.garsone` : "No slug"}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                        <p className="text-sm text-muted-foreground">Ordering mode</p>
+                        <p className="mt-2 font-medium capitalize">{storeOrderingMode}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                        <p className="text-sm text-muted-foreground">Printers</p>
+                        <p className="mt-2 font-medium">{printers.length}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                        <p className="text-sm text-muted-foreground">Remote node</p>
+                        <p className="mt-2 font-medium">{remoteNode?.status ?? "Not connected"}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="store-settings" className="space-y-5">
                 <Card>
                   <CardHeader className="pb-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -2330,7 +2424,8 @@ export default function ArchitectQrTiles() {
                     ) : null}
                   </CardContent>
                 </Card>
-              </>
+                </TabsContent>
+              </Tabs>
             )}
           </TabsContent>
           <TabsContent value="overview" className="space-y-5">
@@ -2616,18 +2711,18 @@ export default function ArchitectQrTiles() {
           <DialogHeader>
             <DialogTitle>
               {generateScope === "pool"
-                ? "Generate global URLs"
-                : `Generate URLs for ${selectedStore?.name ?? "venue"}`}
+                ? "Generate global QR codes"
+                : `Generate QR codes for ${selectedStore?.name ?? "store"}`}
             </DialogTitle>
             <DialogDescription>
               {generateScope === "pool"
-                ? "These URLs stay unbound until you attach them to a venue."
-                : "These URLs are born inside the selected venue and only need table binding."}
+                ? "These QR codes stay unbound until you attach them to a store."
+                : "These QR codes are born inside the selected store and only need table binding."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="generate-count">How many URLs</Label>
+              <Label htmlFor="generate-count">How many QR codes</Label>
               <Input
                 id="generate-count"
                 type="number"
