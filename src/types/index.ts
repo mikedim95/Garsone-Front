@@ -266,6 +266,29 @@ export interface StoreOverview {
   ordersCount: number;
 }
 
+export interface StoreOnboardPayload {
+  slug: string;
+  name: string;
+  defaultPassword: string;
+  currencyCode?: string;
+  locale?: string;
+  printerTopic?: string;
+  tableCount?: number;
+  managerEmail?: string;
+  waiterEmail?: string;
+  cookEmail?: string;
+}
+
+export interface StoreOnboardResponse {
+  store: StoreInfo;
+  profiles: {
+    manager: string;
+    waiter: string;
+    cook: string;
+  };
+  tableCount: number;
+}
+
 export interface LandingStoreLink {
   id: string;
   name: string;

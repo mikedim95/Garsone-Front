@@ -72,6 +72,7 @@ import type {
   RemoteNodePrinter,
   RemoteNodeWifi,
   StoreInfo,
+  StoreOnboardPayload,
   StoreOverview,
 } from "@/types";
 
@@ -83,10 +84,24 @@ type ActiveTab = "pool" | "settings" | "overview";
 type GenerateScope = "pool" | "store";
 type TileLifecycle = "inactive" | "unbound" | "venue" | "live";
 type PoolStatusFilter = "all" | TileLifecycle;
+type StoreOnboardForm = StoreOnboardPayload;
 
 const MAX_GENERATE_COUNT = 500;
 const UNBOUND_STORE_VALUE = "__unbound__";
 const UNASSIGNED_TABLE_VALUE = "__unassigned__";
+
+const defaultStoreOnboardForm = (): StoreOnboardForm => ({
+  slug: "",
+  name: "",
+  defaultPassword: "",
+  currencyCode: "EUR",
+  locale: "el",
+  printerTopic: "printer_1",
+  tableCount: 10,
+  managerEmail: "",
+  waiterEmail: "",
+  cookEmail: "",
+});
 
 const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
   displayName: "Main venue Pi",
@@ -205,6 +220,15 @@ const sparklinePath = (
     })
     .join(" ");
 };
+
+const slugifyStore = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
 
 const getTileLifecycle = (tile: QRTile): TileLifecycle => {
   if (!tile.isActive) return "inactive";
@@ -340,6 +364,10 @@ export default function ArchitectQrTiles() {
   const [loadingOverview, setLoadingOverview] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [storeDialogOpen, setStoreDialogOpen] = useState(false);
+  const [creatingStore, setCreatingStore] = useState(false);
+  const [storeOnboardForm, setStoreOnboardForm] =
+    useState<StoreOnboardForm>(() => defaultStoreOnboardForm());
   const [generateScope, setGenerateScope] = useState<GenerateScope>("pool");
   const [generateCount, setGenerateCount] = useState<number>(20);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
@@ -381,6 +409,11 @@ export default function ArchitectQrTiles() {
     Number.isFinite(generateCount) &&
     Math.trunc(generateCount) >= 1 &&
     Math.trunc(generateCount) <= MAX_GENERATE_COUNT;
+  const canCreateStore =
+    storeOnboardForm.name.trim().length > 0 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(storeOnboardForm.slug.trim()) &&
+    storeOnboardForm.defaultPassword.length >= 8 &&
+    Number(storeOnboardForm.tableCount || 0) >= 1;
 
   useEffect(() => {
     if (!isAuthenticated() || !isArchitect) {
@@ -551,6 +584,24 @@ export default function ArchitectQrTiles() {
       setLoadingStores(false);
     }
   }, [toast]);
+
+  const updateStoreOnboardField = useCallback(
+    <K extends keyof StoreOnboardForm>(key: K, value: StoreOnboardForm[K]) => {
+      setStoreOnboardForm((current) => ({ ...current, [key]: value }));
+    },
+    []
+  );
+
+  const handleStoreNameChange = useCallback(
+    (value: string) => {
+      setStoreOnboardForm((current) => ({
+        ...current,
+        name: value,
+        slug: current.slug ? current.slug : slugifyStore(value),
+      }));
+    },
+    []
+  );
 
   const loadTablesForStores = useCallback(async (storeList: StoreOption[]) => {
     if (!storeList.length) return;
@@ -734,6 +785,62 @@ export default function ArchitectQrTiles() {
       setLoadingOverview(false);
     }
   }, [toast]);
+
+  const handleCreateStore = useCallback(async () => {
+    const payload: StoreOnboardPayload = {
+      ...storeOnboardForm,
+      slug: slugifyStore(storeOnboardForm.slug),
+      name: storeOnboardForm.name.trim(),
+      defaultPassword: storeOnboardForm.defaultPassword,
+      currencyCode: (storeOnboardForm.currencyCode || "EUR").trim(),
+      locale: (storeOnboardForm.locale || "el").trim(),
+      printerTopic: (storeOnboardForm.printerTopic || "printer_1").trim(),
+      tableCount: Number(storeOnboardForm.tableCount || 10),
+      managerEmail: storeOnboardForm.managerEmail?.trim() || undefined,
+      waiterEmail: storeOnboardForm.waiterEmail?.trim() || undefined,
+      cookEmail: storeOnboardForm.cookEmail?.trim() || undefined,
+    };
+
+    if (
+      !payload.name ||
+      !payload.slug ||
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(payload.slug) ||
+      payload.defaultPassword.length < 8
+    ) {
+      toast({
+        variant: "destructive",
+        title: "Venue details are incomplete",
+        description: "Name, slug and an 8+ character password are required.",
+      });
+      return;
+    }
+
+    setCreatingStore(true);
+    try {
+      const res = await api.adminCreateStore(payload);
+      const storeList = await loadStores();
+      setSelectedStoreId(res.store.id);
+      await loadTablesForStores(storeList);
+      setStoreDialogOpen(false);
+      setStoreOnboardForm(defaultStoreOnboardForm());
+      setActiveTab("settings");
+      void loadOverview();
+      toast({
+        title: "Venue onboarded",
+        description: `${res.store.name} has ${res.tableCount} tables and default staff accounts.`,
+      });
+    } catch (error) {
+      console.error("Failed to onboard venue", error);
+      toast({
+        variant: "destructive",
+        title: "Venue onboarding failed",
+        description:
+          error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setCreatingStore(false);
+    }
+  }, [loadOverview, loadStores, loadTablesForStores, storeOnboardForm, toast]);
 
   useEffect(() => {
     const baseEnv = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
@@ -1243,25 +1350,44 @@ export default function ArchitectQrTiles() {
         icon="QR"
         tone="secondary"
         rightContent={
-          <Select
-            value={selectedStoreId}
-            onValueChange={setSelectedStoreId}
-            disabled={loadingStores || stores.length === 0}
-          >
-            <SelectTrigger className="h-9 w-52 bg-card/80">
-              <SelectValue placeholder="Select venue" />
-            </SelectTrigger>
-            <SelectContent>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setStoreDialogOpen(true)}
+            >
+              <Building2 className="mr-2 h-4 w-4" />
+              Onboard venue
+            </Button>
+            <Select
+              value={selectedStoreId}
+              onValueChange={setSelectedStoreId}
+              disabled={loadingStores || stores.length === 0}
+            >
+              <SelectTrigger className="h-9 w-52 bg-card/80">
+                <SelectValue placeholder="Select venue" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         }
         burgerActions={
           <div className="space-y-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => setStoreDialogOpen(true)}
+            >
+              <Building2 className="mr-2 h-4 w-4" />
+              Onboard venue
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1315,6 +1441,14 @@ export default function ArchitectQrTiles() {
             </TabsList>
 
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStoreDialogOpen(true)}
+              >
+                <Building2 className="mr-2 h-4 w-4" />
+                Onboard venue
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -2118,6 +2252,157 @@ export default function ArchitectQrTiles() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog
+        open={storeDialogOpen}
+        onOpenChange={(open) => {
+          setStoreDialogOpen(open);
+          if (!open && !creatingStore) {
+            setStoreOnboardForm(defaultStoreOnboardForm());
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Onboard Venue</DialogTitle>
+            <DialogDescription>
+              Creates the venue, baseline staff accounts, tables and default
+              printer topic.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="store-name">Venue name</Label>
+              <Input
+                id="store-name"
+                value={storeOnboardForm.name}
+                onChange={(event) => handleStoreNameChange(event.target.value)}
+                placeholder="Noor"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-slug">Store slug</Label>
+              <Input
+                id="store-slug"
+                value={storeOnboardForm.slug}
+                onChange={(event) =>
+                  updateStoreOnboardField("slug", slugifyStore(event.target.value))
+                }
+                placeholder="noor"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-password">Default staff password</Label>
+              <Input
+                id="store-password"
+                type="password"
+                value={storeOnboardForm.defaultPassword}
+                onChange={(event) =>
+                  updateStoreOnboardField("defaultPassword", event.target.value)
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-tables">Tables</Label>
+              <Input
+                id="store-tables"
+                type="number"
+                min={1}
+                max={200}
+                value={storeOnboardForm.tableCount ?? 10}
+                onChange={(event) =>
+                  updateStoreOnboardField(
+                    "tableCount",
+                    Number(event.target.value || 10)
+                  )
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-printer-topic">Printer topic suffix</Label>
+              <Input
+                id="store-printer-topic"
+                value={storeOnboardForm.printerTopic || ""}
+                onChange={(event) =>
+                  updateStoreOnboardField("printerTopic", event.target.value)
+                }
+                placeholder="printer_1"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-locale">Locale</Label>
+              <Input
+                id="store-locale"
+                value={storeOnboardForm.locale || "el"}
+                onChange={(event) =>
+                  updateStoreOnboardField("locale", event.target.value)
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-manager-email">Manager email</Label>
+              <Input
+                id="store-manager-email"
+                type="email"
+                value={storeOnboardForm.managerEmail || ""}
+                onChange={(event) =>
+                  updateStoreOnboardField("managerEmail", event.target.value)
+                }
+                placeholder={`manager@${storeOnboardForm.slug || "venue"}.local`}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-waiter-email">Waiter email</Label>
+              <Input
+                id="store-waiter-email"
+                type="email"
+                value={storeOnboardForm.waiterEmail || ""}
+                onChange={(event) =>
+                  updateStoreOnboardField("waiterEmail", event.target.value)
+                }
+                placeholder={`waiter@${storeOnboardForm.slug || "venue"}.local`}
+              />
+            </div>
+            <div className="grid gap-2 md:col-span-2">
+              <Label htmlFor="store-cook-email">Cook email</Label>
+              <Input
+                id="store-cook-email"
+                type="email"
+                value={storeOnboardForm.cookEmail || ""}
+                onChange={(event) =>
+                  updateStoreOnboardField("cookEmail", event.target.value)
+                }
+                placeholder={`cook@${storeOnboardForm.slug || "venue"}.local`}
+              />
+            </div>
+            {!canCreateStore ? (
+              <p className="text-xs text-destructive md:col-span-2">
+                Name, valid slug and an 8+ character password are required.
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setStoreDialogOpen(false)}
+              disabled={creatingStore}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleCreateStore()}
+              disabled={!canCreateStore || creatingStore}
+            >
+              {creatingStore ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Building2 className="mr-2 h-4 w-4" />
+              )}
+              Create venue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={dialogOpen}

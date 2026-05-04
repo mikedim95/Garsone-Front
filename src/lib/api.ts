@@ -26,6 +26,8 @@ import type {
   OrderStatus,
   LandingStoreLink,
   StoreInfo,
+  StoreOnboardPayload,
+  StoreOnboardResponse,
   Table,
   CookSummary,
   CookType,
@@ -801,6 +803,29 @@ export const api = {
     isOffline()
       ? devMocks.adminListStores()
       : fetchApi<{ stores: StoreInfo[] }>("/admin/stores"),
+  adminCreateStore: (
+    data: StoreOnboardPayload
+  ): Promise<StoreOnboardResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          store: {
+            id: `offline-${data.slug}`,
+            name: data.name,
+            slug: data.slug,
+            orderingMode: "hybrid",
+            printers: [data.printerTopic || "printer_1"],
+          },
+          profiles: {
+            manager: data.managerEmail || `manager@${data.slug}.local`,
+            waiter: data.waiterEmail || `waiter@${data.slug}.local`,
+            cook: data.cookEmail || `cook@${data.slug}.local`,
+          },
+          tableCount: data.tableCount || 10,
+        })
+      : fetchApi<StoreOnboardResponse>("/admin/stores", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
   adminListStoreOverview: (): Promise<{ stores: StoreOverview[] }> =>
     isOffline()
       ? devMocks.adminListStoreOverview()
