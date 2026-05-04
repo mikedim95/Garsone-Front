@@ -89,6 +89,7 @@ type StoreOnboardForm = StoreOnboardPayload;
 const MAX_GENERATE_COUNT = 500;
 const UNBOUND_STORE_VALUE = "__unbound__";
 const UNASSIGNED_TABLE_VALUE = "__unassigned__";
+const ADD_STORE_VALUE = "__add_store__";
 
 const defaultStoreOnboardForm = (): StoreOnboardForm => ({
   slug: "",
@@ -1341,6 +1342,14 @@ export default function ArchitectQrTiles() {
     setDialogOpen(true);
   };
 
+  const handleStoreSelect = (value: string) => {
+    if (value === ADD_STORE_VALUE) {
+      setStoreDialogOpen(true);
+      return;
+    }
+    setSelectedStoreId(value);
+  };
+
   return (
     <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
@@ -1350,32 +1359,28 @@ export default function ArchitectQrTiles() {
         icon="QR"
         tone="secondary"
         rightContent={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setStoreDialogOpen(true)}
-            >
-              <Building2 className="mr-2 h-4 w-4" />
-              Onboard venue
-            </Button>
-            <Select
-              value={selectedStoreId}
-              onValueChange={setSelectedStoreId}
-              disabled={loadingStores || stores.length === 0}
-            >
-              <SelectTrigger className="h-9 w-52 bg-card/80">
-                <SelectValue placeholder="Select venue" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select
+            value={selectedStoreId}
+            onValueChange={handleStoreSelect}
+            disabled={loadingStores}
+          >
+            <SelectTrigger className="h-9 w-56 bg-card/80">
+              <SelectValue placeholder="Select venue" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                </SelectItem>
+              ))}
+              <SelectItem value={ADD_STORE_VALUE}>
+                <span className="flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add new store
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         }
         burgerActions={
           <div className="space-y-2">
@@ -1441,14 +1446,6 @@ export default function ArchitectQrTiles() {
             </TabsList>
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setStoreDialogOpen(true)}
-              >
-                <Building2 className="mr-2 h-4 w-4" />
-                Onboard venue
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
