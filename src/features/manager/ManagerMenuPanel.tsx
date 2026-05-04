@@ -538,107 +538,174 @@ export const ManagerMenuPanel = () => {
 
       {/* Add/Edit Item */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-3xl lg:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Item' : 'Add Item'}</DialogTitle>
+            <DialogTitle>{editing ? 'Edit item' : 'Add item'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Title (EN)" value={form.titleEn} onChange={(e)=>setForm({...form, titleEn: e.target.value})}/>
-              <Input placeholder="Title (EL)" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
-            </div>
-            {selectedSubcategoryOptions.length > 0 && (
-              <select
-                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                value=""
-                onChange={(e) => {
-                  const option = selectedSubcategoryOptions[Number(e.target.value)];
-                  if (!option) return;
-                  setForm({ ...form, subcategoryEn: option.en, subcategoryEl: option.el });
-                }}
-              >
-                <option value="">Choose existing subcategory</option>
-                {selectedSubcategoryOptions.map((option, index) => (
-                  <option key={`${option.en}-${option.el}`} value={index}>
-                    {option.en || option.el}{option.el && option.el !== option.en ? ` / ${option.el}` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Subcategory (EN)" value={form.subcategoryEn} onChange={(e)=>setForm({...form, subcategoryEn: e.target.value})}/>
-              <Input placeholder="Subcategory (EL)" value={form.subcategoryEl} onChange={(e)=>setForm({...form, subcategoryEl: e.target.value})}/>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Textarea placeholder="Description (EN)" value={form.descriptionEn} onChange={(e)=>setForm({...form, descriptionEn: e.target.value})}/>
-              <Textarea placeholder="Description (EL)" value={form.descriptionEl} onChange={(e)=>setForm({...form, descriptionEl: e.target.value})}/>
-            </div>
-            <Input placeholder="Image URL (https://...)" value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
-            <div className="text-xs text-muted-foreground">
-              Or upload an image: <input type="file" accept="image/*" onChange={(e)=>{
-                const f = e.target.files?.[0] || null;
-                setImageFile(f);
-                setImagePreview(f ? URL.createObjectURL(f) : form.imageUrl || '');
-              }} />
-              {imagePreview && (
-                <div className="mt-2">
-                  <img src={imagePreview} alt="preview" className="h-24 w-24 object-cover rounded border" />
+          <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold">Item details</h3>
+                <p className="text-sm text-muted-foreground">Name, category, description and pricing.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Name (EN)</span>
+                  <Input placeholder="Pita Pork" value={form.titleEn} onChange={(e)=>setForm({...form, titleEn: e.target.value})}/>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Name (EL)</span>
+                  <Input placeholder="Pita Pork" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
+                </label>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Category</span>
+                  {editing ? (
+                    <select
+                      className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={form.categoryId}
+                      onChange={(e)=>setForm({...form, categoryId: e.target.value})}
+                    >
+                      {categories.map((category)=>(<option key={category.id} value={category.id}>{category.title}</option>))}
+                    </select>
+                  ) : (
+                    <div className="flex h-11 items-center rounded-md border border-border bg-muted/30 px-3 text-sm">
+                      {categories.find((category)=>category.id===form.categoryId)?.title || 'No category selected'}
+                    </div>
+                  )}
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Price</span>
+                  <Input placeholder="3.50" type="number" min={0} step={0.01} value={form.price} onChange={(e)=>setForm({...form, price: e.target.value})}/>
+                </label>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Use existing subcategory</span>
+                  <select
+                    className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+                    value=""
+                    disabled={selectedSubcategoryOptions.length === 0}
+                    onChange={(e) => {
+                      const option = selectedSubcategoryOptions[Number(e.target.value)];
+                      if (!option) return;
+                      setForm({ ...form, subcategoryEn: option.en, subcategoryEl: option.el });
+                    }}
+                  >
+                    <option value="">
+                      {selectedSubcategoryOptions.length > 0 ? 'Choose subcategory' : 'No saved subcategories'}
+                    </option>
+                    {selectedSubcategoryOptions.map((option, index) => (
+                      <option key={`${option.en}-${option.el}`} value={index}>
+                        {option.en || option.el}{option.el && option.el !== option.en ? ` / ${option.el}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Subcategory (EN)</span>
+                    <Input placeholder="Pita Wraps" value={form.subcategoryEn} onChange={(e)=>setForm({...form, subcategoryEn: e.target.value})}/>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium">Subcategory (EL)</span>
+                    <Input placeholder="Pita Wraps" value={form.subcategoryEl} onChange={(e)=>setForm({...form, subcategoryEl: e.target.value})}/>
+                  </label>
                 </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2 items-center">
-            <Input placeholder="Price (€)" type="number" min={0} step={0.01} value={form.price} onChange={(e)=>setForm({...form, price: e.target.value})}/>
-              {editing ? (
-                <select
-                  className="border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={form.categoryId}
-                  onChange={(e)=>setForm({...form, categoryId: e.target.value})}
-                >
-                  {categories.map((category)=>(<option key={category.id} value={category.id}>{category.title}</option>))}
-                </select>
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  Category: <span className="font-medium text-foreground">{categories.find((category)=>category.id===form.categoryId)?.title || '—'}</span>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Description (EN)</span>
+                  <Textarea className="min-h-28 resize-y" placeholder="Short menu description" value={form.descriptionEn} onChange={(e)=>setForm({...form, descriptionEn: e.target.value})}/>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Description (EL)</span>
+                  <Textarea className="min-h-28 resize-y" placeholder="Short menu description" value={form.descriptionEl} onChange={(e)=>setForm({...form, descriptionEl: e.target.value})}/>
+                </label>
+              </div>
+            </section>
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold">Image</h3>
+                <p className="text-sm text-muted-foreground">Paste an image URL or upload a replacement.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-[1fr_160px]">
+                <div className="space-y-4">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium">Image URL</span>
+                    <Input placeholder="https://..." value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
+                  </label>
+                  <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
+                    Upload image
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e)=>{
+                        const f = e.target.files?.[0] || null;
+                        setImageFile(f);
+                        setImagePreview(f ? URL.createObjectURL(f) : form.imageUrl || '');
+                      }}
+                    />
+                  </label>
+                  {imageFile ? <p className="text-xs text-muted-foreground">{imageFile.name}</p> : null}
                 </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Cook type</label>
-              <select
-                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                value={form.printerTopic}
-                onChange={(e)=>setForm({...form, printerTopic: normalizePrinterTopicValue(e.target.value)})}
-              >
-                {displayCookTypeOptions.length === 0 ? (
-                  <option value="">No cook types configured</option>
-                ) : null}
-                {displayCookTypeOptions.map((opt) => (
-                  <option key={opt.id} value={opt.printerTopic}>
-                    {opt.id === 'legacy-printer'
-                      ? opt.title
-                      : `${opt.title} (${opt.printerTopic})`}
-                  </option>
-                ))}
-              </select>
-              {displayCookTypeOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Add cook types with printer topics first.</p>
-              ) : null}
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.isAvailable} onChange={(e)=>setForm({...form, isAvailable: e.target.checked})}/>
-              Available
-            </label>
+                <div className="flex h-40 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/20">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Item preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="px-4 text-center text-sm text-muted-foreground">No image preview</span>
+                  )}
+                </div>
+              </div>
+            </section>
 
-            {/* Modifiers builder */}
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-medium">Modifiers</div>
-                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, isAvailable:true, options:[] }])}>+ Add modifier</Button>
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Cook type</span>
+                  <select
+                    className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    value={form.printerTopic}
+                    onChange={(e)=>setForm({...form, printerTopic: normalizePrinterTopicValue(e.target.value)})}
+                  >
+                    {displayCookTypeOptions.length === 0 ? (
+                      <option value="">No cook types configured</option>
+                    ) : null}
+                    {displayCookTypeOptions.map((opt) => (
+                      <option key={opt.id} value={opt.printerTopic}>
+                        {opt.id === 'legacy-printer'
+                          ? opt.title
+                          : `${opt.title} (${opt.printerTopic})`}
+                      </option>
+                    ))}
+                  </select>
+                  {displayCookTypeOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Add cook types with printer topics first.</p>
+                  ) : null}
+                </label>
+                <label className="flex h-11 items-center gap-3 rounded-md border border-border bg-card px-4 text-sm font-medium">
+                  <input type="checkbox" checked={form.isAvailable} onChange={(e)=>setForm({...form, isAvailable: e.target.checked})}/>
+                  Available
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold">Modifiers</h3>
+                  <p className="text-sm text-muted-foreground">Extras, choices and add-ons shown to guests.</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, isAvailable:true, options:[] }])}>
+                  <Plus className="mr-2 h-4 w-4" /> Add modifier
+                </Button>
               </div>
               <div className="space-y-4">
                 {customMods.map((cm, idx) => (
-                  <div key={idx} className="border rounded p-3">
-                    <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div key={idx} className="rounded-md border border-border bg-background/40 p-4">
+                    <div className="mb-3 grid gap-3 md:grid-cols-2">
                       <Input placeholder="Modifier title (EN)" value={cm.titleEn} onChange={(e)=>{
                         const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, titleEn: v}: m));
                       }}/>
@@ -646,14 +713,14 @@ export const ManagerMenuPanel = () => {
                         const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, titleEl: v}: m));
                       }}/>
                     </div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <label className="flex items-center gap-2 text-sm">
+                    <div className="mb-3 flex flex-wrap items-center gap-3">
+                      <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.required} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, required: v}: m));
                         }}/>
-                        required
+                        Required
                       </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.isAvailable} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, isAvailable: v}: m));
                         }}/>
@@ -665,7 +732,7 @@ export const ManagerMenuPanel = () => {
                     </div>
                     <div className="space-y-2">
                       {cm.options.map((opt, oi) => (
-                        <div key={oi} className="grid grid-cols-3 gap-2">
+                        <div key={oi} className="grid gap-2 md:grid-cols-[1fr_1fr_140px]">
                           <Input placeholder="Option label EN (e.g., Oat)" value={opt.titleEn} onChange={(e)=>{
                             const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: m.options.map((o,j)=> j===oi? { ...o, titleEn: v}: o)}: m));
                           }}/>
@@ -679,12 +746,14 @@ export const ManagerMenuPanel = () => {
                       ))}
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { titleEn:'', titleEl:'', price:''}] }: m))}>+ Option</Button>
+                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { titleEn:'', titleEl:'', price:''}] }: m))}>
+                        <Plus className="mr-2 h-4 w-4" /> Add option
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={()=>setModalOpen(false)}>Cancel</Button>
