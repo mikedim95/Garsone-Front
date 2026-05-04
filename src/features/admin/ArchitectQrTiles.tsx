@@ -955,11 +955,12 @@ export default function ArchitectQrTiles() {
     if (!selectedStore) return;
     setStoreOrderingMode(selectedStore.orderingMode ?? "qr");
     setPrinters(selectedStore.printers ?? []);
+    void refreshStoreTiles(selectedStore.id);
     void loadRemoteNode(selectedStore.id);
     void loadStoreUsers(selectedStore.id);
     setEditingStoreUserId(null);
     setStoreUserForm(defaultStoreUserForm());
-  }, [loadRemoteNode, loadStoreUsers, selectedStore]);
+  }, [loadRemoteNode, loadStoreUsers, refreshStoreTiles, selectedStore]);
 
   useEffect(() => {
     if (activeTab === "overview") {
@@ -1579,10 +1580,18 @@ export default function ArchitectQrTiles() {
     );
   }, [storeTiles]);
 
-  const selectedStoreOverview = useMemo(
-    () => overview.find((store) => store.id === selectedStoreId) ?? null,
-    [overview, selectedStoreId]
-  );
+  const selectedStoreOverview = useMemo(() => {
+    const aggregate = overview.find((store) => store.id === selectedStoreId) ?? null;
+    if (!selectedStore) return aggregate;
+    return {
+      id: selectedStore.id,
+      slug: selectedStore.slug,
+      name: selectedStore.name,
+      usersCount: storeUsers.length || aggregate?.usersCount || 0,
+      tilesCount: selectedStoreStats.total,
+      ordersCount: aggregate?.ordersCount || 0,
+    };
+  }, [overview, selectedStore, selectedStoreId, selectedStoreStats.total, storeUsers.length]);
 
   const filteredPoolTiles = useMemo(() => {
     const term = poolSearch.trim().toLowerCase();
