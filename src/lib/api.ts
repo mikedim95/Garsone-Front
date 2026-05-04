@@ -38,6 +38,7 @@ import type {
   StoreOverview,
   RemoteNode,
   RemoteNodeConfig,
+  PendingNodeAgent,
 } from "@/types";
 import { devMocks } from "./devMocks";
 import { isOfflineModeEnabled } from "./offlineMode";
@@ -935,6 +936,33 @@ export const api = {
     isOffline()
       ? Promise.resolve({ nodes: [] })
       : fetchApi<{ nodes: RemoteNode[] }>(`/admin/stores/${storeId}/nodes`),
+  adminListPendingNodes: (): Promise<{ pendingNodes: PendingNodeAgent[] }> =>
+    isOffline()
+      ? Promise.resolve({ pendingNodes: [] })
+      : fetchApi<{ pendingNodes: PendingNodeAgent[] }>("/admin/pending-nodes"),
+  adminClaimPendingNode: (
+    pendingNodeId: string,
+    storeId: string,
+    config: RemoteNodeConfig
+  ): Promise<RemoteNodeSaveResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          node: {
+            id: "offline-claimed-node",
+            storeId,
+            slug: config.nodeSlug || "main",
+            displayName: config.displayName,
+            desiredConfigVersion: 1,
+            status: "PENDING",
+            config,
+          },
+          token: "offline-token",
+          tokenOnlyShownOnce: true,
+        })
+      : fetchApi<RemoteNodeSaveResponse>(`/admin/pending-nodes/${pendingNodeId}/claim`, {
+          method: "POST",
+          body: JSON.stringify({ storeId, config }),
+        }),
   adminSaveStoreMainNode: (
     storeId: string,
     data: RemoteNodeConfig

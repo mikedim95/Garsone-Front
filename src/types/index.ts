@@ -257,6 +257,22 @@ export interface RemoteNode {
   config: Partial<RemoteNodeConfig>;
 }
 
+export interface PendingNodeAgent {
+  id: string;
+  nodeKey: string;
+  displayName: string;
+  localHostname?: string;
+  tailscaleHostname?: string;
+  macAddresses: string[];
+  ipAddresses: string[];
+  status: 'PENDING' | 'CLAIMED' | string;
+  storeId?: string | null;
+  claimedNodeId?: string | null;
+  lastSeenAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface StoreOverview {
   id: string;
   name: string;

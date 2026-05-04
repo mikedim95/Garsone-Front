@@ -66,6 +66,7 @@ import { useAuthStore } from "@/store/authStore";
 import type {
   ManagerTableSummary,
   OrderingMode,
+  PendingNodeAgent,
   QRTile,
   RemoteNode,
   RemoteNodeConfig,
@@ -238,6 +239,25 @@ const getTileLifecycle = (tile: QRTile): TileLifecycle => {
   return "live";
 };
 
+const buildNodeConfigPayload = (nodeConfig: RemoteNodeConfig): RemoteNodeConfig => ({
+  ...nodeConfig,
+  wifiNetworks: (nodeConfig.wifiNetworks ?? [])
+    .map((wifi, index) => ({
+      ...wifi,
+      id: wifi.id || `wifi-${index + 1}`,
+      ssid: wifi.ssid.trim(),
+      priority: Number(wifi.priority || index + 1),
+      hidden: Boolean(wifi.hidden),
+    }))
+    .filter((wifi) => wifi.ssid.length > 0),
+  printers: nodeConfig.printers.map((printer, index) => ({
+    ...printer,
+    id: printer.id || `printer-${index + 1}`,
+    ordinal: Number(printer.ordinal || index + 1),
+    interface: printer.interface || `/dev/rfcomm${index}`,
+  })),
+});
+
 const lifecycleCopy: Record<
   TileLifecycle,
   { label: string; variant: "outline" | "warning" | "info" | "success" }
@@ -388,6 +408,8 @@ export default function ArchitectQrTiles() {
     useState<OrderingMode>("qr");
   const [printers, setPrinters] = useState<string[]>([]);
   const [remoteNode, setRemoteNode] = useState<RemoteNode | null>(null);
+  const [pendingNodes, setPendingNodes] = useState<PendingNodeAgent[]>([]);
+  const [claimingNodeId, setClaimingNodeId] = useState<string | null>(null);
   const [nodeConfig, setNodeConfig] = useState<RemoteNodeConfig>(() =>
     defaultRemoteNodeConfig()
   );
@@ -769,6 +791,20 @@ export default function ArchitectQrTiles() {
     [stores, toast]
   );
 
+  const loadPendingNodes = useCallback(async () => {
+    try {
+      const res = await api.adminListPendingNodes();
+      setPendingNodes(res.pendingNodes ?? []);
+    } catch (error) {
+      console.error("Failed to load pending nodes", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to load waiting Pis",
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    }
+  }, [toast]);
+
   const loadOverview = useCallback(async () => {
     setLoadingOverview(true);
     try {
@@ -883,7 +919,10 @@ export default function ArchitectQrTiles() {
       void loadOverview();
       return;
     }
-  }, [activeTab, loadOverview]);
+    if (activeTab === "settings") {
+      void loadPendingNodes();
+    }
+  }, [activeTab, loadOverview, loadPendingNodes]);
 
   const handleUpdateTile = useCallback(
     async (tileId: string, payload: Partial<QRTile>) => {
@@ -1144,24 +1183,7 @@ export default function ArchitectQrTiles() {
     if (!selectedStoreId) return;
     setSavingNode(true);
     try {
-      const payload: RemoteNodeConfig = {
-        ...nodeConfig,
-        wifiNetworks: (nodeConfig.wifiNetworks ?? [])
-          .map((wifi, index) => ({
-            ...wifi,
-            id: wifi.id || `wifi-${index + 1}`,
-            ssid: wifi.ssid.trim(),
-            priority: Number(wifi.priority || index + 1),
-            hidden: Boolean(wifi.hidden),
-          }))
-          .filter((wifi) => wifi.ssid.length > 0),
-        printers: nodeConfig.printers.map((printer, index) => ({
-          ...printer,
-          id: printer.id || `printer-${index + 1}`,
-          ordinal: Number(printer.ordinal || index + 1),
-          interface: printer.interface || `/dev/rfcomm${index}`,
-        })),
-      };
+      const payload = buildNodeConfigPayload(nodeConfig);
       const res = await api.adminSaveStoreMainNode(selectedStoreId, payload);
       setRemoteNode(res.node);
       if (res.token) setNodeToken(res.token);
@@ -1195,7 +1217,7 @@ export default function ArchitectQrTiles() {
       });
       toast({
         title: "Remote node saved",
-        description: "The venue Pi will poll and apply this config version.",
+        description: "The venue Pi will receive this config over MQTT.",
       });
     } catch (error) {
       console.error("Failed to save remote node", error);
@@ -1210,6 +1232,82 @@ export default function ArchitectQrTiles() {
     }
   }, [nodeConfig, selectedStoreId, toast]);
 
+  const handleClaimPendingNode = useCallback(
+    async (pendingNode: PendingNodeAgent) => {
+      if (!selectedStoreId) return;
+      setClaimingNodeId(pendingNode.id);
+      try {
+        const firstMac = pendingNode.macAddresses[0] || "";
+        const payload = buildNodeConfigPayload({
+          ...nodeConfig,
+          displayName: nodeConfig.displayName || pendingNode.displayName || "Venue Pi",
+          nodeSlug: nodeConfig.nodeSlug || pendingNode.localHostname || "main",
+          tailscaleHostname:
+            nodeConfig.tailscaleHostname || pendingNode.tailscaleHostname || "",
+          localHostname: nodeConfig.localHostname || pendingNode.localHostname || "",
+          printers: nodeConfig.printers.map((printer, index) =>
+            index === 0 && !printer.mac
+              ? { ...printer, mac: firstMac }
+              : printer
+          ),
+        });
+        const res = await api.adminClaimPendingNode(
+          pendingNode.id,
+          selectedStoreId,
+          payload
+        );
+        setRemoteNode(res.node);
+        setNodeToken(res.token || null);
+        setPendingNodes((current) =>
+          current.map((node) =>
+            node.id === pendingNode.id
+              ? {
+                  ...node,
+                  status: "CLAIMED",
+                  storeId: selectedStoreId,
+                  claimedNodeId: res.node.id,
+                }
+              : node
+          )
+        );
+        setNodeConfig({
+          ...defaultRemoteNodeConfig(),
+          ...(res.node.config as Partial<RemoteNodeConfig>),
+          wifiPassword: "",
+          mqttPass: "",
+          wifiNetworks:
+            (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
+              ?.length
+              ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(normalizeRemoteNodeWifi)
+              : payload.wifiNetworks?.length
+              ? payload.wifiNetworks.map((wifi, index) =>
+                  normalizeRemoteNodeWifi({ ...wifi, password: "" }, index)
+                )
+              : defaultRemoteNodeConfig().wifiNetworks,
+          printers:
+            (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
+              ? (res.node.config?.printers as RemoteNodePrinter[]).map(normalizeRemoteNodePrinter)
+              : payload.printers.map(normalizeRemoteNodePrinter),
+        });
+        toast({
+          title: "Pi associated",
+          description: "The node token and config were sent over MQTT.",
+        });
+      } catch (error) {
+        console.error("Failed to claim pending node", error);
+        toast({
+          variant: "destructive",
+          title: "Association failed",
+          description:
+            error instanceof ApiError ? error.message : "Please try again.",
+        });
+      } finally {
+        setClaimingNodeId(null);
+      }
+    },
+    [nodeConfig, selectedStoreId, toast]
+  );
+
   const handleRotateNodeToken = useCallback(async () => {
     if (!remoteNode?.id) return;
     setSavingNode(true);
@@ -1219,7 +1317,7 @@ export default function ArchitectQrTiles() {
       setNodeToken(res.token || null);
       toast({
         title: "Node token rotated",
-        description: "Update the Pi container with the new token.",
+        description: "The next MQTT config push will carry the new token.",
       });
     } catch (error) {
       console.error("Failed to rotate node token", error);
@@ -1238,9 +1336,12 @@ export default function ArchitectQrTiles() {
       void loadOverview();
       return;
     }
-    if (activeTab === "settings" && selectedStoreId) void loadRemoteNode(selectedStoreId);
+    if (activeTab === "settings") {
+      void loadPendingNodes();
+      if (selectedStoreId) void loadRemoteNode(selectedStoreId);
+    }
     void refreshPoolTiles(true);
-  }, [activeTab, loadOverview, loadRemoteNode, refreshPoolTiles, selectedStoreId]);
+  }, [activeTab, loadOverview, loadPendingNodes, loadRemoteNode, refreshPoolTiles, selectedStoreId]);
 
   const poolStats = useMemo(() => {
     return poolTiles.reduce(
@@ -1893,11 +1994,85 @@ export default function ArchitectQrTiles() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <CardTitle className="flex items-center gap-2 text-base">
+                          <Wifi className="h-4 w-4 text-primary" />
+                          Waiting Pis
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          Fresh nodes that registered locally and are waiting for
+                          association with {selectedStore.name}.
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => void loadPendingNodes()}>
+                        <RefreshCcw className="mr-2 h-4 w-4" />
+                        Refresh
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {pendingNodes.filter((node) => node.status === "PENDING").length === 0 ? (
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                        No unassociated Pis are reporting right now.
+                      </div>
+                    ) : (
+                      pendingNodes
+                        .filter((node) => node.status === "PENDING")
+                        .map((node) => (
+                          <div
+                            key={node.id}
+                            className="grid gap-3 rounded-lg border border-border/60 p-4 lg:grid-cols-[1fr_auto]"
+                          >
+                            <div className="min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium">
+                                  {node.displayName || node.localHostname || "Pending Pi"}
+                                </p>
+                                <Badge variant="warning" size="sm">
+                                  Waiting
+                                </Badge>
+                              </div>
+                              <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
+                                <span>Host: {node.localHostname || "-"}</span>
+                                <span>Tailscale: {node.tailscaleHostname || "-"}</span>
+                                <span className="break-all">
+                                  MAC: {node.macAddresses.join(", ") || "-"}
+                                </span>
+                                <span className="break-all">
+                                  IP: {node.ipAddresses.join(", ") || "-"}
+                                </span>
+                                <span>Last seen: {formatDate(node.lastSeenAt)}</span>
+                                <span className="break-all">Key: {node.nodeKey}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-end">
+                              <Button
+                                size="sm"
+                                onClick={() => void handleClaimPendingNode(node)}
+                                disabled={claimingNodeId === node.id || savingNode}
+                              >
+                                {claimingNodeId === node.id ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Check className="mr-2 h-4 w-4" />
+                                )}
+                                Associate to store
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base">
                           <ServerCog className="h-4 w-4 text-primary" />
                           Remote Node Pi
                         </CardTitle>
                         <CardDescription className="mt-1">
-                          Per-venue config polled by the central node container.
+                          Per-venue config delivered to the central node container over MQTT.
                         </CardDescription>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -2056,7 +2231,7 @@ export default function ArchitectQrTiles() {
                         />
                       </div>
                       <div>
-                        <Label>Poll seconds</Label>
+                        <Label>Status seconds</Label>
                         <Input type="number" value={nodeConfig.pollSeconds || 30} onChange={(event) => updateNodeField("pollSeconds", Number(event.target.value || 30))} />
                       </div>
                       <div>
