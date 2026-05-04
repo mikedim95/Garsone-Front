@@ -2101,32 +2101,28 @@ export default function ArchitectQrTiles() {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Wifi className="h-4 w-4 text-primary" />
-                          Waiting Pis
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Fresh nodes that registered locally and are waiting for
-                          association with {selectedStore.name}.
-                        </CardDescription>
+                {pendingNodes.some((node) => node.status === "PENDING") ? (
+                  <Card>
+                    <CardHeader className="pb-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Wifi className="h-4 w-4 text-primary" />
+                            Waiting Pis
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            Fresh nodes that registered locally and are waiting for
+                            association with {selectedStore.name}.
+                          </CardDescription>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => void loadPendingNodes()}>
+                          <RefreshCcw className="mr-2 h-4 w-4" />
+                          Refresh
+                        </Button>
                       </div>
-                      <Button variant="outline" size="sm" onClick={() => void loadPendingNodes()}>
-                        <RefreshCcw className="mr-2 h-4 w-4" />
-                        Refresh
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {pendingNodes.filter((node) => node.status === "PENDING").length === 0 ? (
-                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                        No unassociated Pis are reporting right now.
-                      </div>
-                    ) : (
-                      pendingNodes
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {pendingNodes
                         .filter((node) => node.status === "PENDING")
                         .map((node) => (
                           <div
@@ -2170,10 +2166,10 @@ export default function ArchitectQrTiles() {
                               </Button>
                             </div>
                           </div>
-                        ))
-                    )}
-                  </CardContent>
-                </Card>
+                        ))}
+                    </CardContent>
+                  </Card>
+                ) : null}
 
                 <Card>
                   <CardHeader className="pb-4">
