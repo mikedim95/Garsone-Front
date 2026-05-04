@@ -194,12 +194,22 @@ async function fetchApi<T>(
     if (!response.ok) {
       const error = await response.json();
       const message = error.error || error.message || "Request failed";
+      console.error("[api] request failed", {
+        endpoint,
+        status: response.status,
+        message,
+        error,
+      });
       throw new ApiError(response.status, message);
     }
 
     return response.json();
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    console.error("[api] network/parse failure", {
+      endpoint,
+      error,
+    });
     throw new ApiError(0, "Network error or invalid response");
   }
 }

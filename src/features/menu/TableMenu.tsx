@@ -1072,7 +1072,13 @@ export default function TableMenu() {
       );
       return summary;
     } catch (error) {
-      console.error("Immediate checkout failed:", error);
+      console.error("Immediate checkout failed:", {
+        error,
+        storeSlug,
+        tableId: activeTableId,
+        editingOrderId,
+        payload,
+      });
       const message = error instanceof Error ? error.message : String(error ?? "");
       if (
         error instanceof ApiError &&
