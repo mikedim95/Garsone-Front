@@ -45,8 +45,11 @@ const formatOrderTime = (order?: SubmittedOrderSummary | null) => {
 const getErrorMessage = (error: unknown, fallback = "Unexpected error") =>
   error instanceof Error ? error.message : fallback;
 
-const getItemName = (item: { name?: string; title?: string }) =>
-  item.name ?? item.title ?? "Item";
+const getItemName = (item: {
+  displayName?: string;
+  name?: string;
+  title?: string;
+}) => item.displayName ?? item.name ?? item.title ?? "Item";
 
 interface CartProps {
   onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;

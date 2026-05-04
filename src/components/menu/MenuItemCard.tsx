@@ -24,8 +24,9 @@ export const MenuItemCard = ({ item, onAdd }: Props) => {
     console.warn('Failed to format price', error);
   }
 
-  const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
-  const description = item.description ?? '';
+  const displayName =
+    item.displayName ?? item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+  const description = item.displayDescription ?? item.description ?? '';
 
   return (
     <div className="group relative rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">

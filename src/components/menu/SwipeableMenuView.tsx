@@ -68,7 +68,8 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active =
   <div className="grid grid-cols-2 gap-3 sm:gap-4 [content-visibility:auto] [contain-intrinsic-size:1px_600px]">
     {items.map((item, index) => {
       const price = getPrice(item);
-      const displayName = item.name ?? item.title ?? fallbackLabel;
+      const displayName =
+        item.displayName ?? item.name ?? item.title ?? fallbackLabel;
       const unavailable = item.available === false;
       const eagerImage = active && index < 4;
       return (
@@ -733,7 +734,11 @@ export const SwipeableMenuView = ({
                 <div className="p-3 space-y-2">
                   {cartItems.map((cartItem, idx) => {
                     const itemTotal = getCartItemUnitPrice(cartItem) * cartItem.quantity;
-                    const displayName = cartItem.item.name ?? cartItem.item.title ?? t('menu.item', { defaultValue: 'Item' });
+                    const displayName =
+                      cartItem.item.displayName ??
+                      cartItem.item.name ??
+                      cartItem.item.title ??
+                      t('menu.item', { defaultValue: 'Item' });
                     const hasModifiers = cartItem.selectedModifiers && Object.keys(cartItem.selectedModifiers).length > 0;
                     
                     return (

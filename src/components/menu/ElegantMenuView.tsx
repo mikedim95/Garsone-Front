@@ -154,7 +154,10 @@ export const ElegantMenuView = ({
       {list.map((item) => {
         const price = getPrice(item);
         const displayName =
-          item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+          item.displayName ??
+          item.name ??
+          item.title ??
+          t('menu.item', { defaultValue: 'Item' });
 
         return (
           <Card
@@ -494,10 +497,11 @@ export const ElegantMenuView = ({
                 {cartItems.map((cartItem, idx) => {
                   const unitPrice = getCartItemUnitPrice(cartItem);
                   const itemTotal = unitPrice * cartItem.quantity;
-                  const displayName =
-                    cartItem.item.name ??
-                    cartItem.item.title ??
-                    t('menu.item', { defaultValue: 'Item' });
+                    const displayName =
+                      cartItem.item.displayName ??
+                      cartItem.item.name ??
+                      cartItem.item.title ??
+                      t('menu.item', { defaultValue: 'Item' });
 
                   const hasModifiers = cartItem.selectedModifiers && Object.keys(cartItem.selectedModifiers).length > 0;
                   
