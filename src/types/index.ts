@@ -203,6 +203,12 @@ export interface RemoteNodePrinter {
   label?: string;
 }
 
+export interface RemoteNodePrinterTestResponse {
+  ok: boolean;
+  topic: string;
+  payload?: unknown;
+}
+
 export interface RemoteNodeWifi {
   id?: string;
   ssid: string;

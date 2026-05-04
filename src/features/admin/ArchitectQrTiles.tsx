@@ -9,6 +9,7 @@ import {
   Link as LinkIcon,
   Loader2,
   Plus,
+  Printer,
   QrCode,
   RefreshCcw,
   Search,
@@ -415,6 +416,7 @@ export default function ArchitectQrTiles() {
   );
   const [loadingNode, setLoadingNode] = useState(false);
   const [savingNode, setSavingNode] = useState(false);
+  const [testingPrinterKey, setTestingPrinterKey] = useState<string | null>(null);
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
 
   const isArchitect = user?.role === "architect";
@@ -1306,6 +1308,46 @@ export default function ArchitectQrTiles() {
       setSavingNode(false);
     }
   }, [remoteNode?.id, toast]);
+
+  const printerTopicFor = useCallback(
+    (printer: RemoteNodePrinter, index: number) => {
+      const suffix = (printer.topicSuffix || `printer_${index + 1}`).trim();
+      return `${selectedStore?.slug || selectedStoreId || "store"}/orders/preparing/${suffix}`;
+    },
+    [selectedStore?.slug, selectedStoreId]
+  );
+
+  const handleTestPrinter = useCallback(
+    async (printer: RemoteNodePrinter, index: number) => {
+      if (!selectedStoreId) return;
+      const topicSuffix = (printer.topicSuffix || `printer_${index + 1}`).trim();
+      if (!topicSuffix) return;
+      const key = printer.id || `${index}:${topicSuffix}`;
+      setTestingPrinterKey(key);
+      try {
+        const res = await api.adminTestStorePrinter(selectedStoreId, {
+          topicSuffix,
+          mac: printer.mac,
+          label: printer.label || `Printer ${index + 1}`,
+        });
+        toast({
+          title: "Test print sent",
+          description: `Published to ${res.topic}.`,
+        });
+      } catch (error) {
+        console.error("Failed to send test print", error);
+        toast({
+          variant: "destructive",
+          title: "Test print failed",
+          description:
+            error instanceof ApiError ? error.message : "Please check the printer topic.",
+        });
+      } finally {
+        setTestingPrinterKey(null);
+      }
+    },
+    [selectedStoreId, toast]
+  );
 
   const handleRefresh = useCallback(() => {
     if (activeTab === "overview") {
@@ -2248,6 +2290,27 @@ export default function ArchitectQrTiles() {
                             <div className="flex items-end justify-end md:col-span-1">
                               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => removeNodePrinter(index)} disabled={nodeConfig.printers.length <= 1}>
                                 <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="flex flex-col gap-2 rounded-md bg-muted/25 p-2 md:col-span-12 md:flex-row md:items-center md:justify-between">
+                              <div className="min-w-0">
+                                <Label className="text-xs text-muted-foreground">MQTT topic this printer listens on</Label>
+                                <div className="mt-1 break-all font-mono text-xs text-primary">
+                                  {printerTopicFor(printer, index)}
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleTestPrinter(printer, index)}
+                                disabled={testingPrinterKey === (printer.id || `${index}:${printer.topicSuffix}`)}
+                              >
+                                {testingPrinterKey === (printer.id || `${index}:${printer.topicSuffix}`) ? (
+                                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Printer className="mr-1.5 h-4 w-4" />
+                                )}
+                                Test print
                               </Button>
                             </div>
                           </div>

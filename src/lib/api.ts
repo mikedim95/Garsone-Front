@@ -38,6 +38,7 @@ import type {
   StoreOverview,
   RemoteNode,
   RemoteNodeConfig,
+  RemoteNodePrinterTestResponse,
   PendingNodeAgent,
 } from "@/types";
 import { devMocks } from "./devMocks";
@@ -1003,6 +1004,22 @@ export const api = {
       : fetchApi<RemoteNodeSaveResponse>(`/admin/nodes/${nodeId}/rotate-token`, {
           method: "POST",
         }),
+  adminTestStorePrinter: (
+    storeId: string,
+    printer: { topicSuffix: string; mac?: string; label?: string }
+  ): Promise<RemoteNodePrinterTestResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          ok: true,
+          topic: `offline-store/orders/preparing/${printer.topicSuffix || "printer_1"}`,
+        })
+      : fetchApi<RemoteNodePrinterTestResponse>(
+          `/admin/stores/${storeId}/nodes/main/printers/test`,
+          {
+            method: "POST",
+            body: JSON.stringify(printer),
+          }
+        ),
 
   // Payment: Viva payment
   getVivaCheckoutUrl: (
