@@ -65,6 +65,7 @@ import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import type {
+  ArchitectStoreUser,
   ManagerTableSummary,
   OrderingMode,
   PendingNodeAgent,
@@ -87,6 +88,13 @@ type GenerateScope = "pool" | "store";
 type TileLifecycle = "inactive" | "unbound" | "venue" | "live";
 type PoolStatusFilter = "all" | TileLifecycle;
 type StoreOnboardForm = StoreOnboardPayload;
+type StoreUserRoleInput = "MANAGER" | "WAITER" | "COOK";
+type StoreUserForm = {
+  email: string;
+  password: string;
+  displayName: string;
+  role: StoreUserRoleInput;
+};
 
 const MAX_GENERATE_COUNT = 500;
 const UNBOUND_STORE_VALUE = "__unbound__";
@@ -104,6 +112,13 @@ const defaultStoreOnboardForm = (): StoreOnboardForm => ({
   managerEmail: "",
   waiterEmail: "",
   cookEmail: "",
+});
+
+const defaultStoreUserForm = (): StoreUserForm => ({
+  email: "",
+  password: "",
+  displayName: "",
+  role: "WAITER",
 });
 
 const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
@@ -390,6 +405,13 @@ export default function ArchitectQrTiles() {
   const [creatingStore, setCreatingStore] = useState(false);
   const [storeOnboardForm, setStoreOnboardForm] =
     useState<StoreOnboardForm>(() => defaultStoreOnboardForm());
+  const [storeUsers, setStoreUsers] = useState<ArchitectStoreUser[]>([]);
+  const [loadingStoreUsers, setLoadingStoreUsers] = useState(false);
+  const [savingStoreUser, setSavingStoreUser] = useState(false);
+  const [editingStoreUserId, setEditingStoreUserId] = useState<string | null>(null);
+  const [storeUserForm, setStoreUserForm] = useState<StoreUserForm>(() =>
+    defaultStoreUserForm()
+  );
   const [generateScope, setGenerateScope] = useState<GenerateScope>("pool");
   const [generateCount, setGenerateCount] = useState<number>(20);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
@@ -805,6 +827,27 @@ export default function ArchitectQrTiles() {
     }
   }, [toast]);
 
+  const loadStoreUsers = useCallback(
+    async (storeId: string) => {
+      if (!storeId) return;
+      setLoadingStoreUsers(true);
+      try {
+        const res = await api.adminListStoreUsers(storeId);
+        setStoreUsers(res.users ?? []);
+      } catch (error) {
+        console.error("Failed to load store users", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to load users",
+          description: error instanceof ApiError ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoadingStoreUsers(false);
+      }
+    },
+    [toast]
+  );
+
   const loadOverview = useCallback(async () => {
     setLoadingOverview(true);
     try {
@@ -912,7 +955,10 @@ export default function ArchitectQrTiles() {
     setStoreOrderingMode(selectedStore.orderingMode ?? "qr");
     setPrinters(selectedStore.printers ?? []);
     void loadRemoteNode(selectedStore.id);
-  }, [loadRemoteNode, selectedStore]);
+    void loadStoreUsers(selectedStore.id);
+    setEditingStoreUserId(null);
+    setStoreUserForm(defaultStoreUserForm());
+  }, [loadRemoteNode, loadStoreUsers, selectedStore]);
 
   useEffect(() => {
     if (activeTab === "overview") {
@@ -1089,6 +1135,95 @@ export default function ArchitectQrTiles() {
         .finally(() => setUpdatingMode(false));
     },
     [selectedStoreId, toast]
+  );
+
+  const startEditStoreUser = useCallback((storeUser: ArchitectStoreUser) => {
+    setEditingStoreUserId(storeUser.id);
+    setStoreUserForm({
+      email: storeUser.email,
+      password: "",
+      displayName: storeUser.displayName,
+      role: storeUser.role.toUpperCase() as StoreUserRoleInput,
+    });
+  }, []);
+
+  const resetStoreUserForm = useCallback(() => {
+    setEditingStoreUserId(null);
+    setStoreUserForm(defaultStoreUserForm());
+  }, []);
+
+  const handleSaveStoreUser = useCallback(async () => {
+    if (!selectedStoreId) return;
+    const email = storeUserForm.email.trim();
+    const displayName = storeUserForm.displayName.trim();
+    const password = storeUserForm.password;
+    if (!email || !displayName || (!editingStoreUserId && !password)) {
+      toast({
+        variant: "destructive",
+        title: "User details required",
+        description: "Email, display name and password are required for new users.",
+      });
+      return;
+    }
+    setSavingStoreUser(true);
+    try {
+      const payload = {
+        email,
+        displayName,
+        role: storeUserForm.role,
+        ...(password ? { password } : {}),
+      };
+      const res = editingStoreUserId
+        ? await api.adminUpdateStoreUser(selectedStoreId, editingStoreUserId, payload)
+        : await api.adminCreateStoreUser(selectedStoreId, {
+            ...payload,
+            password,
+          });
+      setStoreUsers((current) => {
+        const exists = current.some((user) => user.id === res.user.id);
+        return exists
+          ? current.map((user) => (user.id === res.user.id ? res.user : user))
+          : [...current, res.user];
+      });
+      resetStoreUserForm();
+      toast({
+        title: editingStoreUserId ? "User updated" : "User created",
+        description: `${res.user.displayName} can access ${selectedStore?.name ?? "this store"}.`,
+      });
+      void loadOverview();
+    } catch (error) {
+      console.error("Failed to save store user", error);
+      toast({
+        variant: "destructive",
+        title: "User save failed",
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setSavingStoreUser(false);
+    }
+  }, [editingStoreUserId, loadOverview, resetStoreUserForm, selectedStore?.name, selectedStoreId, storeUserForm, toast]);
+
+  const handleDeleteStoreUser = useCallback(
+    async (storeUser: ArchitectStoreUser) => {
+      if (!selectedStoreId) return;
+      const confirmed = window.confirm(`Delete ${storeUser.displayName || storeUser.email}?`);
+      if (!confirmed) return;
+      try {
+        await api.adminDeleteStoreUser(selectedStoreId, storeUser.id);
+        setStoreUsers((current) => current.filter((user) => user.id !== storeUser.id));
+        if (editingStoreUserId === storeUser.id) resetStoreUserForm();
+        toast({ title: "User deleted" });
+        void loadOverview();
+      } catch (error) {
+        console.error("Failed to delete store user", error);
+        toast({
+          variant: "destructive",
+          title: "User delete failed",
+          description: error instanceof ApiError ? error.message : "Please try again.",
+        });
+      }
+    },
+    [editingStoreUserId, loadOverview, resetStoreUserForm, selectedStoreId, toast]
   );
 
   const updateNodeField = useCallback(
@@ -1372,9 +1507,10 @@ export default function ArchitectQrTiles() {
     if (activeTab === "settings") {
       void loadPendingNodes();
       if (selectedStoreId) void loadRemoteNode(selectedStoreId);
+      if (selectedStoreId) void loadStoreUsers(selectedStoreId);
     }
     void refreshPoolTiles(true);
-  }, [activeTab, loadOverview, loadPendingNodes, loadRemoteNode, refreshPoolTiles, selectedStoreId]);
+  }, [activeTab, loadOverview, loadPendingNodes, loadRemoteNode, loadStoreUsers, refreshPoolTiles, selectedStoreId]);
 
   const poolStats = useMemo(() => {
     return poolTiles.reduce(
@@ -2098,6 +2234,137 @@ export default function ArchitectQrTiles() {
                         Run guest self-order and staff ordering in parallel.
                       </p>
                     </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <Building2 className="h-4 w-4 text-primary" />
+                          Store Users
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          Create, edit and remove staff access for {selectedStore.name}.
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => void loadStoreUsers(selectedStore.id)} disabled={loadingStoreUsers}>
+                        {loadingStoreUsers ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCcw className="mr-2 h-4 w-4" />
+                        )}
+                        Refresh
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 rounded-lg border border-border/60 p-3 lg:grid-cols-12">
+                      <div className="lg:col-span-3">
+                        <Label>Email</Label>
+                        <Input
+                          value={storeUserForm.email}
+                          onChange={(event) =>
+                            setStoreUserForm((current) => ({ ...current, email: event.target.value }))
+                          }
+                          placeholder="staff@example.com"
+                        />
+                      </div>
+                      <div className="lg:col-span-3">
+                        <Label>Display name</Label>
+                        <Input
+                          value={storeUserForm.displayName}
+                          onChange={(event) =>
+                            setStoreUserForm((current) => ({ ...current, displayName: event.target.value }))
+                          }
+                          placeholder="Floor staff"
+                        />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <Label>Role</Label>
+                        <Select
+                          value={storeUserForm.role}
+                          onValueChange={(value) =>
+                            setStoreUserForm((current) => ({ ...current, role: value as StoreUserRoleInput }))
+                          }
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="MANAGER">Manager</SelectItem>
+                            <SelectItem value="WAITER">Waiter</SelectItem>
+                            <SelectItem value="COOK">Cook</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="lg:col-span-2">
+                        <Label>Password</Label>
+                        <Input
+                          type="password"
+                          value={storeUserForm.password}
+                          onChange={(event) =>
+                            setStoreUserForm((current) => ({ ...current, password: event.target.value }))
+                          }
+                          placeholder={editingStoreUserId ? "Leave blank" : "Required"}
+                        />
+                      </div>
+                      <div className="flex items-end gap-2 lg:col-span-2">
+                        <Button size="sm" onClick={() => void handleSaveStoreUser()} disabled={savingStoreUser}>
+                          {savingStoreUser ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                          {editingStoreUserId ? "Update" : "Add"}
+                        </Button>
+                        {editingStoreUserId ? (
+                          <Button variant="outline" size="sm" onClick={resetStoreUserForm} disabled={savingStoreUser}>
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {storeUsers.length === 0 ? (
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                        No store users yet.
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead className="w-[150px] text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {storeUsers.map((storeUser) => (
+                            <TableRow key={storeUser.id}>
+                              <TableCell className="font-medium">{storeUser.displayName}</TableCell>
+                              <TableCell className="break-all">{storeUser.email}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="capitalize">
+                                  {storeUser.role}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => startEditStoreUser(storeUser)}>
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={() => void handleDeleteStoreUser(storeUser)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
                   </CardContent>
                 </Card>
 

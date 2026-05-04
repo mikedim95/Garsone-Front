@@ -2,6 +2,7 @@
 import { useAuthStore } from "@/store/authStore";
 import type {
   AuthResponse,
+  ArchitectStoreUser,
   CategoryPayload,
   CreateOrderPayload,
   ImageUploadPayload,
@@ -827,6 +828,65 @@ export const api = {
       : fetchApi<StoreOnboardResponse>("/admin/stores", {
           method: "POST",
           body: JSON.stringify(data),
+        }),
+  adminListStoreUsers: (
+    storeId: string
+  ): Promise<{ users: ArchitectStoreUser[] }> =>
+    isOffline()
+      ? Promise.resolve({ users: [] })
+      : fetchApi<{ users: ArchitectStoreUser[] }>(`/admin/stores/${storeId}/users`),
+  adminCreateStoreUser: (
+    storeId: string,
+    data: {
+      email: string;
+      password: string;
+      displayName: string;
+      role: "MANAGER" | "WAITER" | "COOK";
+    }
+  ): Promise<{ user: ArchitectStoreUser }> =>
+    isOffline()
+      ? Promise.resolve({
+          user: {
+            id: `offline-user-${Date.now()}`,
+            storeId,
+            email: data.email,
+            displayName: data.displayName,
+            role: data.role.toLowerCase() as ArchitectStoreUser["role"],
+          },
+        })
+      : fetchApi<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  adminUpdateStoreUser: (
+    storeId: string,
+    userId: string,
+    data: Partial<{
+      email: string;
+      password: string;
+      displayName: string;
+      role: "MANAGER" | "WAITER" | "COOK";
+    }>
+  ): Promise<{ user: ArchitectStoreUser }> =>
+    isOffline()
+      ? Promise.resolve({
+          user: {
+            id: userId,
+            storeId,
+            email: data.email || "offline@example.local",
+            displayName: data.displayName || "Offline user",
+            role: (data.role?.toLowerCase() as ArchitectStoreUser["role"]) || "waiter",
+          },
+        })
+      : fetchApi<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users/${userId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  adminDeleteStoreUser: (storeId: string, userId: string): Promise<OkResponse> =>
+    isOffline()
+      ? Promise.resolve({ success: true })
+      : fetchApi<OkResponse>(`/admin/stores/${storeId}/users/${userId}`, {
+          method: "DELETE",
         }),
   adminListStoreOverview: (): Promise<{ stores: StoreOverview[] }> =>
     isOffline()

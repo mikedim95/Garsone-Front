@@ -102,6 +102,16 @@ export interface User {
   waiterType?: StaffType | null;
 }
 
+export interface ArchitectStoreUser {
+  id: string;
+  storeId: string;
+  email: string;
+  displayName: string;
+  role: Exclude<UserRole, "architect">;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Table {
   id: string;
   label: string;
