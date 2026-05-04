@@ -335,6 +335,7 @@ export default function TableMenu() {
   const tableLookupCode = tableParam || tableId || null;
   const activeTableId = tableId;
   const guestOrderingEnabled = orderingMode !== "waiter";
+  const usesImmediateGuestCheckout = storeSlug?.trim().toLowerCase() === "noor";
   const isEditingExisting = Boolean(editingOrderId);
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
@@ -1001,15 +1002,16 @@ export default function TableMenu() {
       return null;
     }
 
-    const approval =
-      getStoredLocalityApproval({
-        tableId: activeTableId,
-        storeSlug: storeSlug || null,
-        purpose: "ORDER_SUBMIT",
-        sessionId: localitySessionId,
-      }) ?? (await requestLocalityApproval());
+    const approval = usesImmediateGuestCheckout
+      ? null
+      : getStoredLocalityApproval({
+          tableId: activeTableId,
+          storeSlug: storeSlug || null,
+          purpose: "ORDER_SUBMIT",
+          sessionId: localitySessionId,
+        }) ?? (await requestLocalityApproval());
 
-    if (!approval) {
+    if (!usesImmediateGuestCheckout && !approval) {
       return null;
     }
 
@@ -1021,12 +1023,19 @@ export default function TableMenu() {
         modifiers: JSON.stringify(item.selectedModifiers),
       })),
       ...(note ? { note } : {}),
-      localityApprovalToken: approval.token,
-      localitySessionId,
+      ...(approval
+        ? {
+            localityApprovalToken: approval.token,
+            localitySessionId,
+          }
+        : {}),
     };
 
     try {
-      void trackOrderEvent("order_submit_attempted", approval.method);
+      void trackOrderEvent(
+        "order_submit_attempted",
+        approval?.method || "direct_submit"
+      );
       setCheckoutBusy(true);
       const response = editingOrderId
         ? await api.editOrder(editingOrderId, payload)
@@ -1041,8 +1050,13 @@ export default function TableMenu() {
       setActiveOrdersOpen(true);
       clearCart();
       stopEditingLastOrder();
-      clearStoredLocalityApproval();
-      void trackOrderEvent("order_submit_succeeded", approval.method);
+      if (approval) {
+        clearStoredLocalityApproval();
+      }
+      void trackOrderEvent(
+        "order_submit_succeeded",
+        approval?.method || "direct_submit"
+      );
       setCategorySelected(false);
       setSelectedCategory(null);
       setOrderPlacedSignal((s) => s + 1);
@@ -1075,14 +1089,18 @@ export default function TableMenu() {
             defaultValue: "Please scan the table tag again to submit.",
           }),
         });
-        void trackOrderEvent("order_submit_failed", approval.method, {
+        void trackOrderEvent("order_submit_failed", approval?.method, {
           reason: message,
         });
         return null;
       }
-      void trackOrderEvent("order_submit_failed", approval.method, {
+      void trackOrderEvent(
+        "order_submit_failed",
+        approval?.method || "direct_submit",
+        {
         reason: message,
-      });
+        }
+      );
       toast({
         title: t("menu.toast_error_title", {
           defaultValue: "Order not placed",
@@ -1102,6 +1120,9 @@ export default function TableMenu() {
   };
 
   const handleCheckout = async (note?: string) => {
+    if (usesImmediateGuestCheckout) {
+      return handleImmediateCheckout(note);
+    }
     if (checkoutBusy) return null;
     if (!guestOrderingEnabled) {
       toast({
@@ -1535,8 +1556,14 @@ export default function TableMenu() {
                 setSelectedCategory(null);
               }}
               onAddItem={handleAddItem}
-              onCheckout={handleCheckout}
-              onImmediateCheckout={handleImmediateCheckout}
+              onCheckout={
+                usesImmediateGuestCheckout
+                  ? handleImmediateCheckout
+                  : handleCheckout
+              }
+              onImmediateCheckout={
+                usesImmediateGuestCheckout ? undefined : handleImmediateCheckout
+              }
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
               callButtonLabel={callButtonLabel}
@@ -1544,6 +1571,7 @@ export default function TableMenu() {
               callPrompted={callPrompted}
               onCallClick={handleFloatingCallClick}
               showCartButton={guestOrderingEnabled}
+              showPaymentButton={!usesImmediateGuestCheckout}
             />
           )}
         </div>

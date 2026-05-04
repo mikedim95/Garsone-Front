@@ -826,7 +826,11 @@ export const SwipeableMenuView = ({
                       <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
                       <>
-                        <CreditCard className="h-5 w-5 mr-2" />
+                        {showPaymentButton ? (
+                          <CreditCard className="h-5 w-5 mr-2" />
+                        ) : (
+                          <ShoppingCart className="h-5 w-5 mr-2" />
+                        )}
                         {primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}
                       </>
                     )}
