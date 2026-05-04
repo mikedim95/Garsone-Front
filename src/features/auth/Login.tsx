@@ -12,7 +12,7 @@ import {
   writeOfflineStorageFlag,
 } from "@/lib/offlineMode";
 import { HomeLink } from "@/components/HomeLink";
-import { getStoredStoreSlug } from "@/lib/storeSlug";
+import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 
 type RealtimeStatusDetail = { connected?: boolean };
 
@@ -86,17 +86,39 @@ export default function Login() {
     try {
       setError("");
       setLoading(true);
-      const { accessToken, user } = await api.signIn(email, password);
-      login(user, accessToken);
-      if (user.mustChangePassword) {
+      const { accessToken, user, store } = await api.signIn(email, password);
+      const enrichedUser = {
+        ...user,
+        storeId: user.storeId || store?.id,
+        storeSlug: user.storeSlug || store?.slug || user.storeSlug,
+      };
+      if (store?.slug) {
+        try {
+          setStoredStoreSlug(store.slug);
+          window.dispatchEvent(
+            new CustomEvent("store-slug-changed", { detail: { slug: store.slug } })
+          );
+        } catch (error) {
+          console.warn("Failed to persist store slug on login", error);
+        }
+      }
+      if (store?.name) {
+        try {
+          localStorage.setItem("STORE_NAME", store.name);
+        } catch (error) {
+          console.warn("Failed to persist store name on login", error);
+        }
+      }
+      login(enrichedUser, accessToken);
+      if (enrichedUser.mustChangePassword) {
         setCurrentPasswordForChange(password);
         setMustChangePassword(true);
         setPassword("");
         return;
       }
-      if (user.role === "architect") navigate("/GarsoneAdmin");
-      else if (user.role === "manager") navigate("/manager");
-      else if (user.role === "cook") navigate("/cook");
+      if (enrichedUser.role === "architect") navigate("/GarsoneAdmin");
+      else if (enrichedUser.role === "manager") navigate("/manager");
+      else if (enrichedUser.role === "cook") navigate("/cook");
       else navigate("/waiter");
     } catch (err) {
       if (err instanceof ApiError) {
