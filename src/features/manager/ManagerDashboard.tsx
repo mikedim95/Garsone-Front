@@ -108,6 +108,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/ui/page-transition";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
 
@@ -215,6 +216,11 @@ const ProBadge = () => (
     ★
   </span>
 );
+
+const shortenChartLabel = (value: string, maxLength = 10) =>
+  value.length > maxLength
+    ? `${value.slice(0, Math.max(3, maxLength - 1))}…`
+    : value;
 
 const isWaiterCallEvent = (
   payload: unknown
@@ -368,7 +374,36 @@ export default function ManagerDashboard() {
   const navigate = useNavigate();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const isMobile = useIsMobile();
   const isManagerRole = user?.role === "manager" || user?.role === "architect";
+  const formatStatusLabel = useCallback(
+    (status: OrderStatus) => t(`status.${status}`, { defaultValue: status }),
+    [t]
+  );
+  const formatStatusAxisLabel = useCallback(
+    (status: OrderStatus) => {
+      const full = formatStatusLabel(status);
+      if (!isMobile) return full;
+      const compact: Record<OrderStatus, string> = {
+        PLACED: shortenChartLabel(full, 4),
+        PREPARING: shortenChartLabel(full, 5),
+        READY: shortenChartLabel(full, 5),
+        SERVED: shortenChartLabel(full, 5),
+        PAID: shortenChartLabel(full, 4),
+        CANCELLED: shortenChartLabel(full, 5),
+      };
+      return compact[status];
+    },
+    [formatStatusLabel, isMobile]
+  );
+  const formatDaypartAxisLabel = useCallback(
+    (label: string) => (isMobile ? shortenChartLabel(label, 6) : label),
+    [isMobile]
+  );
+  const formatCategoryAxisLabel = useCallback(
+    (label: string) => (isMobile ? shortenChartLabel(label, 8) : label),
+    [isMobile]
+  );
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -2011,10 +2046,12 @@ export default function ManagerDashboard() {
     });
     return (Object.keys(base) as OrderStatus[]).map((status) => ({
       status,
+      statusLabel: formatStatusLabel(status),
+      statusAxisLabel: formatStatusAxisLabel(status),
       count: base[status],
       atRisk: Boolean(atRiskMap[status] && statusHasThreshold(status)),
     }));
-  }, [ordersInRange, rangeInfo.start, rangeInfo.end]);
+  }, [formatStatusAxisLabel, formatStatusLabel, ordersInRange]);
 
   // Pro analytics for Orders
   const prepHistogram = useMemo(() => {
@@ -2900,44 +2937,47 @@ export default function ManagerDashboard() {
                                 defaultValue: "Revenue by day",
                               })}
                         </h3>
-                        <div className="h-72 flex items-center justify-center">
-                          <div className="h-full w-full max-w-4xl px-4 mx-auto">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart
-                                data={revenueTimeline}
-                                margin={{
-                                  top: 16,
-                                  right: 24,
-                                  bottom: 8,
-                                  left: 24,
-                                }}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Line
-                                  type="monotone"
-                                  dataKey="revenue"
-                                  stroke="hsl(var(--primary))"
-                                  strokeWidth={2}
-                                  name={t("manager.revenue_eur", {
-                                    defaultValue: "Revenue (€)",
-                                  })}
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="prevRevenue"
-                                  stroke="hsl(var(--muted-foreground))"
-                                  strokeDasharray="4 4"
-                                  name={t("manager.prior_period_eur", {
-                                    defaultValue: "Prior period (€)",
-                                  })}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
+                        <div className="h-72 w-full min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart
+                              data={revenueTimeline}
+                              margin={{
+                                top: 16,
+                                right: isMobile ? 8 : 24,
+                                bottom: isMobile ? 12 : 8,
+                                left: isMobile ? 0 : 24,
+                              }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="date"
+                                tick={{ fontSize: isMobile ? 10 : 12 }}
+                                interval="preserveStartEnd"
+                                minTickGap={isMobile ? 20 : 8}
+                              />
+                              <YAxis width={isMobile ? 30 : 40} />
+                              <Tooltip />
+                              {!isMobile ? <Legend /> : null}
+                              <Line
+                                type="monotone"
+                                dataKey="revenue"
+                                stroke="hsl(var(--primary))"
+                                strokeWidth={2}
+                                name={t("manager.revenue_eur", {
+                                  defaultValue: "Revenue (€)",
+                                })}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="prevRevenue"
+                                stroke="hsl(var(--muted-foreground))"
+                                strokeDasharray="4 4"
+                                name={t("manager.prior_period_eur", {
+                                  defaultValue: "Prior period (€)",
+                                })}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
                         </div>
                       </Card>
 
@@ -2974,11 +3014,28 @@ export default function ManagerDashboard() {
                             </div>
                           ) : (
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={categoryRevenue}>
+                              <BarChart
+                                data={categoryRevenue}
+                                margin={{
+                                  top: 8,
+                                  right: isMobile ? 8 : 16,
+                                  bottom: isMobile ? 24 : 8,
+                                  left: isMobile ? 0 : 8,
+                                }}
+                              >
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="category" />
-                                <YAxis />
+                                <XAxis
+                                  dataKey="category"
+                                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                                  tickFormatter={formatCategoryAxisLabel}
+                                  interval={0}
+                                  angle={isMobile ? -20 : 0}
+                                  textAnchor={isMobile ? "end" : "middle"}
+                                  height={isMobile ? 48 : 30}
+                                />
+                                <YAxis width={isMobile ? 32 : 40} />
                                 <Tooltip
+                                  labelFormatter={(value) => String(value)}
                                   formatter={(value: ValueType) => {
                                     const numericValue =
                                       typeof value === "number"
@@ -2992,10 +3049,7 @@ export default function ManagerDashboard() {
                                     ];
                                   }}
                                 />
-                                <Bar
-                                  dataKey="revenue"
-                                  fill="hsl(var(--primary))"
-                                />
+                                  <Bar dataKey="revenue" fill="hsl(var(--primary))" />
                               </BarChart>
                             </ResponsiveContainer>
                           )}
@@ -3134,12 +3188,29 @@ export default function ManagerDashboard() {
                                 </div>
                                 <ProBadge />
                               </div>
-                              <div className="h-64">
+                              <div className="h-64 w-full min-w-0">
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart data={avgTicketByDaypart}>
+                                  <BarChart
+                                    data={avgTicketByDaypart}
+                                    margin={{
+                                      top: 8,
+                                      right: isMobile ? 8 : 16,
+                                      bottom: isMobile ? 24 : 8,
+                                      left: isMobile ? 0 : 8,
+                                    }}
+                                  >
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="daypart" />
+                                    <XAxis
+                                      dataKey="daypart"
+                                      tick={{ fontSize: isMobile ? 10 : 12 }}
+                                      tickFormatter={formatDaypartAxisLabel}
+                                      interval={0}
+                                      angle={isMobile ? -20 : 0}
+                                      textAnchor={isMobile ? "end" : "middle"}
+                                      height={isMobile ? 48 : 30}
+                                    />
                                     <YAxis
+                                      width={isMobile ? 36 : 52}
                                       tickFormatter={(v) =>
                                         formatCurrency(Number(v))
                                       }
@@ -3320,32 +3391,40 @@ export default function ManagerDashboard() {
                             </div>
                           </div>
                           {totalOrders ? (
-                            <div className="h-56 sm:h-64 w-full flex items-center justify-center">
-                              <div className="h-full w-full max-w-md mx-auto">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart 
-                                    data={ordersByStatus}
-                                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                                  >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="status" tick={{ fontSize: 10 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                                    <Tooltip />
-                                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                                      {ordersByStatus.map((entry, idx) => (
-                                        <Cell
-                                          key={`c-${idx}`}
-                                          fill={
-                                            entry.atRisk
-                                              ? "hsl(var(--destructive))"
-                                              : "hsl(var(--primary))"
-                                          }
-                                        />
-                                      ))}
-                                    </Bar>
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
+                            <div className="h-56 sm:h-64 w-full min-w-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                  data={ordersByStatus}
+                                  margin={{
+                                    top: 8,
+                                    right: isMobile ? 8 : 12,
+                                    bottom: isMobile ? 20 : 8,
+                                    left: 0,
+                                  }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis
+                                    dataKey="statusAxisLabel"
+                                    tick={{ fontSize: isMobile ? 9 : 10 }}
+                                    interval={0}
+                                    minTickGap={0}
+                                  />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                  <Tooltip labelFormatter={(_, payload) => String(payload?.[0]?.payload?.statusLabel ?? "")} />
+                                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                    {ordersByStatus.map((entry, idx) => (
+                                      <Cell
+                                        key={`c-${idx}`}
+                                        fill={
+                                          entry.atRisk
+                                            ? "hsl(var(--destructive))"
+                                            : "hsl(var(--primary))"
+                                        }
+                                      />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">
@@ -3369,25 +3448,28 @@ export default function ManagerDashboard() {
                             </div>
                           </div>
                           {serveDurationsMinutes.length ? (
-                            <div className="h-56 sm:h-64 w-full flex items-center justify-center">
-                              <div className="h-full w-full max-w-md mx-auto">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart 
-                                    data={throughputHistogram}
-                                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                                  >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                                    <Tooltip />
-                                    <Bar
-                                      dataKey="count"
-                                      fill="hsl(var(--primary))"
-                                      radius={[4, 4, 0, 0]}
-                                    />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
+                            <div className="h-56 sm:h-64 w-full min-w-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                  data={throughputHistogram}
+                                  margin={{
+                                    top: 8,
+                                    right: isMobile ? 8 : 12,
+                                    bottom: isMobile ? 12 : 8,
+                                    left: 0,
+                                  }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis dataKey="label" tick={{ fontSize: isMobile ? 9 : 10 }} />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                  <Tooltip />
+                                  <Bar
+                                    dataKey="count"
+                                    fill="hsl(var(--primary))"
+                                    radius={[4, 4, 0, 0]}
+                                  />
+                                </BarChart>
+                              </ResponsiveContainer>
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">
@@ -3700,16 +3782,16 @@ export default function ManagerDashboard() {
                       {/* Horizontal category navigation */}
                       <div className="border-b border-border/60 bg-muted/30">
                         <div className="px-4 sm:px-6 pt-4 pb-0">
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <h3 className="text-lg font-semibold">Staff Management</h3>
                             <div className="text-xs text-muted-foreground">
                               {waiterDetails.length + cooks.length} members · {cookTypes.length + waiterTypes.length} types
                             </div>
                           </div>
-                          <TabsList className="w-full justify-start gap-0 h-auto p-0 bg-transparent rounded-none">
+                          <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto p-0 bg-transparent rounded-none">
                             <TabsTrigger 
                               value="waiters" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <Users className="h-4 w-4 mr-1.5" />
                               Waiters
@@ -3717,7 +3799,7 @@ export default function ManagerDashboard() {
                             </TabsTrigger>
                             <TabsTrigger 
                               value="cooks" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <ChefHat className="h-4 w-4 mr-1.5" />
                               Cooks
@@ -3726,14 +3808,14 @@ export default function ManagerDashboard() {
                             <div className="h-6 w-px bg-border mx-2 self-center" />
                             <TabsTrigger 
                               value="waiter-types" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               Waiter Types
                               <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{waiterTypes.length}</Badge>
                             </TabsTrigger>
                             <TabsTrigger 
                               value="cook-types" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               Cook Types
                               <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{cookTypes.length}</Badge>
@@ -3746,14 +3828,14 @@ export default function ManagerDashboard() {
                       <div className="p-4 sm:p-6">
                         {/* Waiters Tab */}
                         <TabsContent value="waiters" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
                               Manage your front-of-house team and table assignments
                             </p>
                             <Button
                               onClick={() => setAddModalOpen(true)}
                               size="sm"
-                              className="inline-flex items-center gap-2"
+                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                             >
                               <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
                             </Button>
@@ -3838,14 +3920,14 @@ export default function ManagerDashboard() {
 
                         {/* Cooks Tab */}
                         <TabsContent value="cooks" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
                               Manage your kitchen staff and specializations
                             </p>
                             <Button
                               onClick={() => setAddCookModalOpen(true)}
                               size="sm"
-                              className="inline-flex items-center gap-2"
+                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                             >
                               <Plus className="h-4 w-4" /> Add cook
                             </Button>

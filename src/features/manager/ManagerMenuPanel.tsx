@@ -331,11 +331,11 @@ export const ManagerMenuPanel = () => {
   };
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    <Card className="p-4 sm:p-6">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold">Manage Menu Items</h2>
-        <div className="flex gap-2">
-          <Button size="sm" className="gap-2" onClick={openCategoryCreate}>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" className="gap-2 w-full sm:w-auto" onClick={openCategoryCreate}>
             <Plus className="h-4 w-4" /> Add Category
           </Button>
           <Button
@@ -350,7 +350,7 @@ export const ManagerMenuPanel = () => {
       </div>
       {panelOpen && (
         <>
-      <div className="flex items-center gap-2 mb-4 text-sm">
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showDisabled} onChange={(e)=>setShowDisabled(e.target.checked)} />
           Show disabled items
@@ -360,10 +360,10 @@ export const ManagerMenuPanel = () => {
       <div className="space-y-8">
         {grouped.map(({cat, items}) => (
           <section key={cat.id}>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <h3 className="text-lg font-semibold text-foreground flex-1">{cat.title}</h3>
-              <div className="flex items-center gap-1">
-                <Button size="sm" variant="outline" className="gap-1" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
+              <div className="flex flex-wrap items-center gap-1">
+                <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
                 <Button size="sm" variant="ghost" onClick={() => openCategoryEdit(cat)}><Pencil className="h-4 w-4"/></Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const yes = window.confirm('Delete this category? Items will remain but may appear uncategorized.');
@@ -386,8 +386,8 @@ export const ManagerMenuPanel = () => {
                 <div key={group.label} className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">{group.label}</div>
                   {group.items.map((item)=> (
-                <div key={item.id} className={`flex items-center justify-between border rounded-lg p-3 ${item.isAvailable === false ? 'opacity-60' : ''}`}>
-                  <div>
+                <div key={item.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between ${item.isAvailable === false ? 'opacity-60' : ''}`}>
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium">
                       {item.titleEn || item.titleEl || item.title || item.name}
                       {(item.subcategoryEn || item.subcategoryEl || item.subcategory) && (
@@ -401,7 +401,7 @@ export const ManagerMenuPanel = () => {
                     </div>
                     <div className="text-xs text-muted-foreground">{item.descriptionEn || item.descriptionEl || item.description || '—'}</div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
                     <Button
                       variant="outline"
                       size="sm"
