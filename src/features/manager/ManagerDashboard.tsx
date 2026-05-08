@@ -2865,7 +2865,7 @@ export default function ManagerDashboard() {
 
             <div className="flex-1 w-full overflow-y-auto">
               <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
-                <TabsContent value="economics" className="space-y-6">
+                <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />
                   ) : (
@@ -3267,7 +3267,7 @@ export default function ManagerDashboard() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="orders" className="space-y-6">
+                <TabsContent value="orders" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={3} />
                   ) : (
@@ -3343,27 +3343,35 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                         {ordersTimeline.length ? (
-                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                            <div className="h-full w-full max-w-3xl mx-auto">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <LineChart 
-                                  data={ordersTimeline}
-                                  margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-                                >
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={35} />
-                                  <Tooltip />
-                                  <Line
-                                    type="monotone"
-                                    dataKey="count"
-                                    stroke="hsl(var(--primary))"
-                                    strokeWidth={2}
-                                    name="Orders"
-                                  />
-                                </LineChart>
-                              </ResponsiveContainer>
-                            </div>
+                          <div className="h-64 sm:h-72 w-full min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart
+                                data={ordersTimeline}
+                                margin={{
+                                  top: 8,
+                                  right: isMobile ? 8 : 16,
+                                  bottom: isMobile ? 12 : 8,
+                                  left: 0,
+                                }}
+                              >
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis
+                                  dataKey="label"
+                                  tick={{ fontSize: isMobile ? 10 : 11 }}
+                                  interval="preserveStartEnd"
+                                  minTickGap={isMobile ? 18 : 8}
+                                />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={35} />
+                                <Tooltip />
+                                <Line
+                                  type="monotone"
+                                  dataKey="count"
+                                  stroke="hsl(var(--primary))"
+                                  strokeWidth={2}
+                                  name={t("manager.total_orders", { defaultValue: "Orders" })}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-8">
@@ -3440,10 +3448,14 @@ export default function ManagerDashboard() {
                           <div className="flex items-center justify-between mb-4">
                             <div>
                               <p className="text-sm text-muted-foreground">
-                                Throughput
+                                {t("manager.throughput", {
+                                  defaultValue: "Throughput",
+                                })}
                               </p>
                               <h3 className="text-lg font-semibold">
-                                Placed → Served minutes
+                                {t("manager.placed_served_minutes", {
+                                  defaultValue: "Placed → Served minutes",
+                                })}
                               </h3>
                             </div>
                           </div>
@@ -3489,34 +3501,41 @@ export default function ManagerDashboard() {
                               <div className="flex items-center justify-between mb-4">
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    Variability
+                                    {t("manager.variability", {
+                                      defaultValue: "Variability",
+                                    })}
                                   </p>
                                   <h3 className="text-lg font-semibold">
-                                    Prep Time Distribution
+                                    {t("manager.prep_time_distribution", {
+                                      defaultValue: "Prep Time Distribution",
+                                    })}
                                   </h3>
                                 </div>
                                 <ProBadge />
                               </div>
                               {prepDurationsMinutes.length ? (
-                                <div className="h-56 sm:h-64 w-full flex items-center justify-center">
-                                  <div className="h-full w-full max-w-md mx-auto">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                      <BarChart 
-                                        data={prepHistogram}
-                                        margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                                      >
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                                        <Tooltip />
-                                        <Bar
-                                          dataKey="count"
-                                          fill="hsl(var(--primary))"
-                                          radius={[4, 4, 0, 0]}
-                                        />
-                                      </BarChart>
-                                    </ResponsiveContainer>
-                                  </div>
+                                <div className="h-56 sm:h-64 w-full min-w-0">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                      data={prepHistogram}
+                                      margin={{
+                                        top: 8,
+                                        right: isMobile ? 8 : 12,
+                                        bottom: isMobile ? 12 : 8,
+                                        left: 0,
+                                      }}
+                                    >
+                                      <CartesianGrid strokeDasharray="3 3" />
+                                      <XAxis dataKey="label" tick={{ fontSize: isMobile ? 9 : 10 }} />
+                                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                      <Tooltip />
+                                      <Bar
+                                        dataKey="count"
+                                        fill="hsl(var(--primary))"
+                                        radius={[4, 4, 0, 0]}
+                                      />
+                                    </BarChart>
+                                  </ResponsiveContainer>
                                 </div>
                               ) : (
                                 <p className="text-sm text-muted-foreground text-center py-8">
@@ -3773,7 +3792,7 @@ export default function ManagerDashboard() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="personnel" className="space-y-6">
+                <TabsContent value="personnel" className="space-y-6 min-w-0 overflow-x-hidden">
                   <DateRangeHeader />
 
                   {/* Unified Staff Management Card */}
@@ -3783,9 +3802,17 @@ export default function ManagerDashboard() {
                       <div className="border-b border-border/60 bg-muted/30">
                         <div className="px-4 sm:px-6 pt-4 pb-0">
                           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <h3 className="text-lg font-semibold">Staff Management</h3>
+                            <h3 className="text-lg font-semibold">
+                              {t("manager.staff_management", {
+                                defaultValue: "Staff Management",
+                              })}
+                            </h3>
                             <div className="text-xs text-muted-foreground">
-                              {waiterDetails.length + cooks.length} members · {cookTypes.length + waiterTypes.length} types
+                              {t("manager.staff_summary", {
+                                defaultValue: "{{members}} members · {{types}} types",
+                                members: waiterDetails.length + cooks.length,
+                                types: cookTypes.length + waiterTypes.length,
+                              })}
                             </div>
                           </div>
                           <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto p-0 bg-transparent rounded-none">
@@ -3794,7 +3821,9 @@ export default function ManagerDashboard() {
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <Users className="h-4 w-4 mr-1.5" />
-                              Waiters
+                              {t("manager.waiters", {
+                                defaultValue: "Waiters",
+                              })}
                               <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{waiterDetails.length}</Badge>
                             </TabsTrigger>
                             <TabsTrigger 
@@ -3802,7 +3831,9 @@ export default function ManagerDashboard() {
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <ChefHat className="h-4 w-4 mr-1.5" />
-                              Cooks
+                              {t("manager.cooks", {
+                                defaultValue: "Cooks",
+                              })}
                               <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{cooks.length}</Badge>
                             </TabsTrigger>
                             <div className="h-6 w-px bg-border mx-2 self-center" />
@@ -3810,14 +3841,18 @@ export default function ManagerDashboard() {
                               value="waiter-types" 
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
-                              Waiter Types
+                              {t("manager.waiter_types", {
+                                defaultValue: "Waiter Types",
+                              })}
                               <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{waiterTypes.length}</Badge>
                             </TabsTrigger>
                             <TabsTrigger 
                               value="cook-types" 
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
-                              Cook Types
+                              {t("manager.cook_types", {
+                                defaultValue: "Cook Types",
+                              })}
                               <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{cookTypes.length}</Badge>
                             </TabsTrigger>
                           </TabsList>
@@ -3830,7 +3865,10 @@ export default function ManagerDashboard() {
                         <TabsContent value="waiters" className="mt-0 space-y-4">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Manage your front-of-house team and table assignments
+                              {t("manager.waiters_description", {
+                                defaultValue:
+                                  "Manage your front-of-house team and table assignments",
+                              })}
                             </p>
                             <Button
                               onClick={() => setAddModalOpen(true)}
@@ -3922,14 +3960,20 @@ export default function ManagerDashboard() {
                         <TabsContent value="cooks" className="mt-0 space-y-4">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Manage your kitchen staff and specializations
+                              {t("manager.cooks_description", {
+                                defaultValue:
+                                  "Manage your kitchen staff and specializations",
+                              })}
                             </p>
                             <Button
                               onClick={() => setAddCookModalOpen(true)}
                               size="sm"
                               className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                             >
-                              <Plus className="h-4 w-4" /> Add cook
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.add_cook", {
+                                defaultValue: "Add cook",
+                              })}
                             </Button>
                           </div>
                           {loadingCooks ? (
@@ -4368,15 +4412,22 @@ export default function ManagerDashboard() {
                                     {t("manager.table", { defaultValue: "Table" })} {table.label}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {table.openOrders} open order
-                                    {table.openOrders === 1 ? "" : "s"}
+                                    {t("manager.open_orders_count", {
+                                      defaultValue: "{{count}} open orders",
+                                      count: table.openOrders,
+                                    })}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    QR tile:{" "}
+                                    {t("manager.qr_tile", {
+                                      defaultValue: "QR tile",
+                                    })}
+                                    :{" "}
                                     <span className="text-foreground">
                                       {assignedTile
                                         ? `${assignedTile.label || assignedTile.publicCode} (${assignedTile.publicCode})`
-                                        : "Not assigned"}
+                                        : t("manager.not_assigned", {
+                                            defaultValue: "Not assigned",
+                                          })}
                                     </span>
                                   </p>
                                 </div>
@@ -4410,7 +4461,7 @@ export default function ManagerDashboard() {
                                   ) : (
                                     <Trash2 className="h-4 w-4 mr-2" />
                                   )}
-                                  Delete
+                                  {t("actions.delete")}
                                 </Button>
                               </div>
                             </div>
@@ -4420,17 +4471,23 @@ export default function ManagerDashboard() {
                     )}
                     {!storeId ? (
                       <p className="text-sm text-muted-foreground">
-                        Load store info first to manage QR tiles.
+                        {t("manager.load_store_info_for_qr", {
+                          defaultValue:
+                            "Load store info first to manage QR tiles.",
+                        })}
                       </p>
                     ) : qrTiles.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        No QR tiles found. Ask your architect to generate and assign tiles to this store first.
+                        {t("manager.no_qr_tiles", {
+                          defaultValue:
+                            "No QR tiles found. Ask your architect to generate and assign tiles to this store first.",
+                        })}
                       </p>
                     ) : null}
                   </Card>
                 </TabsContent>
 
-                <TabsContent value="menu" className="space-y-6">
+                <TabsContent value="menu" className="space-y-6 min-w-0 overflow-x-hidden">
                   <DateRangeHeader />
                   {managerMode === "pro" && (
                     <div className="grid gap-6 lg:grid-cols-2">
@@ -4479,10 +4536,9 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                         {categoryUnits.some((entry) => entry.units > 0) ? (
-                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                            <div className="h-full w-full max-w-xs sm:max-w-sm mx-auto">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
+                          <div className="h-64 sm:h-72 w-full min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
                                   <Tooltip
                                     formatter={(
                                       value: ValueType,
@@ -4502,7 +4558,7 @@ export default function ManagerDashboard() {
                                         : [numericValue.toString(), label];
                                     }}
                                   />
-                                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                                  {!isMobile ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
                                   <Pie
                                     data={categoryUnits.map((c) => ({
                                       name: c.category,
@@ -4514,7 +4570,7 @@ export default function ManagerDashboard() {
                                     dataKey="value"
                                     nameKey="name"
                                     outerRadius={80}
-                                    label
+                                    label={!isMobile}
                                   >
                                     {categoryUnits.map((_, idx) => (
                                       <Cell
@@ -4525,7 +4581,6 @@ export default function ManagerDashboard() {
                                   </Pie>
                                 </PieChart>
                               </ResponsiveContainer>
-                            </div>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-8">
@@ -4553,10 +4608,9 @@ export default function ManagerDashboard() {
                           <ProBadge />
                         </div>
                         {daypartMix.some((entry) => entry.count > 0) ? (
-                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                            <div className="h-full w-full max-w-xs sm:max-w-sm mx-auto">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
+                          <div className="h-64 sm:h-72 w-full min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
                                   <Tooltip
                                     formatter={(
                                       value: ValueType,
@@ -4574,7 +4628,7 @@ export default function ManagerDashboard() {
                                       return [numericValue.toString(), label];
                                     }}
                                   />
-                                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                                  {!isMobile ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
                                   <Pie
                                     data={daypartMix.map((d) => ({
                                       name: d.daypart,
@@ -4583,7 +4637,7 @@ export default function ManagerDashboard() {
                                     dataKey="value"
                                     nameKey="name"
                                     outerRadius={80}
-                                    label
+                                    label={!isMobile}
                                   >
                                     {daypartMix.map((_, idx) => (
                                       <Cell
@@ -4594,7 +4648,6 @@ export default function ManagerDashboard() {
                                   </Pie>
                                 </PieChart>
                               </ResponsiveContainer>
-                            </div>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-8">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -27,6 +28,7 @@ type ItemForm = {
 };
 
 export const ManagerMenuPanel = () => {
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   const [items, setItems] = useState<ManagerItemSummary[]>([]);
@@ -333,10 +335,15 @@ export const ManagerMenuPanel = () => {
   return (
     <Card className="p-4 sm:p-6">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-semibold">Manage Menu Items</h2>
+        <h2 className="text-xl font-semibold">
+          {t("manager.manage_menu_items", {
+            defaultValue: "Manage Menu Items",
+          })}
+        </h2>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" className="gap-2 w-full sm:w-auto" onClick={openCategoryCreate}>
-            <Plus className="h-4 w-4" /> Add Category
+            <Plus className="h-4 w-4" />{" "}
+            {t("manager.add_category", { defaultValue: "Add Category" })}
           </Button>
           <Button
             variant="ghost"
@@ -353,7 +360,9 @@ export const ManagerMenuPanel = () => {
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showDisabled} onChange={(e)=>setShowDisabled(e.target.checked)} />
-          Show disabled items
+          {t("manager.show_disabled_items", {
+            defaultValue: "Show disabled items",
+          })}
         </label>
       </div>
 
@@ -363,7 +372,7 @@ export const ManagerMenuPanel = () => {
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <h3 className="text-lg font-semibold text-foreground flex-1">{cat.title}</h3>
               <div className="flex flex-wrap items-center gap-1">
-                <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
+                <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/>{t("manager.item", { defaultValue: "Item" })}</Button>
                 <Button size="sm" variant="ghost" onClick={() => openCategoryEdit(cat)}><Pencil className="h-4 w-4"/></Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const yes = window.confirm('Delete this category? Items will remain but may appear uncategorized.');
@@ -381,7 +390,11 @@ export const ManagerMenuPanel = () => {
             </div>
             <div className="space-y-2">
               {items.length === 0 ? (
-                <div className="text-xs text-muted-foreground">No items in this category.</div>
+                <div className="text-xs text-muted-foreground">
+                  {t("manager.no_items_in_category", {
+                    defaultValue: "No items in this category.",
+                  })}
+                </div>
               ) : groupItemsBySubcategory(items).map((group) => (
                 <div key={group.label} className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">{group.label}</div>
@@ -431,7 +444,9 @@ export const ManagerMenuPanel = () => {
                       {item.id && loadingIds.has(`toggle:${item.id}`) && (
                         <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
                       )}
-                      {item.isAvailable ? 'Disable' : 'Enable'}
+                      {item.isAvailable
+                        ? t("manager.disable", { defaultValue: "Disable" })
+                        : t("manager.enable", { defaultValue: "Enable" })}
                     </Button>
                     <Button variant="outline" size="sm" className="gap-1" onClick={() => openEdit(item)}>
                       <Pencil className="h-4 w-4" /> Edit
@@ -484,7 +499,7 @@ export const ManagerMenuPanel = () => {
                       {item.id && loadingIds.has(`del:${item.id}`) && (
                         <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
                       )}
-                      <Trash2 className="h-4 w-4" /> Delete
+                      <Trash2 className="h-4 w-4" /> {t("actions.delete")}
                     </Button>
                   </div>
                 </div>
@@ -512,7 +527,11 @@ export const ManagerMenuPanel = () => {
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>{categoryDialogMode === 'create' ? 'Add category' : 'Edit category'}</DialogTitle>
+            <DialogTitle>
+              {categoryDialogMode === 'create'
+                ? t("manager.add_category", { defaultValue: "Add Category" })
+                : t("manager.edit_category", { defaultValue: "Edit Category" })}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Input
@@ -524,13 +543,15 @@ export const ManagerMenuPanel = () => {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button onClick={saveCategoryEdit} disabled={savingCategory}>
               {savingCategory && (
                 <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
               )}
-              {categoryDialogMode === 'create' ? 'Create' : 'Save'}
+              {categoryDialogMode === 'create'
+                ? t("manager.create", { defaultValue: "Create" })
+                : t("actions.save_changes", { defaultValue: "Save" })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -540,12 +561,20 @@ export const ManagerMenuPanel = () => {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-3xl lg:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit item' : 'Add item'}</DialogTitle>
+            <DialogTitle>
+              {editing
+                ? t("manager.edit_item", { defaultValue: "Edit item" })
+                : t("manager.add_item", { defaultValue: "Add item" })}
+            </DialogTitle>
           </DialogHeader>
           <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
             <section className="rounded-lg border border-border/70 bg-card/30 p-4">
               <div className="mb-4">
-                <h3 className="text-base font-semibold">Item details</h3>
+                <h3 className="text-base font-semibold">
+                  {t("manager.item_details", {
+                    defaultValue: "Item details",
+                  })}
+                </h3>
                 <p className="text-sm text-muted-foreground">Name, category, description and pricing.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -627,7 +656,9 @@ export const ManagerMenuPanel = () => {
             </section>
             <section className="rounded-lg border border-border/70 bg-card/30 p-4">
               <div className="mb-4">
-                <h3 className="text-base font-semibold">Image</h3>
+                <h3 className="text-base font-semibold">
+                  {t("manager.image", { defaultValue: "Image" })}
+                </h3>
                 <p className="text-sm text-muted-foreground">Paste an image URL or upload a replacement.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-[1fr_160px]">
@@ -637,7 +668,9 @@ export const ManagerMenuPanel = () => {
                     <Input placeholder="https://..." value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
                   </label>
                   <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
-                    Upload image
+                    {t("manager.upload_image", {
+                      defaultValue: "Upload image",
+                    })}
                     <input
                       className="sr-only"
                       type="file"
@@ -655,7 +688,11 @@ export const ManagerMenuPanel = () => {
                   {imagePreview ? (
                     <img src={imagePreview} alt="Item preview" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="px-4 text-center text-sm text-muted-foreground">No image preview</span>
+                    <span className="px-4 text-center text-sm text-muted-foreground">
+                      {t("manager.no_image_preview", {
+                        defaultValue: "No image preview",
+                      })}
+                    </span>
                   )}
                 </div>
               </div>
@@ -671,7 +708,11 @@ export const ManagerMenuPanel = () => {
                     onChange={(e)=>setForm({...form, printerTopic: normalizePrinterTopicValue(e.target.value)})}
                   >
                     {displayCookTypeOptions.length === 0 ? (
-                      <option value="">No cook types configured</option>
+                      <option value="">
+                        {t("manager.no_cook_types_configured", {
+                          defaultValue: "No cook types configured",
+                        })}
+                      </option>
                     ) : null}
                     {displayCookTypeOptions.map((opt) => (
                       <option key={opt.id} value={opt.printerTopic}>
@@ -682,12 +723,16 @@ export const ManagerMenuPanel = () => {
                     ))}
                   </select>
                   {displayCookTypeOptions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Add cook types with printer topics first.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("manager.add_cook_types_first", {
+                        defaultValue: "Add cook types with printer topics first.",
+                      })}
+                    </p>
                   ) : null}
                 </label>
                 <label className="flex h-11 items-center gap-3 rounded-md border border-border bg-card px-4 text-sm font-medium">
                   <input type="checkbox" checked={form.isAvailable} onChange={(e)=>setForm({...form, isAvailable: e.target.checked})}/>
-                  Available
+                  {t("manager.available", { defaultValue: "Available" })}
                 </label>
               </div>
             </section>
@@ -699,7 +744,10 @@ export const ManagerMenuPanel = () => {
                   <p className="text-sm text-muted-foreground">Extras, choices and add-ons shown to guests.</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, isAvailable:true, options:[] }])}>
-                  <Plus className="mr-2 h-4 w-4" /> Add modifier
+                  <Plus className="mr-2 h-4 w-4" />{" "}
+                  {t("manager.add_modifier", {
+                    defaultValue: "Add modifier",
+                  })}
                 </Button>
               </div>
               <div className="space-y-4">
@@ -724,10 +772,11 @@ export const ManagerMenuPanel = () => {
                         <input type="checkbox" checked={cm.isAvailable} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, isAvailable: v}: m));
                         }}/>
-                        Available
+                        {t("manager.available", { defaultValue: "Available" })}
                       </label>
                       <Button variant="ghost" size="sm" onClick={()=> setCustomMods(mods=>mods.filter((_,i)=> i!==idx))}>
-                        <Trash2 className="h-4 w-4 mr-1" /> Remove
+                        <Trash2 className="h-4 w-4 mr-1" />{" "}
+                        {t("manager.remove", { defaultValue: "Remove" })}
                       </Button>
                     </div>
                     <div className="space-y-2">
@@ -747,7 +796,10 @@ export const ManagerMenuPanel = () => {
                     </div>
                     <div className="mt-2 flex gap-2">
                       <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { titleEn:'', titleEl:'', price:''}] }: m))}>
-                        <Plus className="mr-2 h-4 w-4" /> Add option
+                        <Plus className="mr-2 h-4 w-4" />{" "}
+                        {t("manager.add_option", {
+                          defaultValue: "Add option",
+                        })}
                       </Button>
                     </div>
                   </div>
@@ -756,7 +808,9 @@ export const ManagerMenuPanel = () => {
             </section>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={()=>setModalOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={()=>setModalOpen(false)}>
+              {t("actions.cancel")}
+            </Button>
             {(() => {
               const priceNum = parseFloat(form.price || '');
               const modifierMissingTitle = customMods.some((cm) => cm.options.length > 0 && (!cm.titleEn.trim() || !cm.titleEl.trim()));
@@ -898,7 +952,7 @@ export const ManagerMenuPanel = () => {
                   className="inline-flex items-center gap-2"
                 >
               {savingItem && <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin"/>}
-                  Save
+                  {t("actions.save_changes")}
                 </Button>
               );
             })()}
