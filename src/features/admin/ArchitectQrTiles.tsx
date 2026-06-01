@@ -814,6 +814,30 @@ export default function ArchitectQrTiles() {
     [stores, toast]
   );
 
+  const waitForRemoteNodeAck = useCallback(
+    async (storeId: string, targetVersion: number) => {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        const res = await api.adminListStoreNodes(storeId);
+        const node = res.nodes?.[0] ?? null;
+        if (!node) continue;
+        setRemoteNode(node);
+        const ack = node.config?.lastConfigAck;
+        if (
+          node.lastAppliedVersion === targetVersion ||
+          ack?.version === targetVersion
+        ) {
+          toast({
+            title: "Pi acknowledged config",
+            description: ack?.message || `OK, got it. Config v${targetVersion} received.`,
+          });
+          return;
+        }
+      }
+    },
+    [toast]
+  );
+
   const loadPendingNodes = useCallback(async () => {
     try {
       const res = await api.adminListPendingNodes();
@@ -1384,8 +1408,9 @@ export default function ArchitectQrTiles() {
       });
       toast({
         title: "Remote node saved",
-        description: "The venue Pi will receive this config over MQTT.",
+        description: "Waiting for the Pi to acknowledge the MQTT config.",
       });
+      void waitForRemoteNodeAck(selectedStoreId, res.node.desiredConfigVersion);
     } catch (error) {
       console.error("Failed to save remote node", error);
       toast({
@@ -1397,7 +1422,7 @@ export default function ArchitectQrTiles() {
     } finally {
       setSavingNode(false);
     }
-  }, [nodeConfig, selectedStoreId, toast]);
+  }, [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck]);
 
   const handleClaimPendingNode = useCallback(
     async (pendingNode: PendingNodeAgent) => {
@@ -1453,8 +1478,9 @@ export default function ArchitectQrTiles() {
         });
         toast({
           title: "Pi associated",
-          description: "The node token and config were sent over MQTT.",
+          description: "Waiting for the Pi to acknowledge the MQTT config.",
         });
+        void waitForRemoteNodeAck(selectedStoreId, res.node.desiredConfigVersion);
       } catch (error) {
         console.error("Failed to claim pending node", error);
         toast({
@@ -1467,7 +1493,7 @@ export default function ArchitectQrTiles() {
         setClaimingNodeId(null);
       }
     },
-    [nodeConfig, selectedStoreId, toast]
+    [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck]
   );
 
   const handleRotateNodeToken = useCallback(async () => {
@@ -2669,6 +2695,11 @@ export default function ArchitectQrTiles() {
                         <span>
                           Desired v{remoteNode.desiredConfigVersion} · Applied {remoteNode.lastAppliedVersion ?? "never"} · Last seen {formatDate(remoteNode.lastSeenAt || undefined)}
                         </span>
+                        {remoteNode.config?.lastConfigAck ? (
+                          <span className="text-foreground">
+                            {remoteNode.config.lastConfigAck.message || "OK, got it."} - Received {formatDate(remoteNode.config.lastConfigAck.receivedAt)}
+                          </span>
+                        ) : null}
                         <Button variant="outline" size="sm" onClick={handleRotateNodeToken} disabled={savingNode}>
                           Rotate token
                         </Button>

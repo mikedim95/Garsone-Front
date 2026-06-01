@@ -229,6 +229,13 @@ export interface RemoteNodeWifi {
   hidden?: boolean;
 }
 
+export interface RemoteNodeConfigAck {
+  version?: number | null;
+  receivedAt?: string;
+  message?: string;
+  applied?: boolean;
+}
+
 export interface RemoteNodeConfig {
   displayName: string;
   nodeSlug: string;
@@ -255,6 +262,7 @@ export interface RemoteNodeConfig {
   supportWhatsapp?: string;
   supportUrl?: string;
   notes?: string;
+  lastConfigAck?: RemoteNodeConfigAck;
   printers: RemoteNodePrinter[];
 }
 
