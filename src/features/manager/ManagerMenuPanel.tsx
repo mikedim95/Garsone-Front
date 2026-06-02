@@ -845,16 +845,19 @@ export const ManagerMenuPanel = () => {
 
                       let itemId = editing?.id;
                       let finalImageUrl: string | null = typedImageUrl.length > 0 ? typedImageUrl : null;
+                      const uploadSelectedImage = async (id: string) => {
+                        const res = await api.managerUploadImage(imageFile!, { itemId: id, storeSlug });
+                        return res.publicUrl;
+                      };
 
                       if (editing) {
                         if (imageFile) {
                           try {
-                            const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
-                            const res = await api.managerUploadImage(imageFile, { itemId: editing.id, storeSlug });
-                            finalImageUrl = res.publicUrl;
+                            finalImageUrl = await uploadSelectedImage(editing.id);
                           } catch (error) {
                             const message = error instanceof Error ? error.message : 'Could not upload image';
                             toast({ title: 'Upload failed', description: message });
+                            return;
                           }
                         }
                         await api.updateItem(editing.id, { ...payload, imageUrl: finalImageUrl ?? undefined });
@@ -865,9 +868,7 @@ export const ManagerMenuPanel = () => {
                         if (itemId && (imageFile || finalImageUrl)) {
                           try {
                             if (imageFile) {
-                              const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
-                              const res2 = await api.managerUploadImage(imageFile, { itemId, storeSlug });
-                              finalImageUrl = res2.publicUrl;
+                              finalImageUrl = await uploadSelectedImage(itemId);
                             }
                             if (finalImageUrl) {
                               await api.updateItem(itemId, { imageUrl: finalImageUrl });
@@ -875,6 +876,7 @@ export const ManagerMenuPanel = () => {
                           } catch (error) {
                             const message = error instanceof Error ? error.message : 'Could not upload image';
                             toast({ title: 'Upload failed', description: message });
+                            return;
                           }
                         }
                       }
