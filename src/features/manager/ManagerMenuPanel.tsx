@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption, StaffType } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -26,6 +26,8 @@ type ItemForm = {
   isAvailable: boolean;
   printerTopic: string;
 };
+
+const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 export const ManagerMenuPanel = () => {
   const { t } = useTranslation();
@@ -163,6 +165,29 @@ export const ManagerMenuPanel = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!imagePreview.startsWith('blob:')) return undefined;
+    return () => URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
+
+  const selectImageFile = (file: File | null) => {
+    if (!file) {
+      setImageFile(null);
+      setImagePreview(form.imageUrl || '');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Upload failed', description: 'Choose an image file.' });
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      toast({ title: 'Upload failed', description: 'Image must be 8 MB or smaller.' });
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
 
   const openCategoryCreate = () => {
     setCategoryForm({ title: '' });
@@ -665,26 +690,54 @@ export const ManagerMenuPanel = () => {
                 <div className="space-y-4">
                   <label className="block space-y-2">
                     <span className="text-sm font-medium">Image URL</span>
-                    <Input placeholder="https://..." value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
-                  </label>
-                  <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
-                    {t("manager.upload_image", {
-                      defaultValue: "Upload image",
-                    })}
-                    <input
-                      className="sr-only"
-                      type="file"
-                      accept="image/*"
+                    <Input
+                      placeholder="https://..."
+                      value={form.imageUrl}
                       onChange={(e)=>{
-                        const f = e.target.files?.[0] || null;
-                        setImageFile(f);
-                        setImagePreview(f ? URL.createObjectURL(f) : form.imageUrl || '');
+                        const imageUrl = e.target.value;
+                        setForm({ ...form, imageUrl });
+                        if (!imageFile) setImagePreview(imageUrl);
                       }}
                     />
                   </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
+                      <ImagePlus className="h-4 w-4" />
+                      {t("manager.upload_image", {
+                        defaultValue: "Upload image",
+                      })}
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e)=>{
+                          selectImageFile(e.target.files?.[0] || null);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                    {imageFile ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => selectImageFile(null)}
+                        aria-label="Remove selected image"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
                   {imageFile ? <p className="text-xs text-muted-foreground">{imageFile.name}</p> : null}
                 </div>
-                <div className="flex h-40 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/20">
+                <div
+                  className="flex h-40 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/20"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    selectImageFile(event.dataTransfer.files?.[0] || null);
+                  }}
+                >
                   {imagePreview ? (
                     <img src={imagePreview} alt="Item preview" className="h-full w-full object-cover" />
                   ) : (
@@ -841,7 +894,7 @@ export const ManagerMenuPanel = () => {
                         imageUrl: form.imageUrl.trim() || undefined,
                         printerTopic: form.printerTopic.trim() || null,
                       };
-                      const typedImageUrl = form.imageUrl.trim();
+                      const typedImageUrl = imageFile ? '' : form.imageUrl.trim();
 
                       let itemId = editing?.id;
                       let finalImageUrl: string | null = typedImageUrl.length > 0 ? typedImageUrl : null;
@@ -860,10 +913,16 @@ export const ManagerMenuPanel = () => {
                             return;
                           }
                         }
-                        await api.updateItem(editing.id, { ...payload, imageUrl: finalImageUrl ?? undefined });
+                        await api.updateItem(editing.id, {
+                          ...payload,
+                          imageUrl: finalImageUrl ?? undefined,
+                        });
                         itemId = editing.id;
                       } else {
-                        const created = await api.createItem(payload);
+                        const created = await api.createItem({
+                          ...payload,
+                          imageUrl: finalImageUrl ?? undefined,
+                        });
                         itemId = created.item?.id;
                         if (itemId && (imageFile || finalImageUrl)) {
                           try {

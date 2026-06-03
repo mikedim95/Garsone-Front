@@ -91,6 +91,142 @@ export class ApiError extends Error {
   }
 }
 
+const MENU_IMAGE_WIDTH = 1200;
+const MENU_IMAGE_HEIGHT = 900;
+const MENU_IMAGE_MIME_TYPE = "image/webp";
+const MENU_IMAGE_QUALITY = 0.82;
+
+const readBlobAsDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(blob);
+  });
+
+const canvasToBlob = (
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality: number
+) =>
+  new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not optimize image"));
+          return;
+        }
+        resolve(blob);
+      },
+      mimeType,
+      quality
+    );
+  });
+
+const loadImageForCanvas = async (
+  file: File
+): Promise<ImageBitmap | HTMLImageElement> => {
+  if ("createImageBitmap" in window) {
+    try {
+      return await createImageBitmap(file, { imageOrientation: "from-image" } as any);
+    } catch {
+      // Fall through to HTMLImageElement decoding for older/stricter browsers.
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not load image"));
+    };
+    image.src = url;
+  });
+};
+
+const optimizedImageFileName = (fileName: string) => {
+  const baseName = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `${baseName || "menu-image"}.webp`;
+};
+
+async function optimizeMenuImage(file: File): Promise<File> {
+  const image = await loadImageForCanvas(file);
+  const sourceWidth =
+    image instanceof HTMLImageElement ? image.naturalWidth : image.width;
+  const sourceHeight =
+    image instanceof HTMLImageElement ? image.naturalHeight : image.height;
+
+  if (!sourceWidth || !sourceHeight) {
+    throw new Error("Could not read image dimensions");
+  }
+
+  const targetRatio = MENU_IMAGE_WIDTH / MENU_IMAGE_HEIGHT;
+  const sourceRatio = sourceWidth / sourceHeight;
+  let cropX = 0;
+  let cropY = 0;
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+
+  if (sourceRatio > targetRatio) {
+    cropWidth = sourceHeight * targetRatio;
+    cropX = (sourceWidth - cropWidth) / 2;
+  } else if (sourceRatio < targetRatio) {
+    cropHeight = sourceWidth / targetRatio;
+    cropY = (sourceHeight - cropHeight) / 2;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = MENU_IMAGE_WIDTH;
+  canvas.height = MENU_IMAGE_HEIGHT;
+  const context = canvas.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+
+  if (!context) {
+    throw new Error("Could not prepare image optimizer");
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    MENU_IMAGE_WIDTH,
+    MENU_IMAGE_HEIGHT
+  );
+
+  if ("close" in image && typeof image.close === "function") {
+    image.close();
+  }
+
+  const blob = await canvasToBlob(
+    canvas,
+    MENU_IMAGE_MIME_TYPE,
+    MENU_IMAGE_QUALITY
+  );
+
+  return new File([blob], optimizedImageFileName(file.name), {
+    type: MENU_IMAGE_MIME_TYPE,
+    lastModified: Date.now(),
+  });
+}
+
 const withVisit = <T extends Record<string, any>>(payload: T): T => payload;
 
 type ManagerTableCreateInput = { label: string; isActive?: boolean };
@@ -283,17 +419,11 @@ export const api = {
     file: File,
     opts?: { storeSlug?: string; itemId?: string }
   ) => {
-    const toBase64 = (f: File) =>
-      new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Failed to read file"));
-        r.readAsDataURL(f);
-      });
-    const base64 = await toBase64(file);
+    const uploadFile = await optimizeMenuImage(file);
+    const base64 = await readBlobAsDataUrl(uploadFile);
     const payload: ImageUploadPayload = {
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
+      fileName: uploadFile.name,
+      mimeType: uploadFile.type || MENU_IMAGE_MIME_TYPE,
       base64,
       itemId: opts?.itemId || undefined,
       storeSlug: opts?.storeSlug || undefined,
