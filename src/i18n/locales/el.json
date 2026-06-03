@@ -156,7 +156,19 @@
     "available": "Διαθέσιμο",
     "add_modifier": "Προσθήκη τροποποίησης",
     "remove": "Αφαίρεση",
-    "add_option": "Προσθήκη επιλογής"
+    "add_option": "Προσθήκη επιλογής",
+    "organize_drinks": "Οργάνωση ποτών",
+    "subcategory": "Υποκατηγορία",
+    "add_subcategory": "Προσθήκη υποκατηγορίας",
+    "edit_subcategory": "Επεξεργασία υποκατηγορίας",
+    "no_subcategories": "Δεν υπάρχουν υποκατηγορίες ακόμα.",
+    "no_subcategory": "Χωρίς υποκατηγορία",
+    "no_subcategory_selected": "Δεν έχει επιλεγεί υποκατηγορία",
+    "no_category_selected": "Δεν έχει επιλεγεί κατηγορία",
+    "create_subcategory_first": "Δημιουργήστε πρώτα υποκατηγορίες από τον editor κατηγορίας.",
+    "items_count_short": "προϊόντα",
+    "items_in_category": "προϊόντα σε αυτή την κατηγορία",
+    "items_in_subcategory": "προϊόντα σε αυτή την υποκατηγορία"
   },
   "auth": {
     "login": "Σύνδεση",

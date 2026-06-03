@@ -195,10 +195,37 @@ export const SwipeableMenuView = ({
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
+  const itemCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) counts.set(category.id, 0);
+    for (const item of items) {
+      if (item.categoryId && counts.has(item.categoryId)) {
+        counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1);
+        continue;
+      }
+      const categoryByTitle = categories.find((category) => category.title === item.category);
+      if (categoryByTitle) {
+        counts.set(categoryByTitle.id, (counts.get(categoryByTitle.id) ?? 0) + 1);
+      }
+    }
+    counts.set('all', items.length);
+    return counts;
+  }, [categories, items]);
+
   // Category tabs with "All" prepended
   const allCategories = useMemo(
-    () => [{ id: 'all', title: t('menu.category_all', { defaultValue: 'All' }) }, ...categories],
-    [categories, t]
+    () => [
+      {
+        id: 'all',
+        title: t('menu.category_all', { defaultValue: 'All' }),
+        count: itemCountByCategory.get('all') ?? items.length,
+      },
+      ...categories.map((category) => ({
+        ...category,
+        count: itemCountByCategory.get(category.id) ?? 0,
+      })),
+    ],
+    [categories, itemCountByCategory, items.length, t]
   );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
@@ -509,51 +536,64 @@ export const SwipeableMenuView = ({
     <>
       {/* Refined Category Navigation */}
       <motion.div
-        initial={{ opacity: 0, y: -8 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="sticky top-0 z-30 px-4 pt-3 pb-3 mb-4 border-b border-border/40 bg-background/80 backdrop-blur-md"
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        className="sticky top-0 z-30 mb-5 px-3 pt-3 pb-2"
       >
-        <div className="flex items-center gap-3">
+        <div className="relative flex items-center gap-2 overflow-hidden rounded-2xl border border-border/45 bg-card/85 px-2 py-2 shadow-[0_16px_42px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+          <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
           <Button
             variant="ghost"
             size="icon"
             onClick={onBack}
             aria-label={t('common.back', { defaultValue: 'Back' })}
-            className="shrink-0 h-10 w-10 rounded-full hover:bg-muted/60 text-foreground/70 hover:text-foreground transition-colors"
+            className="relative z-10 h-10 w-10 shrink-0 rounded-full border border-border/45 bg-background/70 text-foreground/70 shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
 
           <div
             ref={tabsContainerRef}
-            className="relative flex gap-1.5 overflow-x-auto items-center scrollbar-hide scroll-smooth flex-1"
+            className="relative flex flex-1 items-center gap-1 overflow-x-auto scrollbar-hide scroll-smooth"
           >
             {allCategories.map((cat) => {
               const isActive = selectedCategory === cat.id;
               return (
-                <button
+                <motion.button
                   key={cat.id}
                   ref={(el) => {
                     if (el) tabRefs.current.set(cat.id, el);
                   }}
                   type="button"
                   onClick={() => handleCategorySelect(cat.id)}
-                  className={`relative shrink-0 h-9 px-4 text-[13px] tracking-wide whitespace-nowrap rounded-full transition-colors duration-200 ${
+                  whileTap={{ scale: 0.97 }}
+                  className={`relative h-11 min-w-[86px] shrink-0 overflow-hidden rounded-xl px-3 text-left transition-colors duration-200 ${
                     isActive
-                      ? 'text-primary-foreground font-medium'
-                      : 'text-muted-foreground hover:text-foreground font-normal'
+                      ? 'text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted/55 hover:text-foreground'
                   }`}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="active-category-pill"
-                      className="absolute inset-0 rounded-full bg-primary shadow-sm"
-                      transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                      className="absolute inset-0 rounded-xl bg-primary shadow-[0_10px_24px_rgba(0,0,0,0.18)]"
+                      transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.8 }}
                     />
                   )}
-                  <span className="relative z-10">{cat.title}</span>
-                </button>
+                  <span className="relative z-10 flex h-full flex-col justify-center">
+                    <span className="max-w-[128px] truncate text-[13px] font-semibold leading-4 tracking-normal">
+                      {cat.title}
+                    </span>
+                    <span
+                      className={`mt-0.5 text-[10px] font-medium leading-3 tabular-nums ${
+                        isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/70'
+                      }`}
+                    >
+                      {cat.count}
+                    </span>
+                  </span>
+                </motion.button>
               );
             })}
           </div>

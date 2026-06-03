@@ -5,13 +5,27 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X, ListTree } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption, StaffType } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
 type CustomModifier = { id?: string; titleEn: string; titleEl: string; required: boolean; isAvailable: boolean; options: CustomOption[]; originalOptionIds?: string[] };
+type CategoryForm = { titleEn: string; titleEl: string; sortOrder: string };
+type SubcategorySummary = {
+  key: string;
+  categoryId: string;
+  titleEn: string;
+  titleEl: string;
+  itemCount: number;
+  items: ManagerItemSummary[];
+};
+type SubcategoryForm = {
+  categoryId: string;
+  titleEn: string;
+  titleEl: string;
+};
 type ItemForm = {
   titleEn: string;
   titleEl: string;
@@ -30,8 +44,10 @@ type ItemForm = {
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 export const ManagerMenuPanel = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
+  const activeLanguage = (i18n.resolvedLanguage || i18n.language || 'el').toLowerCase();
+  const preferGreek = activeLanguage.startsWith('el');
 
   const [items, setItems] = useState<ManagerItemSummary[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -75,11 +91,23 @@ export const ManagerMenuPanel = () => {
   // Category edit modal
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
-  const [categoryForm, setCategoryForm] = useState<{ title: string }>({
-    title: '',
+  const [categoryForm, setCategoryForm] = useState<CategoryForm>({
+    titleEn: '',
+    titleEl: '',
+    sortOrder: '0',
   });
   const [savingCategory, setSavingCategory] = useState(false);
   const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('edit');
+  const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
+  const [subcategoryDialogMode, setSubcategoryDialogMode] = useState<'create' | 'edit'>('edit');
+  const [editingSubcategory, setEditingSubcategory] = useState<SubcategorySummary | null>(null);
+  const [subcategoryForm, setSubcategoryForm] = useState<SubcategoryForm>({
+    categoryId: '',
+    titleEn: '',
+    titleEl: '',
+  });
+  const [draftSubcategories, setDraftSubcategories] = useState<SubcategorySummary[]>([]);
+  const [savingSubcategory, setSavingSubcategory] = useState(false);
 
   const normalizePrinterTopicValue = (value?: string | null) =>
     typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -119,6 +147,55 @@ export const ManagerMenuPanel = () => {
         ...cookTypeOptions,
       ]
     : cookTypeOptions;
+
+  const localizedCategoryTitle = (category?: MenuCategory | null) => {
+    if (!category) return '';
+    const en = category.titleEn?.trim();
+    const el = category.titleEl?.trim();
+    const fallback = category.title?.trim() || en || el || '';
+    return preferGreek ? el || fallback : en || fallback;
+  };
+
+  const localizedSubcategoryTitle = (subcategory?: Pick<SubcategorySummary, 'titleEn' | 'titleEl'> | null) => {
+    if (!subcategory) return '';
+    const en = subcategory.titleEn?.trim();
+    const el = subcategory.titleEl?.trim();
+    return preferGreek ? el || en || '' : en || el || '';
+  };
+
+  const subcategoryKey = (categoryId: string, en?: string | null, el?: string | null) =>
+    `${categoryId}|${(en || '').trim().toLowerCase()}|${(el || '').trim().toLowerCase()}`;
+
+  const itemMatchesCategory = (item: ManagerItemSummary, category: MenuCategory) =>
+    item.categoryId === category.id || item.category === category.title || item.category === category.titleEn || item.category === category.titleEl;
+
+  type DrinkCategoryKind = 'coffees' | 'beers' | 'drinks';
+  const normalizeTaxonomyText = (value?: string | null) =>
+    (value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  const resolveDrinkCategoryKind = (values: Array<string | null | undefined>): DrinkCategoryKind | null => {
+    const normalizedValues = values.map(normalizeTaxonomyText).filter(Boolean);
+    if (normalizedValues.some((value) => ['coffee', 'coffees', 'cafe', 'cafes'].includes(value))) return 'coffees';
+    if (normalizedValues.some((value) => ['beer', 'beers'].includes(value))) return 'beers';
+    if (
+      normalizedValues.some((value) =>
+        ['drink', 'drinks', 'beverage', 'beverages', 'refreshment', 'refreshments'].includes(value)
+      )
+    ) {
+      return 'drinks';
+    }
+    return null;
+  };
+  const drinkSubcategoryLabels: Record<DrinkCategoryKind, { en: string; el: string }> = {
+    coffees: { en: 'Coffees', el: 'Καφέδες' },
+    beers: { en: 'Beers', el: 'Μπύρες' },
+    drinks: { en: 'Drinks', el: 'Ποτά' },
+  };
 
   const load = useCallback(async () => {
     try {
@@ -199,7 +276,7 @@ export const ManagerMenuPanel = () => {
   };
 
   const openCategoryCreate = () => {
-    setCategoryForm({ title: '' });
+    setCategoryForm({ titleEn: '', titleEl: '', sortOrder: String(categories.length * 10) });
     setEditingCategory(null);
     setCategoryDialogMode('create');
     setCategoryDialogOpen(true);
@@ -207,7 +284,9 @@ export const ManagerMenuPanel = () => {
 
   const openCategoryEdit = (cat: MenuCategory) => {
     setCategoryForm({
-      title: cat.title || '',
+      titleEn: cat.titleEn || cat.title || '',
+      titleEl: cat.titleEl || cat.title || cat.titleEn || '',
+      sortOrder: String(cat.sortOrder ?? 0),
     });
     setEditingCategory(cat);
     setCategoryDialogMode('edit');
@@ -215,23 +294,27 @@ export const ManagerMenuPanel = () => {
   };
 
   const saveCategoryEdit = async () => {
-    const fallbackTitle = editingCategory?.title || '';
-    const title = categoryForm.title.trim() || fallbackTitle;
-    if (!title) {
-      toast({ title: 'Title required', description: 'Category title cannot be empty' });
+    const fallbackEn = editingCategory?.titleEn || editingCategory?.title || '';
+    const fallbackEl = editingCategory?.titleEl || editingCategory?.title || fallbackEn;
+    const titleEn = categoryForm.titleEn.trim() || fallbackEn;
+    const titleEl = categoryForm.titleEl.trim() || fallbackEl || titleEn;
+    const sortOrder = Number.parseInt(categoryForm.sortOrder, 10);
+    if (!titleEn || !titleEl) {
+      toast({ title: 'Title required', description: 'Both English and Greek category names are required.' });
       return;
     }
     setSavingCategory(true);
     try {
       if (categoryDialogMode === 'create') {
-        await api.createCategory(title, title, undefined);
-        toast({ title: 'Category added', description: title });
+        await api.createCategory(titleEn, titleEl, Number.isFinite(sortOrder) ? sortOrder : undefined);
+        toast({ title: 'Category added', description: titleEn });
       } else if (editingCategory) {
         await api.updateCategory(editingCategory.id, {
-          titleEn: title,
-          titleEl: title,
+          titleEn,
+          titleEl,
+          ...(Number.isFinite(sortOrder) ? { sortOrder } : {}),
         });
-        toast({ title: 'Category updated', description: title });
+        toast({ title: 'Category updated', description: titleEn });
       }
       await load();
       setCategoryDialogOpen(false);
@@ -323,42 +406,67 @@ export const ManagerMenuPanel = () => {
     setModalOpen(true);
   };
 
-  const grouped = categories.map((category) => ({
-    cat: category,
-    items: items
-      .filter((item) => item.categoryId === category.id || item.category === category.title)
-      .filter((item) => (showDisabled ? true : item.isAvailable !== false)),
-  }));
+  const taxonomyGroups = useMemo(() => {
+    return categories.map((category) => {
+      const allItems = items.filter((item) => itemMatchesCategory(item, category));
+      const visibleItems = allItems.filter((item) => (showDisabled ? true : item.isAvailable !== false));
+      const subcategoryMap = new Map<string, SubcategorySummary>();
+      for (const item of allItems) {
+        const titleEn = (item.subcategoryEn || item.subcategory || '').trim();
+        const titleEl = (item.subcategoryEl || item.subcategory || '').trim();
+        if (!titleEn && !titleEl) continue;
+        const key = subcategoryKey(category.id, titleEn, titleEl);
+        const group =
+          subcategoryMap.get(key) ?? {
+            key,
+            categoryId: category.id,
+            titleEn,
+            titleEl,
+            itemCount: 0,
+            items: [],
+          };
+        group.itemCount += 1;
+        group.items.push(item);
+        subcategoryMap.set(key, group);
+      }
+      for (const draft of draftSubcategories.filter((draft) => draft.categoryId === category.id)) {
+        if (!subcategoryMap.has(draft.key)) subcategoryMap.set(draft.key, draft);
+      }
+      const subcategories = Array.from(subcategoryMap.values()).sort((a, b) =>
+        localizedSubcategoryTitle(a).localeCompare(localizedSubcategoryTitle(b))
+      );
+      return {
+        cat: category,
+        items: visibleItems,
+        allItems,
+        subcategories,
+      };
+    });
+  }, [categories, draftSubcategories, items, showDisabled, preferGreek]);
+
   const subcategoryOptions = useMemo(() => {
-    const byCategory = new Map<string, { en: string; el: string }[]>();
-    for (const category of categories) {
-      const seen = new Set<string>();
-      const options = items
-        .filter((item) => item.categoryId === category.id || item.category === category.title)
-        .map((item) => ({
-          en: (item.subcategoryEn || item.subcategory || '').trim(),
-          el: (item.subcategoryEl || item.subcategory || '').trim(),
-        }))
-        .filter((option) => option.en || option.el)
-        .filter((option) => {
-          const key = `${option.en.toLowerCase()}|${option.el.toLowerCase()}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .sort((a, b) => (a.en || a.el).localeCompare(b.en || b.el));
-      byCategory.set(category.id, options);
+    const byCategory = new Map<string, SubcategorySummary[]>();
+    for (const group of taxonomyGroups) {
+      byCategory.set(group.cat.id, group.subcategories);
     }
     return byCategory;
-  }, [categories, items]);
+  }, [taxonomyGroups]);
   const selectedSubcategoryOptions = subcategoryOptions.get(form.categoryId) ?? [];
-  const groupItemsBySubcategory = (categoryItems: ManagerItemSummary[]) => {
-    const groups = new Map<string, { label: string; items: ManagerItemSummary[] }>();
+  const selectedSubcategoryKey =
+    form.subcategoryEn.trim() || form.subcategoryEl.trim()
+      ? subcategoryKey(form.categoryId, form.subcategoryEn, form.subcategoryEl)
+      : '';
+  const selectedCategoryTitle = localizedCategoryTitle(categories.find((category) => category.id === form.categoryId));
+
+  const groupItemsBySubcategory = (categoryId: string, categoryItems: ManagerItemSummary[]) => {
+    const groups = new Map<string, { key: string; label: string; items: ManagerItemSummary[] }>();
     const uncategorizedLabel = t('manager.uncategorized', { defaultValue: 'Uncategorized' });
     for (const item of categoryItems) {
-      const label = (item.subcategoryEn || item.subcategoryEl || item.subcategory || '').trim() || uncategorizedLabel;
-      const key = label.toLowerCase();
-      const group = groups.get(key) ?? { label, items: [] };
+      const titleEn = (item.subcategoryEn || item.subcategory || '').trim();
+      const titleEl = (item.subcategoryEl || item.subcategory || '').trim();
+      const key = titleEn || titleEl ? subcategoryKey(categoryId, titleEn, titleEl) : `${categoryId}|__none__`;
+      const label = titleEn || titleEl ? localizedSubcategoryTitle({ titleEn, titleEl }) : uncategorizedLabel;
+      const group = groups.get(key) ?? { key, label, items: [] };
       group.items.push(item);
       groups.set(key, group);
     }
@@ -367,6 +475,168 @@ export const ManagerMenuPanel = () => {
       if (b.label === uncategorizedLabel) return -1;
       return a.label.localeCompare(b.label);
     });
+  };
+
+  const openSubcategoryCreate = (categoryId: string) => {
+    setSubcategoryDialogMode('create');
+    setEditingSubcategory(null);
+    setSubcategoryForm({ categoryId, titleEn: '', titleEl: '' });
+    setSubcategoryDialogOpen(true);
+  };
+
+  const openSubcategoryEdit = (subcategory: SubcategorySummary) => {
+    setSubcategoryDialogMode('edit');
+    setEditingSubcategory(subcategory);
+    setSubcategoryForm({
+      categoryId: subcategory.categoryId,
+      titleEn: subcategory.titleEn,
+      titleEl: subcategory.titleEl,
+    });
+    setSubcategoryDialogOpen(true);
+  };
+
+  const saveSubcategoryEdit = async () => {
+    const categoryId = subcategoryForm.categoryId;
+    const titleEn = subcategoryForm.titleEn.trim();
+    const titleEl = subcategoryForm.titleEl.trim() || titleEn;
+    if (!categoryId || !titleEn || !titleEl) {
+      toast({ title: 'Title required', description: 'Both English and Greek subcategory names are required.' });
+      return;
+    }
+    setSavingSubcategory(true);
+    try {
+      const key = subcategoryKey(categoryId, titleEn, titleEl);
+      if (subcategoryDialogMode === 'create') {
+        const draft: SubcategorySummary = {
+          key,
+          categoryId,
+          titleEn,
+          titleEl,
+          itemCount: 0,
+          items: [],
+        };
+        setDraftSubcategories((prev) => [
+          ...prev.filter((item) => item.key !== key),
+          draft,
+        ]);
+        setSubcategoryDialogOpen(false);
+        openAdd(categoryId);
+        setForm((prev) => ({ ...prev, categoryId, subcategoryEn: titleEn, subcategoryEl: titleEl }));
+        toast({
+          title: 'Subcategory ready',
+          description: 'Save an item under it to persist it.',
+        });
+        return;
+      }
+
+      if (editingSubcategory) {
+        if (editingSubcategory.itemCount === 0) {
+          setDraftSubcategories((prev) =>
+            prev.map((draft) =>
+              draft.key === editingSubcategory.key
+                ? { ...draft, key, titleEn, titleEl }
+                : draft
+            )
+          );
+        } else {
+          await Promise.all(
+            editingSubcategory.items.map((item) =>
+              api.updateItem(item.id, {
+                subcategoryEn: titleEn,
+                subcategoryEl: titleEl,
+              })
+            )
+          );
+        }
+        await load();
+        setSubcategoryDialogOpen(false);
+        setEditingSubcategory(null);
+        toast({ title: 'Subcategory updated', description: titleEn });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update subcategory';
+      toast({ title: 'Update failed', description: message });
+    } finally {
+      setSavingSubcategory(false);
+    }
+  };
+
+  const deleteSubcategory = async (subcategory: SubcategorySummary) => {
+    if (subcategory.itemCount === 0) {
+      setDraftSubcategories((prev) => prev.filter((draft) => draft.key !== subcategory.key));
+      return;
+    }
+    const yes = window.confirm('Remove this subcategory from all items in it?');
+    if (!yes) return;
+    setLoadingIds((prev) => new Set(prev).add(`sub:${subcategory.key}`));
+    try {
+      await Promise.all(
+        subcategory.items.map((item) =>
+          api.updateItem(item.id, {
+            subcategoryEn: null,
+            subcategoryEl: null,
+          })
+        )
+      );
+      await load();
+      toast({ title: 'Subcategory removed', description: localizedSubcategoryTitle(subcategory) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not remove subcategory';
+      toast({ title: 'Delete failed', description: message });
+    } finally {
+      setLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(`sub:${subcategory.key}`);
+        return next;
+      });
+    }
+  };
+
+  const organizeDrinksCategory = async () => {
+    const drinkCategories = categories
+      .map((category) => ({
+        category,
+        kind: resolveDrinkCategoryKind([category.titleEn, category.titleEl, category.title]),
+      }))
+      .filter((entry): entry is { category: MenuCategory; kind: DrinkCategoryKind } => Boolean(entry.kind));
+    if (drinkCategories.length === 0) {
+      toast({ title: 'No drink categories found', description: 'Create a Drinks category first.' });
+      return;
+    }
+    setLoadingIds((prev) => new Set(prev).add('taxonomy:drinks'));
+    try {
+      const existingDrinks = drinkCategories.find((entry) => entry.kind === 'drinks')?.category;
+      const drinksCategory =
+        existingDrinks ??
+        (
+          await api.createCategory('Drinks', 'Ποτά', 20)
+        ).category;
+      const categoryKindById = new Map(drinkCategories.map((entry) => [entry.category.id, entry.kind]));
+      const updates = items
+        .map((item) => {
+          const kind = item.categoryId ? categoryKindById.get(item.categoryId) : null;
+          if (!kind) return null;
+          const labels = drinkSubcategoryLabels[kind];
+          return api.updateItem(item.id, {
+            categoryId: drinksCategory.id,
+            subcategoryEn: labels.en,
+            subcategoryEl: labels.el,
+          });
+        })
+        .filter(Boolean);
+      await Promise.all(updates);
+      await load();
+      toast({ title: 'Drinks organized', description: 'Coffees, beers and drinks now sit under Drinks.' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not organize drinks';
+      toast({ title: 'Update failed', description: message });
+    } finally {
+      setLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete('taxonomy:drinks');
+        return next;
+      });
+    }
   };
 
   return (
@@ -378,6 +648,20 @@ export const ManagerMenuPanel = () => {
           })}
         </h2>
         <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 w-full sm:w-auto"
+            onClick={organizeDrinksCategory}
+            disabled={loadingIds.has('taxonomy:drinks')}
+          >
+            {loadingIds.has('taxonomy:drinks') ? (
+              <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <ListTree className="h-4 w-4" />
+            )}
+            {t("manager.organize_drinks", { defaultValue: "Organize drinks" })}
+          </Button>
           <Button size="sm" className="gap-2 w-full sm:w-auto" onClick={openCategoryCreate}>
             <Plus className="h-4 w-4" />{" "}
             {t("manager.add_category", { defaultValue: "Add Category" })}
@@ -404,12 +688,25 @@ export const ManagerMenuPanel = () => {
       </div>
 
       <div className="space-y-8">
-        {grouped.map(({cat, items}) => (
+        {taxonomyGroups.map(({cat, items, allItems, subcategories}) => (
           <section key={cat.id}>
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <h3 className="text-lg font-semibold text-foreground flex-1">{cat.title}</h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold text-foreground">{localizedCategoryTitle(cat)}</h3>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {allItems.length} {t("manager.items_count_short", { defaultValue: "items" })}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  EN: {cat.titleEn || cat.title || '-'} · EL: {cat.titleEl || cat.title || '-'}
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-1">
                 <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/>{t("manager.item", { defaultValue: "Item" })}</Button>
+                <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openSubcategoryCreate(cat.id)}>
+                  <Plus className="h-4 w-4"/>{t("manager.subcategory", { defaultValue: "Subcategory" })}
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => openCategoryEdit(cat)}><Pencil className="h-4 w-4"/></Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const yes = window.confirm('Delete this category? Items will remain but may appear uncategorized.');
@@ -425,6 +722,42 @@ export const ManagerMenuPanel = () => {
                 }}><Trash2 className="h-4 w-4"/></Button>
               </div>
             </div>
+            <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {subcategories.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                  {t("manager.no_subcategories", { defaultValue: "No subcategories yet." })}
+                </div>
+              ) : subcategories.map((subcategory) => (
+                <div key={subcategory.key} className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-card/40 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {localizedSubcategoryTitle(subcategory)}
+                    </div>
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      EN: {subcategory.titleEn || '-'} · EL: {subcategory.titleEl || '-'} · {subcategory.itemCount}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openSubcategoryEdit(subcategory)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => deleteSubcategory(subcategory)}
+                      disabled={loadingIds.has(`sub:${subcategory.key}`)}
+                    >
+                      {loadingIds.has(`sub:${subcategory.key}`) ? (
+                        <span className="h-3.5 w-3.5 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
             <div className="space-y-2">
               {items.length === 0 ? (
                 <div className="text-xs text-muted-foreground">
@@ -432,8 +765,8 @@ export const ManagerMenuPanel = () => {
                     defaultValue: "No items in this category.",
                   })}
                 </div>
-              ) : groupItemsBySubcategory(items).map((group) => (
-                <div key={group.label} className="space-y-2">
+              ) : groupItemsBySubcategory(cat.id, items).map((group) => (
+                <div key={group.key} className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">{group.label}</div>
                   {group.items.map((item)=> (
                 <div key={item.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between ${item.isAvailable === false ? 'opacity-60' : ''}`}>
@@ -552,12 +885,12 @@ export const ManagerMenuPanel = () => {
           setCategoryDialogOpen(open);
           if (!open) {
             setEditingCategory(null);
-            setCategoryForm({ title: '' });
+            setCategoryForm({ titleEn: '', titleEl: '', sortOrder: '0' });
             setCategoryDialogMode('edit');
           }
         }}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {categoryDialogMode === 'create'
@@ -565,13 +898,40 @@ export const ManagerMenuPanel = () => {
                 : t("manager.edit_category", { defaultValue: "Edit Category" })}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              placeholder="Category title"
-              value={categoryForm.title}
-              onChange={(e) => setCategoryForm((prev) => ({ ...prev, title: e.target.value }))}
-            />
-            <p className="text-xs text-muted-foreground">Set the category name.</p>
+          <div className="space-y-4">
+            {editingCategory ? (
+              <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                {taxonomyGroups.find((group) => group.cat.id === editingCategory.id)?.allItems.length ?? 0}{' '}
+                {t("manager.items_in_category", { defaultValue: "items in this category" })}
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EN)</span>
+                <Input
+                  placeholder="Drinks"
+                  value={categoryForm.titleEn}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, titleEn: e.target.value }))}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EL)</span>
+                <Input
+                  placeholder="Ποτά"
+                  value={categoryForm.titleEl}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, titleEl: e.target.value }))}
+                />
+              </label>
+            </div>
+            <label className="space-y-2">
+              <span className="text-sm font-medium">Sort order</span>
+              <Input
+                type="number"
+                step={1}
+                value={categoryForm.sortOrder}
+                onChange={(e) => setCategoryForm((prev) => ({ ...prev, sortOrder: e.target.value }))}
+              />
+            </label>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>
@@ -582,6 +942,82 @@ export const ManagerMenuPanel = () => {
                 <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
               )}
               {categoryDialogMode === 'create'
+                ? t("manager.create", { defaultValue: "Create" })
+                : t("actions.save_changes", { defaultValue: "Save" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Subcategory */}
+      <Dialog
+        open={subcategoryDialogOpen}
+        onOpenChange={(open) => {
+          setSubcategoryDialogOpen(open);
+          if (!open) {
+            setEditingSubcategory(null);
+            setSubcategoryForm({ categoryId: '', titleEn: '', titleEl: '' });
+            setSubcategoryDialogMode('edit');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {subcategoryDialogMode === 'create'
+                ? t("manager.add_subcategory", { defaultValue: "Add subcategory" })
+                : t("manager.edit_subcategory", { defaultValue: "Edit subcategory" })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="space-y-2">
+              <span className="text-sm font-medium">{t("manager.category", { defaultValue: "Category" })}</span>
+              <select
+                className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                value={subcategoryForm.categoryId}
+                onChange={(e) => setSubcategoryForm((prev) => ({ ...prev, categoryId: e.target.value }))}
+                disabled={subcategoryDialogMode === 'edit'}
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {localizedCategoryTitle(category)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {editingSubcategory ? (
+              <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                {editingSubcategory.itemCount} {t("manager.items_in_subcategory", { defaultValue: "items in this subcategory" })}
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EN)</span>
+                <Input
+                  placeholder="Coffees"
+                  value={subcategoryForm.titleEn}
+                  onChange={(e) => setSubcategoryForm((prev) => ({ ...prev, titleEn: e.target.value }))}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EL)</span>
+                <Input
+                  placeholder="Καφέδες"
+                  value={subcategoryForm.titleEl}
+                  onChange={(e) => setSubcategoryForm((prev) => ({ ...prev, titleEl: e.target.value }))}
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSubcategoryDialogOpen(false)}>
+              {t("actions.cancel")}
+            </Button>
+            <Button onClick={saveSubcategoryEdit} disabled={savingSubcategory}>
+              {savingSubcategory && (
+                <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+              )}
+              {subcategoryDialogMode === 'create'
                 ? t("manager.create", { defaultValue: "Create" })
                 : t("actions.save_changes", { defaultValue: "Save" })}
             </Button>
@@ -622,19 +1058,20 @@ export const ManagerMenuPanel = () => {
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="space-y-2">
                   <span className="text-sm font-medium">Category</span>
-                  {editing ? (
-                    <select
-                      className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                      value={form.categoryId}
-                      onChange={(e)=>setForm({...form, categoryId: e.target.value})}
-                    >
-                      {categories.map((category)=>(<option key={category.id} value={category.id}>{category.title}</option>))}
-                    </select>
-                  ) : (
-                    <div className="flex h-11 items-center rounded-md border border-border bg-muted/30 px-3 text-sm">
-                      {categories.find((category)=>category.id===form.categoryId)?.title || 'No category selected'}
-                    </div>
-                  )}
+                  <select
+                    className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    value={form.categoryId}
+                    onChange={(e)=>setForm({...form, categoryId: e.target.value, subcategoryEn: '', subcategoryEl: ''})}
+                  >
+                    {categories.map((category)=>(
+                      <option key={category.id} value={category.id}>
+                        {localizedCategoryTitle(category)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedCategoryTitle || t("manager.no_category_selected", { defaultValue: "No category selected" })}
+                  </p>
                 </label>
                 <label className="space-y-2">
                   <span className="text-sm font-medium">Price</span>
@@ -643,36 +1080,38 @@ export const ManagerMenuPanel = () => {
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium">Use existing subcategory</span>
+                  <span className="text-sm font-medium">Subcategory</span>
                   <select
                     className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
-                    value=""
-                    disabled={selectedSubcategoryOptions.length === 0}
+                    value={selectedSubcategoryKey}
                     onChange={(e) => {
-                      const option = selectedSubcategoryOptions[Number(e.target.value)];
-                      if (!option) return;
-                      setForm({ ...form, subcategoryEn: option.en, subcategoryEl: option.el });
+                      const option = selectedSubcategoryOptions.find((candidate) => candidate.key === e.target.value);
+                      if (!option) {
+                        setForm({ ...form, subcategoryEn: '', subcategoryEl: '' });
+                        return;
+                      }
+                      setForm({ ...form, subcategoryEn: option.titleEn, subcategoryEl: option.titleEl });
                     }}
                   >
                     <option value="">
-                      {selectedSubcategoryOptions.length > 0 ? 'Choose subcategory' : 'No saved subcategories'}
+                      {t("manager.no_subcategory", { defaultValue: "No subcategory" })}
                     </option>
-                    {selectedSubcategoryOptions.map((option, index) => (
-                      <option key={`${option.en}-${option.el}`} value={index}>
-                        {option.en || option.el}{option.el && option.el !== option.en ? ` / ${option.el}` : ''}
+                    {selectedSubcategoryOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {localizedSubcategoryTitle(option)}
                       </option>
                     ))}
                   </select>
+                  {selectedSubcategoryOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("manager.create_subcategory_first", { defaultValue: "Create subcategories from the category editor first." })}
+                    </p>
+                  ) : null}
                 </label>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Subcategory (EN)</span>
-                    <Input placeholder="Pita Wraps" value={form.subcategoryEn} onChange={(e)=>setForm({...form, subcategoryEn: e.target.value})}/>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Subcategory (EL)</span>
-                    <Input placeholder="Pita Wraps" value={form.subcategoryEl} onChange={(e)=>setForm({...form, subcategoryEl: e.target.value})}/>
-                  </label>
+                <div className="flex min-h-11 items-center rounded-md border border-border bg-muted/25 px-3 text-sm text-muted-foreground">
+                  {form.subcategoryEn || form.subcategoryEl
+                    ? `${form.subcategoryEn || '-'} / ${form.subcategoryEl || '-'}`
+                    : t("manager.no_subcategory_selected", { defaultValue: "No subcategory selected" })}
                 </div>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
