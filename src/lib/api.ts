@@ -420,6 +420,13 @@ export const api = {
     opts?: { storeSlug?: string; itemId?: string }
   ) => {
     const uploadFile = await optimizeMenuImage(file);
+    console.info("[api:image-upload] optimized menu image", {
+      originalName: file.name,
+      originalSize: file.size,
+      uploadName: uploadFile.name,
+      uploadSize: uploadFile.size,
+      mimeType: uploadFile.type || MENU_IMAGE_MIME_TYPE,
+    });
     const base64 = await readBlobAsDataUrl(uploadFile);
     const payload: ImageUploadPayload = {
       fileName: uploadFile.name,

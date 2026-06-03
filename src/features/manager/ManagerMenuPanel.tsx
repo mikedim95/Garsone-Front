@@ -70,6 +70,7 @@ export const ManagerMenuPanel = () => {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [imageUploadStatus, setImageUploadStatus] = useState('');
 
   // Category edit modal
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -175,6 +176,7 @@ export const ManagerMenuPanel = () => {
     if (!file) {
       setImageFile(null);
       setImagePreview(form.imageUrl || '');
+      setImageUploadStatus('');
       return;
     }
     if (!file.type.startsWith('image/')) {
@@ -187,6 +189,13 @@ export const ManagerMenuPanel = () => {
     }
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    setImageUploadStatus('Ready to upload');
+  };
+
+  const withFreshImageVersion = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return trimmed;
+    return `${trimmed}${trimmed.includes('?') ? '&' : '?'}v=${Date.now()}`;
   };
 
   const openCategoryCreate = () => {
@@ -256,6 +265,7 @@ export const ManagerMenuPanel = () => {
     });
     setImageFile(null);
     setImagePreview('');
+    setImageUploadStatus('');
     setCustomMods([]);
     setOriginalModifierIds(new Set());
     setModalOpen(true);
@@ -281,6 +291,7 @@ export const ManagerMenuPanel = () => {
     });
     setImageFile(null);
     setImagePreview(item.imageUrl ?? item.image ?? '');
+    setImageUploadStatus('');
     try {
       const detail = await api.getItemDetail(item.id);
       const links = detail.links || [];
@@ -729,6 +740,9 @@ export const ManagerMenuPanel = () => {
                     ) : null}
                   </div>
                   {imageFile ? <p className="text-xs text-muted-foreground">{imageFile.name}</p> : null}
+                  {imageUploadStatus ? (
+                    <p className="text-xs font-medium text-primary">{imageUploadStatus}</p>
+                  ) : null}
                 </div>
                 <div
                   className="flex h-40 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/20"
@@ -899,8 +913,22 @@ export const ManagerMenuPanel = () => {
                       let itemId = editing?.id;
                       let finalImageUrl: string | null = typedImageUrl.length > 0 ? typedImageUrl : null;
                       const uploadSelectedImage = async (id: string) => {
+                        setImageUploadStatus('Optimizing image...');
+                        console.info('[manager:image-upload] preparing selected image', {
+                          itemId: id,
+                          fileName: imageFile?.name,
+                          fileSize: imageFile?.size,
+                          storeSlug,
+                        });
                         const res = await api.managerUploadImage(imageFile!, { itemId: id, storeSlug });
-                        return res.publicUrl;
+                        const freshUrl = withFreshImageVersion(res.publicUrl);
+                        setImageUploadStatus('Image uploaded');
+                        console.info('[manager:image-upload] uploaded selected image', {
+                          itemId: id,
+                          path: res.path,
+                          publicUrl: freshUrl,
+                        });
+                        return freshUrl;
                       };
 
                       if (editing) {
@@ -909,6 +937,7 @@ export const ManagerMenuPanel = () => {
                             finalImageUrl = await uploadSelectedImage(editing.id);
                           } catch (error) {
                             const message = error instanceof Error ? error.message : 'Could not upload image';
+                            setImageUploadStatus('Upload failed');
                             toast({ title: 'Upload failed', description: message });
                             return;
                           }
@@ -934,6 +963,7 @@ export const ManagerMenuPanel = () => {
                             }
                           } catch (error) {
                             const message = error instanceof Error ? error.message : 'Could not upload image';
+                            setImageUploadStatus('Upload failed');
                             toast({ title: 'Upload failed', description: message });
                             return;
                           }
@@ -1004,6 +1034,8 @@ export const ManagerMenuPanel = () => {
                         });
                       }
                       await load();
+                      setImageFile(null);
+                      setImageUploadStatus('');
                       setModalOpen(false);
                     } finally {
                       setSavingItem(false);
