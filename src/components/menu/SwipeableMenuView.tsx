@@ -58,18 +58,28 @@ interface ItemGridProps {
   getPrice: (item: MenuItem) => number;
   fallbackLabel: string;
   active?: boolean;
+  showPrices?: boolean;
 }
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
 const SWIPE_DISTANCE_PX = 56;
 const SWIPE_AXIS_LOCK_RATIO = 1.25;
 
-const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active = false }: ItemGridProps) => (
+const ItemGrid = ({
+  items,
+  onAdd,
+  formatPrice,
+  getPrice,
+  fallbackLabel,
+  active = false,
+  showPrices = true,
+}: ItemGridProps) => (
   <div className="grid grid-cols-2 gap-3 sm:gap-4 [content-visibility:auto] [contain-intrinsic-size:1px_600px]">
     {items.map((item, index) => {
       const price = getPrice(item);
       const displayName =
         item.displayName ?? item.name ?? item.title ?? fallbackLabel;
+      const description = item.displayDescription ?? item.description ?? "";
       const unavailable = item.available === false;
       const eagerImage = active && index < 4;
       return (
@@ -101,13 +111,20 @@ const ItemGrid = ({ items, onAdd, formatPrice, getPrice, fallbackLabel, active =
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
             <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
-              <h3 className="font-semibold text-[13px] sm:text-sm text-white drop-shadow leading-snug mb-1.5 line-clamp-2 tracking-tight">
+              <h3 className="font-semibold text-[13px] sm:text-sm text-white drop-shadow leading-snug mb-1 line-clamp-2 tracking-tight">
                 {displayName}
               </h3>
-              <div className="flex items-center justify-between">
-                <span className="text-base sm:text-lg font-semibold text-white drop-shadow tabular-nums">
-                  {formatPrice(price)}
-                </span>
+              {description ? (
+                <p className="mb-2 line-clamp-2 text-[11px] leading-snug text-white/75 drop-shadow">
+                  {description}
+                </p>
+              ) : null}
+              <div className={`flex items-center ${showPrices ? 'justify-between' : 'justify-end'}`}>
+                {showPrices ? (
+                  <span className="text-base sm:text-lg font-semibold text-white drop-shadow tabular-nums">
+                    {formatPrice(price)}
+                  </span>
+                ) : null}
                 <div className="w-7 h-7 rounded-full bg-white/25 border border-white/30 flex items-center justify-center group-hover:bg-primary group-hover:border-primary">
                   <span className="text-white text-base font-light leading-none">+</span>
                 </div>
@@ -276,6 +293,13 @@ export const SwipeableMenuView = ({
       : typeof item.priceCents === 'number'
       ? item.priceCents / 100
       : 0;
+  };
+
+  const getSharedPriceLabel = (list: MenuItem[]) => {
+    if (list.length === 0) return null;
+    const firstPrice = getPrice(list[0]);
+    const allSamePrice = list.every((item) => Math.abs(getPrice(item) - firstPrice) < 0.001);
+    return allSamePrice ? formatPrice(firstPrice) : null;
   };
 
   const getModifierOptionPriceDelta = (
@@ -565,35 +589,44 @@ export const SwipeableMenuView = ({
                         ))}
                       {subgroups
                         .filter((s) => s.title)
-                        .map((s) => (
-                          <AccordionItem
-                            key={s.title}
-                            value={s.title}
-                            className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
-                          >
-                            <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                              <div className="flex items-center gap-3">
-                                <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-                                <span className="text-sm font-medium text-foreground tracking-wide">
-                                  {s.title}
-                                </span>
-                                <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                                  {s.items.length}
-                                </span>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent className="px-3 pb-4 pt-0">
-                              <ItemGrid
-                                items={s.items}
-                                onAdd={handleAddItemClick}
-                                formatPrice={formatPrice}
-                                getPrice={getPrice}
-                                fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                                active
-                              />
-                            </AccordionContent>
-                          </AccordionItem>
-                        ))}
+                        .map((s) => {
+                          const sharedPriceLabel = getSharedPriceLabel(s.items);
+                          return (
+                            <AccordionItem
+                              key={s.title}
+                              value={s.title}
+                              className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
+                            >
+                              <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                <div className="flex items-center gap-3">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                                  <span className="text-sm font-medium text-foreground tracking-wide">
+                                    {s.title}
+                                  </span>
+                                  {sharedPriceLabel ? (
+                                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+                                      {sharedPriceLabel}
+                                    </span>
+                                  ) : null}
+                                  <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                                    {s.items.length}
+                                  </span>
+                                </div>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-3 pb-4 pt-0">
+                                <ItemGrid
+                                  items={s.items}
+                                  onAdd={handleAddItemClick}
+                                  formatPrice={formatPrice}
+                                  getPrice={getPrice}
+                                  fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                  active
+                                  showPrices={!sharedPriceLabel}
+                                />
+                              </AccordionContent>
+                            </AccordionItem>
+                          );
+                        })}
                     </Accordion>
                   ) : (
                     <ItemGrid

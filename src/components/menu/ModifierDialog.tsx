@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,8 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
   }, [currency]);
   const formatCurrency = (value: number) =>
     formatter ? formatter.format(value) : `€${value.toFixed(2)}`;
+  const displayName = item?.displayName ?? item?.name ?? item?.title ?? 'Item';
+  const description = item?.displayDescription ?? item?.description ?? '';
 
   useEffect(() => {
     setSelected(initialSelected || {});
@@ -67,8 +69,9 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {item ? `Customize: ${item.name}` : 'Customize'}
+            {item ? displayName : 'Item'}
           </DialogTitle>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
 
         <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-1">

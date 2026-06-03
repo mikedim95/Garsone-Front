@@ -104,6 +104,86 @@ const resolveLocalizedMenuText = (
   return en || localized || el || legacy || "";
 };
 
+const SHISHA_FLAVOR_DESCRIPTIONS: Record<string, string> = {
+  mint: "Fresh mint with a cool herbal finish.",
+  apple: "Crisp apple with a light sweet finish.",
+  "big-boy": "Sweet tropical fruits with a cool mint finish.",
+  devil: "Red fruit, citrus and an icy finish.",
+  "ali-baba": "Spiced fruit blend with apple, citrus and soft sweetness.",
+  fuck66: "Melon, passion fruit, watermelon and cool mint.",
+  love66: "Melon, passion fruit, watermelon and cool mint.",
+  "mango-lemoni": "Ripe mango, bright lemon and a light citrus finish.",
+  "pagoto-vanillia-vatomouro": "Vanilla ice cream with raspberry and soft cream.",
+  marshmellow: "Soft marshmallow cream with vanilla sweetness.",
+  lemoni: "Bright lemon citrus with a clean sour finish.",
+  "keik-lemoni": "Lemon cake with vanilla sponge and citrus glaze.",
+  menta: "Fresh mint with a cool herbal finish.",
+  milo: "Green apple with a mellow sweet finish.",
+  caramella: "Caramel candy with a warm creamy finish.",
+  "mpiskoto-voutirou": "Butter biscuit with vanilla and toasted cookie notes.",
+  "ice-bomb": "Icy mint and menthol with a sharp cooling finish.",
+  "mesh-juicy": "Juicy mixed fruit with peach, citrus and tropical sweetness.",
+  bueno: "Hazelnut cream, chocolate and wafer biscuit.",
+};
+
+const slugifyDisplayText = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const trimLeadingShishaSeparator = (value: string) => {
+  let cleaned = value.trimStart();
+  while (cleaned.startsWith("-") || cleaned.startsWith(":")) {
+    cleaned = cleaned.slice(1).trimStart();
+  }
+  return cleaned;
+};
+
+const cleanShishaDisplayName = (name: string) => {
+  const cleaned = trimLeadingShishaSeparator(
+    name
+      .trim()
+      .replace(/^(simple|special|premium)\s+shisha\s*/i, "")
+      .replace(/^shisha\s*/i, "")
+  )
+    .replace(/\s+shisha$/i, "")
+    .trim();
+  return cleaned || name;
+};
+
+const getItemPresentation = ({
+  name,
+  description,
+  category,
+}: {
+  name: string;
+  description: string;
+  category?: string | null;
+}) => {
+  const isShisha =
+    /shisha/i.test(category || "") ||
+    /^(simple|special|premium)\s+shisha\b/i.test(name) ||
+    /\bshisha$/i.test(name);
+
+  if (!isShisha) {
+    return { displayName: name, displayDescription: description };
+  }
+
+  const displayName = cleanShishaDisplayName(name);
+  const fallbackDescription =
+    SHISHA_FLAVOR_DESCRIPTIONS[slugifyDisplayText(displayName)] || "";
+
+  return {
+    displayName,
+    displayDescription: description || fallbackDescription,
+  };
+};
+
 const buildMenuState = (
   payload: Partial<MenuStateData> & {
     categories?: Array<{
@@ -116,6 +196,20 @@ const buildMenuState = (
   } = {},
   preferGreek: boolean
 ): MenuStateData => {
+  const categories = mapCategories(
+    (payload?.categories ?? []).map((cat) => ({
+      ...cat,
+      title: resolveLocalizedMenuText(preferGreek, {
+        en: cat.titleEn,
+        el: cat.titleEl,
+        localized: cat.title,
+      }),
+    }))
+  );
+  const categoryTitleById = new Map(
+    categories.map((category) => [category.id, category.title])
+  );
+
   const localizedModifiers = (mods?: Modifier[]) =>
     (mods ?? [])
       .filter((m) => m.isAvailable !== false)
@@ -139,16 +233,7 @@ const buildMenuState = (
       }));
 
   return {
-    categories: mapCategories(
-      (payload?.categories ?? []).map((cat) => ({
-        ...cat,
-        title: resolveLocalizedMenuText(preferGreek, {
-          en: cat.titleEn,
-          el: cat.titleEl,
-          localized: cat.title,
-        }),
-      }))
-    ),
+    categories,
     items: (payload?.items ?? []).map((item) => {
       const name = resolveLocalizedMenuText(preferGreek, {
         en: item.titleEn ?? item.name,
@@ -167,12 +252,17 @@ const buildMenuState = (
         localized: item.description,
       });
       const imageUrl = item.imageUrl ?? item.image ?? "";
+      const presentation = getItemPresentation({
+        name,
+        description,
+        category: item.category ?? categoryTitleById.get(item.categoryId || ""),
+      });
       return {
         ...item,
         name,
         subcategory: subcategory || null,
-        displayName: name,
-        displayDescription: description,
+        displayName: presentation.displayName,
+        displayDescription: presentation.displayDescription,
         description,
         // Prefer backend-provided URL so the browser downloads directly once per /menu response.
         image: imageUrl,
