@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import type { MenuItem, Modifier } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 type SelectionMap = { [modifierId: string]: string };
 
@@ -23,6 +24,7 @@ const getModifierPriceDelta = (option: Modifier['options'][number]) => {
 };
 
 export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected, initialQty = 1 }: Props) => {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
   const [qty, setQty] = useState<number>(initialQty || 1);
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
@@ -36,7 +38,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
   }, [currency]);
   const formatCurrency = (value: number) =>
     formatter ? formatter.format(value) : `€${value.toFixed(2)}`;
-  const displayName = item?.displayName ?? item?.name ?? item?.title ?? 'Item';
+  const displayName = item?.displayName ?? item?.name ?? item?.title ?? t('menu.item', { defaultValue: 'Item' });
   const description = item?.displayDescription ?? item?.description ?? '';
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {item ? displayName : 'Item'}
+            {item ? displayName : t('menu.item', { defaultValue: 'Item' })}
           </DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
@@ -82,7 +84,9 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
                   <h4 className="font-medium">
                     {mod.name}
                     {mod.required || (mod.minSelect ?? 0) > 0 ? (
-                      <span className="ml-2 text-xs text-destructive">(required)</span>
+                      <span className="ml-2 text-xs text-destructive">
+                        {t('menu.required_label', { defaultValue: '(required)' })}
+                      </span>
                     ) : null}
                   </h4>
                 </div>
@@ -115,14 +119,34 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
         </div>
 
         <div className="flex items-center justify-center gap-3 py-2">
-          <Button type="button" variant="outline" size="icon" onClick={() => setQty((v) => Math.max(1, v - 1))}>-</Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setQty((v) => Math.max(1, v - 1))}
+            aria-label={t('menu.decrease_quantity', { defaultValue: 'Decrease quantity' })}
+          >
+            -
+          </Button>
           <span className="text-lg font-semibold w-8 text-center">{qty}</span>
-          <Button type="button" variant="outline" size="icon" onClick={() => setQty((v) => v + 1)}>+</Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setQty((v) => v + 1)}
+            aria-label={t('menu.increase_quantity', { defaultValue: 'Increase quantity' })}
+          >
+            +
+          </Button>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={!canConfirm}>Add to cart</Button>
+          <Button variant="ghost" onClick={onClose}>
+            {t('actions.cancel', { defaultValue: 'Cancel' })}
+          </Button>
+          <Button onClick={handleConfirm} disabled={!canConfirm}>
+            {t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

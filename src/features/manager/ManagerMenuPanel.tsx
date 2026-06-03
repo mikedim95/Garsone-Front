@@ -354,16 +354,17 @@ export const ManagerMenuPanel = () => {
   const selectedSubcategoryOptions = subcategoryOptions.get(form.categoryId) ?? [];
   const groupItemsBySubcategory = (categoryItems: ManagerItemSummary[]) => {
     const groups = new Map<string, { label: string; items: ManagerItemSummary[] }>();
+    const uncategorizedLabel = t('manager.uncategorized', { defaultValue: 'Uncategorized' });
     for (const item of categoryItems) {
-      const label = (item.subcategoryEn || item.subcategoryEl || item.subcategory || '').trim() || 'Uncategorized';
+      const label = (item.subcategoryEn || item.subcategoryEl || item.subcategory || '').trim() || uncategorizedLabel;
       const key = label.toLowerCase();
       const group = groups.get(key) ?? { label, items: [] };
       group.items.push(item);
       groups.set(key, group);
     }
     return Array.from(groups.values()).sort((a, b) => {
-      if (a.label === 'Uncategorized') return 1;
-      if (b.label === 'Uncategorized') return -1;
+      if (a.label === uncategorizedLabel) return 1;
+      if (b.label === uncategorizedLabel) return -1;
       return a.label.localeCompare(b.label);
     });
   };
@@ -439,11 +440,6 @@ export const ManagerMenuPanel = () => {
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">
                       {item.titleEn || item.titleEl || item.title || item.name}
-                      {(item.subcategoryEn || item.subcategoryEl || item.subcategory) && (
-                        <span className="block text-[11px] uppercase tracking-[0.16em] text-primary/80">
-                          {item.subcategoryEn || item.subcategoryEl || item.subcategory}
-                        </span>
-                      )}
                       <span className="text-xs text-muted-foreground">
                         €{((item.priceCents ?? 0) / 100).toFixed(2)}
                       </span>

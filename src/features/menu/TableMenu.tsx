@@ -104,26 +104,83 @@ const resolveLocalizedMenuText = (
   return en || localized || el || legacy || "";
 };
 
-const SHISHA_FLAVOR_DESCRIPTIONS: Record<string, string> = {
-  mint: "Fresh mint with a cool herbal finish.",
-  apple: "Crisp apple with a light sweet finish.",
-  "big-boy": "Sweet tropical fruits with a cool mint finish.",
-  devil: "Red fruit, citrus and an icy finish.",
-  "ali-baba": "Spiced fruit blend with apple, citrus and soft sweetness.",
-  fuck66: "Melon, passion fruit, watermelon and cool mint.",
-  love66: "Melon, passion fruit, watermelon and cool mint.",
-  "mango-lemoni": "Ripe mango, bright lemon and a light citrus finish.",
-  "pagoto-vanillia-vatomouro": "Vanilla ice cream with raspberry and soft cream.",
-  marshmellow: "Soft marshmallow cream with vanilla sweetness.",
-  lemoni: "Bright lemon citrus with a clean sour finish.",
-  "keik-lemoni": "Lemon cake with vanilla sponge and citrus glaze.",
-  menta: "Fresh mint with a cool herbal finish.",
-  milo: "Green apple with a mellow sweet finish.",
-  caramella: "Caramel candy with a warm creamy finish.",
-  "mpiskoto-voutirou": "Butter biscuit with vanilla and toasted cookie notes.",
-  "ice-bomb": "Icy mint and menthol with a sharp cooling finish.",
-  "mesh-juicy": "Juicy mixed fruit with peach, citrus and tropical sweetness.",
-  bueno: "Hazelnut cream, chocolate and wafer biscuit.",
+const SHISHA_FLAVOR_DESCRIPTIONS: Record<string, { en: string; el: string }> = {
+  mint: {
+    en: "Fresh mint with a cool herbal finish.",
+    el: "Δροσερή μέντα με καθαρή βοτανική επίγευση.",
+  },
+  apple: {
+    en: "Crisp apple with a light sweet finish.",
+    el: "Τραγανό μήλο με ελαφριά γλυκιά επίγευση.",
+  },
+  "big-boy": {
+    en: "Sweet tropical fruits with a cool mint finish.",
+    el: "Γλυκά τροπικά φρούτα με δροσερό τελείωμα μέντας.",
+  },
+  devil: {
+    en: "Red fruit, citrus and an icy finish.",
+    el: "Κόκκινα φρούτα, εσπεριδοειδή και παγωμένη επίγευση.",
+  },
+  "ali-baba": {
+    en: "Spiced fruit blend with apple, citrus and soft sweetness.",
+    el: "Μείγμα φρούτων με μήλο, εσπεριδοειδή και απαλή γλυκύτητα.",
+  },
+  fuck66: {
+    en: "Melon, passion fruit, watermelon and cool mint.",
+    el: "Πεπόνι, passion fruit, καρπούζι και δροσερή μέντα.",
+  },
+  love66: {
+    en: "Melon, passion fruit, watermelon and cool mint.",
+    el: "Πεπόνι, passion fruit, καρπούζι και δροσερή μέντα.",
+  },
+  "mango-lemoni": {
+    en: "Ripe mango, bright lemon and a light citrus finish.",
+    el: "Ώριμο μάνγκο, λεμόνι και ελαφριά citrus επίγευση.",
+  },
+  "pagoto-vanillia-vatomouro": {
+    en: "Vanilla ice cream with raspberry and soft cream.",
+    el: "Παγωτό βανίλια με βατόμουρο και απαλή κρέμα.",
+  },
+  marshmellow: {
+    en: "Soft marshmallow cream with vanilla sweetness.",
+    el: "Απαλή κρέμα marshmallow με γλυκιά βανίλια.",
+  },
+  lemoni: {
+    en: "Bright lemon citrus with a clean sour finish.",
+    el: "Φρέσκο λεμόνι με καθαρή ξινή επίγευση.",
+  },
+  "keik-lemoni": {
+    en: "Lemon cake with vanilla sponge and citrus glaze.",
+    el: "Κέικ λεμόνι με βανίλια και citrus γλάσο.",
+  },
+  menta: {
+    en: "Fresh mint with a cool herbal finish.",
+    el: "Δροσερή μέντα με καθαρή βοτανική επίγευση.",
+  },
+  milo: {
+    en: "Green apple with a mellow sweet finish.",
+    el: "Πράσινο μήλο με ήπια γλυκιά επίγευση.",
+  },
+  caramella: {
+    en: "Caramel candy with a warm creamy finish.",
+    el: "Καραμέλα με ζεστή κρεμώδη επίγευση.",
+  },
+  "mpiskoto-voutirou": {
+    en: "Butter biscuit with vanilla and toasted cookie notes.",
+    el: "Μπισκότο βουτύρου με βανίλια και ψημένη ζύμη.",
+  },
+  "ice-bomb": {
+    en: "Icy mint and menthol with a sharp cooling finish.",
+    el: "Παγωμένη μέντα και menthol με έντονη δροσιά.",
+  },
+  "mesh-juicy": {
+    en: "Juicy mixed fruit with peach, citrus and tropical sweetness.",
+    el: "Ζουμερό μείγμα φρούτων με ροδάκινο, citrus και τροπική γλυκύτητα.",
+  },
+  bueno: {
+    en: "Hazelnut cream, chocolate and wafer biscuit.",
+    el: "Κρέμα φουντουκιού, σοκολάτα και γκοφρέτα.",
+  },
 };
 
 const slugifyDisplayText = (value: string) =>
@@ -160,10 +217,12 @@ const getItemPresentation = ({
   name,
   description,
   category,
+  preferGreek,
 }: {
   name: string;
   description: string;
   category?: string | null;
+  preferGreek: boolean;
 }) => {
   const isShisha =
     /shisha/i.test(category || "") ||
@@ -175,13 +234,26 @@ const getItemPresentation = ({
   }
 
   const displayName = cleanShishaDisplayName(name);
-  const fallbackDescription =
-    SHISHA_FLAVOR_DESCRIPTIONS[slugifyDisplayText(displayName)] || "";
+  const fallbackDescription = SHISHA_FLAVOR_DESCRIPTIONS[slugifyDisplayText(displayName)];
 
   return {
     displayName,
-    displayDescription: description || fallbackDescription,
+    displayDescription: description || (preferGreek ? fallbackDescription?.el : fallbackDescription?.en) || "",
   };
+};
+
+const getLocalizedShishaSubcategory = (subcategory: string, preferGreek: boolean) => {
+  const normalized = subcategory.trim().toLowerCase();
+  if (!normalized) return "";
+  const labels: Record<string, { en: string; el: string }> = {
+    simple: { en: "Simple", el: "Απλός" },
+    "απλός": { en: "Simple", el: "Απλός" },
+    special: { en: "Special", el: "Σπέσιαλ" },
+    premium: { en: "Premium", el: "Premium" },
+  };
+  const label = labels[normalized];
+  if (!label) return subcategory;
+  return preferGreek ? label.el : label.en;
 };
 
 const buildMenuState = (
@@ -256,11 +328,16 @@ const buildMenuState = (
         name,
         description,
         category: item.category ?? categoryTitleById.get(item.categoryId || ""),
+        preferGreek,
       });
+      const categoryTitle = item.category ?? categoryTitleById.get(item.categoryId || "");
+      const displaySubcategory = /shisha/i.test(categoryTitle)
+        ? getLocalizedShishaSubcategory(subcategory, preferGreek)
+        : subcategory;
       return {
         ...item,
         name,
-        subcategory: subcategory || null,
+        subcategory: displaySubcategory || null,
         displayName: presentation.displayName,
         displayDescription: presentation.displayDescription,
         description,
@@ -1072,7 +1149,7 @@ export default function TableMenu() {
         title: t("menu.toast_error_title", {
           defaultValue: "Error placing order",
         }),
-        description: t("menu.toast_error_description", {
+        description: t("menu.missing_table_description", {
           defaultValue: "Missing table information. Please rescan the QR.",
         }),
       });
@@ -1082,10 +1159,10 @@ export default function TableMenu() {
     const cartItems = useCartStore.getState().items;
     if (!cartItems.length) {
       toast({
-        title: t("menu.toast_error_title", {
+        title: t("menu.cart_empty_title", {
           defaultValue: "Cart is empty",
         }),
-        description: t("menu.toast_error_description", {
+        description: t("menu.cart_empty_description", {
           defaultValue: "Add items to your cart before placing the order.",
         }),
       });
@@ -1678,10 +1755,14 @@ export default function TableMenu() {
               <div className="flex items-center justify-between px-6 py-5 border-b border-border/60">
                 <div>
                   <p className="text-lg font-semibold text-foreground">
-                    Active Orders
+                    {t("menu.active_orders_title", {
+                      defaultValue: "Active Orders",
+                    })}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Live status updates from the kitchen
+                    {t("menu.active_orders_subtitle", {
+                      defaultValue: "Live status updates from the kitchen",
+                    })}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1719,7 +1800,9 @@ export default function TableMenu() {
 
               {placedOrders.length === 0 ? (
                 <div className="px-6 py-8 text-sm text-muted-foreground">
-                  No placed orders for this table right now.
+                  {t("menu.no_active_orders", {
+                    defaultValue: "No placed orders for this table right now.",
+                  })}
                 </div>
               ) : (
                 <div className="divide-y divide-border/60">
@@ -1771,7 +1854,9 @@ export default function TableMenu() {
 
                         <div className="mt-4">
                           <p className="text-xs font-semibold text-muted-foreground mb-2">
-                            STATUS
+                            {t("menu.status_label", {
+                              defaultValue: "Status",
+                            })}
                           </p>
                           <div className="flex flex-wrap gap-2">
                             {statusSteps.map((step) => {

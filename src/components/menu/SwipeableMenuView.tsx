@@ -54,9 +54,12 @@ interface Props {
 interface ItemGridProps {
   items: MenuItem[];
   onAdd: (item: MenuItem) => void;
+  onPreviewImage: (item: MenuItem) => void;
   formatPrice: (n: number) => string;
   getPrice: (item: MenuItem) => number;
   fallbackLabel: string;
+  addItemLabel: string;
+  previewImageLabel: string;
   active?: boolean;
   showPrices?: boolean;
 }
@@ -68,9 +71,12 @@ const SWIPE_AXIS_LOCK_RATIO = 1.25;
 const ItemGrid = ({
   items,
   onAdd,
+  onPreviewImage,
   formatPrice,
   getPrice,
   fallbackLabel,
+  addItemLabel,
+  previewImageLabel,
   active = false,
   showPrices = true,
 }: ItemGridProps) => (
@@ -87,30 +93,36 @@ const ItemGrid = ({
           key={item.id}
           interactive={false}
           className={`menu-item-card group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm ${
-            unavailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-primary/30'
+            unavailable ? 'opacity-50' : 'hover:border-primary/30'
           }`}
           style={{ contain: 'layout paint style' }}
-          onClick={() => onAdd(item)}
         >
           <div className="relative aspect-[4/5] overflow-hidden">
             {item.image ? (
-              <img
-                src={item.image}
-                alt={displayName}
-                width={320}
-                height={400}
-                sizes={MENU_CARD_IMAGE_SIZES}
-                loading={eagerImage ? 'eager' : 'lazy'}
-                decoding="async"
-                {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
-                draggable={false}
-                className="menu-card-image w-full h-full object-cover"
-              />
+              <button
+                type="button"
+                className="absolute inset-0 block h-full w-full overflow-hidden text-left"
+                onClick={() => onPreviewImage(item)}
+                aria-label={`${previewImageLabel}: ${displayName}`}
+              >
+                <img
+                  src={item.image}
+                  alt={displayName}
+                  width={320}
+                  height={400}
+                  sizes={MENU_CARD_IMAGE_SIZES}
+                  loading={eagerImage ? 'eager' : 'lazy'}
+                  decoding="async"
+                  {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
+                  draggable={false}
+                  className="menu-card-image w-full h-full object-cover"
+                />
+              </button>
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
-            <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
               <h3 className="font-semibold text-[13px] sm:text-sm text-white drop-shadow leading-snug mb-1 line-clamp-2 tracking-tight">
                 {displayName}
               </h3>
@@ -125,9 +137,15 @@ const ItemGrid = ({
                     {formatPrice(price)}
                   </span>
                 ) : null}
-                <div className="w-7 h-7 rounded-full bg-white/25 border border-white/30 flex items-center justify-center group-hover:bg-primary group-hover:border-primary">
+                <button
+                  type="button"
+                  className="pointer-events-auto w-7 h-7 rounded-full bg-white/25 border border-white/30 flex items-center justify-center transition-colors group-hover:bg-primary group-hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => onAdd(item)}
+                  disabled={unavailable}
+                  aria-label={`${addItemLabel}: ${displayName}`}
+                >
                   <span className="text-white text-base font-light leading-none">+</span>
-                </div>
+                </button>
               </div>
             </div>
           </div>
@@ -164,6 +182,7 @@ export const SwipeableMenuView = ({
   const [cartOpen, setCartOpen] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [previewItem, setPreviewItem] = useState<MenuItem | null>(null);
   const [isRinging, setIsRinging] = useState(false);
   const [bellDialogOpen, setBellDialogOpen] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(1);
@@ -326,6 +345,16 @@ export const SwipeableMenuView = ({
   const cartTotal = cartItems.reduce((sum, item) => {
     return sum + getCartItemUnitPrice(item) * item.quantity;
   }, 0);
+  const itemCountLabel =
+    cartItems.length === 1
+      ? t('menu.item_count_one', { count: cartItems.length, defaultValue: '{{count}} item' })
+      : t('menu.item_count_other', { count: cartItems.length, defaultValue: '{{count}} items' });
+  const previewName =
+    previewItem?.displayName ??
+    previewItem?.name ??
+    previewItem?.title ??
+    t('menu.item', { defaultValue: 'Item' });
+  const previewDescription = previewItem?.displayDescription ?? previewItem?.description ?? '';
 
   const handleCheckout = async () => {
     if (checkoutBusy) return;
@@ -581,9 +610,12 @@ export const SwipeableMenuView = ({
                             key="__no-sub__"
                             items={s.items}
                             onAdd={handleAddItemClick}
+                            onPreviewImage={setPreviewItem}
                             formatPrice={formatPrice}
                             getPrice={getPrice}
                             fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                            addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+                            previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                             active
                           />
                         ))}
@@ -617,9 +649,12 @@ export const SwipeableMenuView = ({
                                 <ItemGrid
                                   items={s.items}
                                   onAdd={handleAddItemClick}
+                                  onPreviewImage={setPreviewItem}
                                   formatPrice={formatPrice}
                                   getPrice={getPrice}
                                   fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                  addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+                                  previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                                   active
                                   showPrices={!sharedPriceLabel}
                                 />
@@ -629,14 +664,17 @@ export const SwipeableMenuView = ({
                         })}
                     </Accordion>
                   ) : (
-                    <ItemGrid
-                      items={group.items}
-                      onAdd={handleAddItemClick}
-                      formatPrice={formatPrice}
-                      getPrice={getPrice}
-                      fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
-                      active
-                    />
+                      <ItemGrid
+                        items={group.items}
+                        onAdd={handleAddItemClick}
+                        onPreviewImage={setPreviewItem}
+                        formatPrice={formatPrice}
+                        getPrice={getPrice}
+                        fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                        addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+                        previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
+                        active
+                      />
                   )}
                 </section>
               );
@@ -702,6 +740,32 @@ export const SwipeableMenuView = ({
         </motion.div>
       </div>
 
+      <Dialog open={!!previewItem} onOpenChange={(open) => (!open ? setPreviewItem(null) : undefined)}>
+        <DialogContent className="max-w-3xl overflow-hidden p-0">
+          <DialogTitle className="sr-only">
+            {t('menu.image_preview_title', { name: previewName, defaultValue: '{{name}} image' })}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {previewDescription || t('menu.image_preview_description', { defaultValue: 'Menu item image preview' })}
+          </DialogDescription>
+          {previewItem?.image ? (
+            <div className="flex max-h-[82vh] min-h-[42vh] items-center justify-center bg-black">
+              <img
+                src={previewItem.image}
+                alt={previewName}
+                className="max-h-[82vh] w-full object-contain"
+              />
+            </div>
+          ) : null}
+          <div className="space-y-1 px-4 pb-4 pt-3">
+            <h3 className="text-base font-semibold text-foreground">{previewName}</h3>
+            {previewDescription ? (
+              <p className="text-sm text-muted-foreground">{previewDescription}</p>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Call Waiter Confirmation Dialog */}
       <AlertDialog open={bellDialogOpen} onOpenChange={setBellDialogOpen}>
         <AlertDialogContent className="max-w-sm">
@@ -715,7 +779,7 @@ export const SwipeableMenuView = ({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCall}>
               {t('menu.yes_call', { defaultValue: 'Yes, Call Waiter' })}
             </AlertDialogAction>
@@ -747,7 +811,7 @@ export const SwipeableMenuView = ({
                     {t('menu.your_order', { defaultValue: 'Your Order' })}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}
+                    {itemCountLabel}
                   </p>
                 </div>
               </div>
