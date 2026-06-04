@@ -183,16 +183,6 @@ const SHISHA_FLAVOR_DESCRIPTIONS: Record<string, { en: string; el: string }> = {
   },
 };
 
-const slugifyDisplayText = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
 const trimLeadingShishaSeparator = (value: string) => {
   let cleaned = value.trimStart();
   while (cleaned.startsWith("-") || cleaned.startsWith(":")) {
@@ -217,12 +207,10 @@ const getItemPresentation = ({
   name,
   description,
   category,
-  preferGreek,
 }: {
   name: string;
   description: string;
   category?: string | null;
-  preferGreek: boolean;
 }) => {
   const isShisha =
     /shisha/i.test(category || "") ||
@@ -234,11 +222,10 @@ const getItemPresentation = ({
   }
 
   const displayName = cleanShishaDisplayName(name);
-  const fallbackDescription = SHISHA_FLAVOR_DESCRIPTIONS[slugifyDisplayText(displayName)];
 
   return {
     displayName,
-    displayDescription: description || (preferGreek ? fallbackDescription?.el : fallbackDescription?.en) || "",
+    displayDescription: description,
   };
 };
 
@@ -412,7 +399,6 @@ const buildMenuState = (
         name,
         description,
         category: categoryTitle,
-        preferGreek,
       });
       const displaySubcategory = /shisha/i.test(categoryTitle)
         ? getLocalizedShishaSubcategory(subcategory, preferGreek)
