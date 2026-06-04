@@ -5,14 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X, ListTree } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption, StaffType } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
 type CustomModifier = { id?: string; titleEn: string; titleEl: string; required: boolean; isAvailable: boolean; options: CustomOption[]; originalOptionIds?: string[] };
-type CategoryForm = { titleEn: string; titleEl: string; sortOrder: string };
+type CategoryForm = { titleEn: string; titleEl: string; sortOrder: string; imageUrl: string };
 type SubcategorySummary = {
   key: string;
   categoryId: string;
@@ -40,6 +40,18 @@ type ItemForm = {
   isAvailable: boolean;
   printerTopic: string;
 };
+
+const NOOR_CATEGORY_IMAGE_BASE_URL =
+  'https://order-flow-api-3uuy.onrender.com/media/garsone-media/noor/Menu';
+
+const categoryImagePool = [
+  { label: 'Coffee', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/cappuccino.webp` },
+  { label: 'Beverages', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/natural-juice.webp` },
+  { label: 'Drinks', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/drink-special.webp` },
+  { label: 'Beer', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/beer-corona.webp` },
+  { label: 'Shisha', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/shisha-special-love66.webp` },
+  { label: 'Food', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/mixed-grill.webp` },
+];
 
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
@@ -95,6 +107,7 @@ export const ManagerMenuPanel = () => {
     titleEn: '',
     titleEl: '',
     sortOrder: '0',
+    imageUrl: '',
   });
   const [savingCategory, setSavingCategory] = useState(false);
   const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('edit');
@@ -168,34 +181,6 @@ export const ManagerMenuPanel = () => {
 
   const itemMatchesCategory = (item: ManagerItemSummary, category: MenuCategory) =>
     item.categoryId === category.id || item.category === category.title || item.category === category.titleEn || item.category === category.titleEl;
-
-  type DrinkCategoryKind = 'coffees' | 'beers' | 'drinks';
-  const normalizeTaxonomyText = (value?: string | null) =>
-    (value || '')
-      .trim()
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  const resolveDrinkCategoryKind = (values: Array<string | null | undefined>): DrinkCategoryKind | null => {
-    const normalizedValues = values.map(normalizeTaxonomyText).filter(Boolean);
-    if (normalizedValues.some((value) => ['coffee', 'coffees', 'cafe', 'cafes'].includes(value))) return 'coffees';
-    if (normalizedValues.some((value) => ['beer', 'beers'].includes(value))) return 'beers';
-    if (
-      normalizedValues.some((value) =>
-        ['drink', 'drinks', 'beverage', 'beverages', 'refreshment', 'refreshments'].includes(value)
-      )
-    ) {
-      return 'drinks';
-    }
-    return null;
-  };
-  const drinkSubcategoryLabels: Record<DrinkCategoryKind, { en: string; el: string }> = {
-    coffees: { en: 'Coffees', el: 'Καφέδες' },
-    beers: { en: 'Beers', el: 'Μπύρες' },
-    drinks: { en: 'Drinks', el: 'Ποτά' },
-  };
 
   const load = useCallback(async () => {
     try {
@@ -276,7 +261,7 @@ export const ManagerMenuPanel = () => {
   };
 
   const openCategoryCreate = () => {
-    setCategoryForm({ titleEn: '', titleEl: '', sortOrder: String(categories.length * 10) });
+    setCategoryForm({ titleEn: '', titleEl: '', sortOrder: String(categories.length * 10), imageUrl: '' });
     setEditingCategory(null);
     setCategoryDialogMode('create');
     setCategoryDialogOpen(true);
@@ -287,6 +272,7 @@ export const ManagerMenuPanel = () => {
       titleEn: cat.titleEn || cat.title || '',
       titleEl: cat.titleEl || cat.title || cat.titleEn || '',
       sortOrder: String(cat.sortOrder ?? 0),
+      imageUrl: cat.imageUrl || '',
     });
     setEditingCategory(cat);
     setCategoryDialogMode('edit');
@@ -299,6 +285,7 @@ export const ManagerMenuPanel = () => {
     const titleEn = categoryForm.titleEn.trim() || fallbackEn;
     const titleEl = categoryForm.titleEl.trim() || fallbackEl || titleEn;
     const sortOrder = Number.parseInt(categoryForm.sortOrder, 10);
+    const imageUrl = categoryForm.imageUrl.trim();
     if (!titleEn || !titleEl) {
       toast({ title: 'Title required', description: 'Both English and Greek category names are required.' });
       return;
@@ -306,12 +293,13 @@ export const ManagerMenuPanel = () => {
     setSavingCategory(true);
     try {
       if (categoryDialogMode === 'create') {
-        await api.createCategory(titleEn, titleEl, Number.isFinite(sortOrder) ? sortOrder : undefined);
+        await api.createCategory(titleEn, titleEl, Number.isFinite(sortOrder) ? sortOrder : undefined, undefined, imageUrl || null);
         toast({ title: 'Category added', description: titleEn });
       } else if (editingCategory) {
         await api.updateCategory(editingCategory.id, {
           titleEn,
           titleEl,
+          imageUrl: imageUrl || null,
           ...(Number.isFinite(sortOrder) ? { sortOrder } : {}),
         });
         toast({ title: 'Category updated', description: titleEn });
@@ -648,20 +636,6 @@ export const ManagerMenuPanel = () => {
           })}
         </h2>
         <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2 w-full sm:w-auto"
-            onClick={organizeDrinksCategory}
-            disabled={loadingIds.has('taxonomy:drinks')}
-          >
-            {loadingIds.has('taxonomy:drinks') ? (
-              <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <ListTree className="h-4 w-4" />
-            )}
-            {t("manager.organize_drinks", { defaultValue: "Organize drinks" })}
-          </Button>
           <Button size="sm" className="gap-2 w-full sm:w-auto" onClick={openCategoryCreate}>
             <Plus className="h-4 w-4" />{" "}
             {t("manager.add_category", { defaultValue: "Add Category" })}
@@ -885,7 +859,7 @@ export const ManagerMenuPanel = () => {
           setCategoryDialogOpen(open);
           if (!open) {
             setEditingCategory(null);
-            setCategoryForm({ titleEn: '', titleEl: '', sortOrder: '0' });
+            setCategoryForm({ titleEn: '', titleEl: '', sortOrder: '0', imageUrl: '' });
             setCategoryDialogMode('edit');
           }
         }}
@@ -932,6 +906,51 @@ export const ManagerMenuPanel = () => {
                 onChange={(e) => setCategoryForm((prev) => ({ ...prev, sortOrder: e.target.value }))}
               />
             </label>
+            <div className="space-y-3">
+              <div>
+                <span className="text-sm font-medium">First menu page image</span>
+                <p className="text-xs text-muted-foreground">
+                  This image appears on the category tile before guests enter the menu.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {categoryImagePool.map((image) => {
+                  const selected = categoryForm.imageUrl === image.url;
+                  return (
+                    <button
+                      key={image.url}
+                      type="button"
+                      onClick={() => setCategoryForm((prev) => ({ ...prev, imageUrl: image.url }))}
+                      className={`overflow-hidden rounded-lg border text-left transition ${
+                        selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/70 hover:border-primary/50'
+                      }`}
+                    >
+                      <img src={image.url} alt="" className="h-20 w-full object-cover" />
+                      <span className="block px-2 py-1.5 text-xs font-medium">{image.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="grid gap-2">
+                <span className="text-sm font-medium">Custom image URL</span>
+                <Input
+                  placeholder="https://..."
+                  value={categoryForm.imageUrl}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                />
+              </div>
+              {categoryForm.imageUrl ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-0"
+                  onClick={() => setCategoryForm((prev) => ({ ...prev, imageUrl: '' }))}
+                >
+                  Clear image
+                </Button>
+              ) : null}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>

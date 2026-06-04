@@ -33,7 +33,7 @@ const ModifierDialog = lazy(() =>
 
 type CategorySummary = Pick<
   MenuCategory,
-  "id" | "title" | "titleEn" | "titleEl"
+  "id" | "title" | "titleEn" | "titleEl" | "imageUrl"
 >;
 type MenuModifierLink = {
   itemId: string;
@@ -52,14 +52,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const mapCategories = (
-  categories?: Array<{ id?: string; title?: string }>
+  categories?: Array<{ id?: string; title?: string; imageUrl?: string | null }>
 ): CategorySummary[] =>
   (categories ?? []).reduce<CategorySummary[]>((acc, category, index) => {
     if (!category) return acc;
     const id = category.id ?? `cat-${index}`;
     const title = category.title ?? "";
     if (!title) return acc;
-    acc.push({ id, title });
+    acc.push({ id, title, imageUrl: category.imageUrl ?? null });
     return acc;
   }, []);
 
@@ -91,6 +91,7 @@ const buildMenuState = (
       titleEn?: string;
       titleEl?: string;
       printerTopic?: string | null;
+      imageUrl?: string | null;
     }>;
     items?: MenuItem[];
   } = {},

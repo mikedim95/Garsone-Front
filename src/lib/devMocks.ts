@@ -11,6 +11,7 @@ type Category = {
   title: string;
   titleEn?: string;
   titleEl?: string;
+  imageUrl?: string | null;
   sortOrder: number;
   printerTopic?: string | null;
 };
@@ -1484,13 +1485,14 @@ export const devMocks = {
 
   // Manager: categories
   listCategories() { const db = snapshot(); return Promise.resolve({ categories: db.categories }); },
-  createCategory(titleEn: string, sortOrder?: number, titleEl?: string, printerTopic?: string | null) {
+  createCategory(titleEn: string, sortOrder?: number, titleEl?: string, printerTopic?: string | null, imageUrl?: string | null) {
     const db = snapshot();
     const c: Category = {
       id: uid('cat'),
       title: titleEn,
       titleEn,
       titleEl: titleEl ?? titleEn,
+      imageUrl: imageUrl ?? null,
       sortOrder: sortOrder ?? db.categories.length,
       printerTopic: normalizePrinterTopic(printerTopic, titleEn) ?? null,
     };

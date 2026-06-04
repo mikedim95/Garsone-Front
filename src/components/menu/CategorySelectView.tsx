@@ -4,7 +4,7 @@ import { ChefHat, Coffee, Salad, UtensilsCrossed, Wine, Cake, Soup, Sandwich, Pi
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Props {
-  categories: Array<Pick<MenuCategory, 'id' | 'title'>>;
+  categories: Array<Pick<MenuCategory, 'id' | 'title' | 'imageUrl'>>;
   onSelect: (categoryId: string) => void;
   loading?: boolean;
 }
@@ -109,6 +109,7 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
         {categories.map((cat, idx) => {
           const Icon = getCategoryIcon(cat.title);
           const gradient = categoryGradients[idx % categoryGradients.length];
+          const imageUrl = cat.imageUrl?.trim();
 
           return (
             <button
@@ -121,20 +122,34 @@ export const CategorySelectView = ({ categories, onSelect, loading }: Props) => 
                 border border-border/40 backdrop-blur-sm
                 shadow-lg hover:shadow-2xl hover:border-primary/40
                 transition-all duration-300 overflow-hidden
-                flex flex-col items-center justify-center gap-3 p-4
+                flex flex-col items-center justify-end gap-3 p-4
               `}
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              
-              <div className="relative z-10 w-14 h-14 rounded-2xl bg-background/60 backdrop-blur-sm flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:bg-primary/10 transition-all duration-300">
-                <Icon className="h-7 w-7 text-primary group-hover:scale-110 transition-transform duration-300" />
-              </div>
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  loading={idx < 4 ? 'eager' : 'lazy'}
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-transparent to-background/10" />
+              )}
+
+              <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/35 to-transparent transition-opacity duration-300 group-hover:from-background/80" />
+              {!imageUrl && (
+                <div className="relative z-10 mb-auto mt-auto w-14 h-14 rounded-2xl bg-background/60 backdrop-blur-sm flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:bg-primary/10 transition-all duration-300">
+                  <Icon className="h-7 w-7 text-primary group-hover:scale-110 transition-transform duration-300" />
+                </div>
+              )}
               
               <span className="relative z-10 text-sm font-semibold text-foreground text-center leading-tight line-clamp-2">
                 {cat.title}
               </span>
-              
-              <div className="absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-all duration-500" />
+
+              {!imageUrl && (
+                <div className="absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-all duration-500" />
+              )}
             </button>
           );
         })}

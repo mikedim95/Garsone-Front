@@ -148,6 +148,7 @@ export interface MenuCategory {
   title: string;
   titleEn?: string;
   titleEl?: string;
+  imageUrl?: string | null;
   sortOrder?: number;
   printerTopic?: string | null;
 }
@@ -450,6 +451,7 @@ export interface ModifierOptionUpdatePayload {
 export interface CategoryPayload {
   titleEn: string;
   titleEl: string;
+  imageUrl?: string | null;
   sortOrder?: number;
   printerTopic?: string | null;
 }
