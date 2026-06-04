@@ -413,6 +413,9 @@ export default function ArchitectQrTiles() {
   const [storeUserForm, setStoreUserForm] = useState<StoreUserForm>(() =>
     defaultStoreUserForm()
   );
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyConfirmation, setHistoryConfirmation] = useState("");
+  const [purgingHistory, setPurgingHistory] = useState(false);
   const [generateScope, setGenerateScope] = useState<GenerateScope>("pool");
   const [generateCount, setGenerateCount] = useState<number>(20);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
@@ -447,6 +450,9 @@ export default function ArchitectQrTiles() {
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
     [selectedStoreId, stores]
   );
+  const historyConfirmationPhrase = selectedStore
+    ? `DELETE HISTORY ${selectedStore.slug}`
+    : "";
   const selectedStoreTables = useMemo(
     () => tablesByStoreId[selectedStoreId] ?? [],
     [selectedStoreId, tablesByStoreId]
@@ -984,6 +990,8 @@ export default function ArchitectQrTiles() {
     void loadStoreUsers(selectedStore.id);
     setEditingStoreUserId(null);
     setStoreUserForm(defaultStoreUserForm());
+    setHistoryConfirmation("");
+    setHistoryDialogOpen(false);
   }, [loadRemoteNode, loadStoreUsers, refreshStoreTiles, selectedStore]);
 
   useEffect(() => {
@@ -1258,6 +1266,49 @@ export default function ArchitectQrTiles() {
     },
     [editingStoreUserId, loadOverview, resetStoreUserForm, selectedStoreId, toast]
   );
+
+  const handlePurgeHistory = useCallback(async () => {
+    if (!selectedStore || historyConfirmation !== historyConfirmationPhrase) return;
+    setPurgingHistory(true);
+    try {
+      const res = await api.adminPurgeStoreHistory(
+        selectedStore.id,
+        historyConfirmation
+      );
+      setHistoryDialogOpen(false);
+      setHistoryConfirmation("");
+      setOverview((current) =>
+        current.map((store) =>
+          store.id === selectedStore.id ? { ...store, ordersCount: 0 } : store
+        )
+      );
+      await Promise.all([
+        loadOverview(),
+        refreshStoreTiles(selectedStore.id),
+      ]);
+      const deletedOrders = res.deleted?.orders ?? 0;
+      toast({
+        title: "Venue history deleted",
+        description: `${deletedOrders} order${deletedOrders === 1 ? "" : "s"} removed from ${selectedStore.name}.`,
+      });
+    } catch (error) {
+      console.error("Failed to purge store history", error);
+      toast({
+        variant: "destructive",
+        title: "History deletion failed",
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setPurgingHistory(false);
+    }
+  }, [
+    historyConfirmation,
+    historyConfirmationPhrase,
+    loadOverview,
+    refreshStoreTiles,
+    selectedStore,
+    toast,
+  ]);
 
   const handleResetStoreUserPassword = useCallback(
     async (storeUser: ArchitectStoreUser) => {
@@ -2383,6 +2434,43 @@ export default function ArchitectQrTiles() {
                   </CardContent>
                 </Card>
 
+                <Card className="border-destructive/30 bg-destructive/5">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                          Danger Zone
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          Delete historical operational data for {selectedStore.name}.
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setHistoryDialogOpen(true)}
+                        disabled={purgingHistory}
+                      >
+                        {purgingHistory ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-2 h-4 w-4" />
+                        )}
+                        Delete history
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Removes orders, order items, table visit history, locality approvals,
+                      waiter shifts, kitchen ticket counters, audit/event history, and node
+                      event history. Menu, staff accounts, tables, QR tiles, printers, and
+                      venue settings stay intact.
+                    </p>
+                  </CardContent>
+                </Card>
+
                 {pendingNodes.some((node) => node.status === "PENDING") ? (
                   <Card>
                     <CardHeader className="pb-4">
@@ -3055,6 +3143,70 @@ export default function ArchitectQrTiles() {
             <Button onClick={() => void handleSaveStoreUser()} disabled={savingStoreUser}>
               {savingStoreUser ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {editingStoreUserId ? "Update user" : "Create user"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={historyDialogOpen}
+        onOpenChange={(open) => {
+          setHistoryDialogOpen(open);
+          if (!open && !purgingHistory) setHistoryConfirmation("");
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete venue history?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes historical data for {selectedStore?.name ?? "this venue"}.
+              Current setup, menu, staff, tables, QR tiles, printers, and node config are kept.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
+              <p className="font-medium text-destructive">This cannot be undone.</p>
+              <p className="mt-1 text-muted-foreground">
+                Type the exact phrase below to confirm:
+              </p>
+              <code className="mt-2 block rounded bg-background px-3 py-2 font-mono text-sm">
+                {historyConfirmationPhrase}
+              </code>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="history-confirmation">Confirmation phrase</Label>
+              <Input
+                id="history-confirmation"
+                value={historyConfirmation}
+                onChange={(event) => setHistoryConfirmation(event.target.value)}
+                placeholder={historyConfirmationPhrase}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setHistoryDialogOpen(false)}
+              disabled={purgingHistory}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handlePurgeHistory()}
+              disabled={
+                purgingHistory ||
+                !historyConfirmationPhrase ||
+                historyConfirmation !== historyConfirmationPhrase
+              }
+            >
+              {purgingHistory ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete history permanently
             </Button>
           </DialogFooter>
         </DialogContent>

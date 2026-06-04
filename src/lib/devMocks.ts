@@ -693,6 +693,32 @@ export const devMocks = {
       ],
     });
   },
+  adminPurgeStoreHistory(storeId: string) {
+    const db = snapshot();
+    if (db.store.id !== storeId) return Promise.reject(new Error('Store not found'));
+    const orders = db.orders.length;
+    db.orders = [];
+    save(db);
+    return Promise.resolve({
+      success: true,
+      store: {
+        id: db.store.id,
+        name: db.store.name,
+        slug: db.store.slug || 'local-store',
+        orderingMode: db.store.orderingMode || 'qr',
+        printers: db.store.printers || [],
+      },
+      deleted: {
+        orders,
+        tableVisits: 0,
+        localityApprovals: 0,
+        waiterShifts: 0,
+        kitchenTicketSeqs: 0,
+        auditLogs: 0,
+        nodeAgentEvents: 0,
+      },
+    });
+  },
   adminListAllQrTiles() {
     const db = snapshot();
     seedQrTilesIfEmpty(db);

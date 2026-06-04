@@ -260,6 +260,11 @@ type QRTileUpdatePayload = {
   label?: string | null;
 };
 type GenerateTilePayload = { count: number };
+type PurgeStoreHistoryResponse = {
+  success: boolean;
+  store: StoreInfo;
+  deleted: Record<string, number>;
+};
 type RemoteNodeSaveResponse = {
   node: RemoteNode;
   token?: string | null;
@@ -1044,6 +1049,16 @@ export const api = {
       ? Promise.resolve({ success: true })
       : fetchApi<OkResponse>(`/admin/stores/${storeId}/users/${userId}`, {
           method: "DELETE",
+        }),
+  adminPurgeStoreHistory: (
+    storeId: string,
+    confirmation: string
+  ): Promise<PurgeStoreHistoryResponse> =>
+    isOffline()
+      ? devMocks.adminPurgeStoreHistory(storeId)
+      : fetchApi<PurgeStoreHistoryResponse>(`/admin/stores/${storeId}/history`, {
+          method: "DELETE",
+          body: JSON.stringify({ confirmation }),
         }),
   adminListStoreOverview: (): Promise<{ stores: StoreOverview[] }> =>
     isOffline()
