@@ -2,6 +2,7 @@
 // Persists to localStorage under key "devMocks" so state survives reloads.
 
 import type { CreateOrderPayload, CreateOrderPayloadItem, OrderingMode } from "@/types";
+import { formatStoreSlugLabel } from "./storeSlug";
 
 type Id = string;
 
@@ -900,6 +901,15 @@ export const devMocks = {
   signIn(email: string, _password: string) {
     const db = snapshot();
     const e = email.toLowerCase();
+    const emailDomain = e.split("@")[1]?.trim().toLowerCase() || "";
+    const emailDomainSlug = emailDomain.endsWith(".local")
+      ? emailDomain.replace(/\.local$/i, "").trim().toLowerCase()
+      : "";
+    if (emailDomainSlug && emailDomainSlug !== "local-store") {
+      db.store.slug = emailDomainSlug;
+      db.store.name = formatStoreSlugLabel(emailDomainSlug) || db.store.name;
+      save(db);
+    }
     const role: 'waiter' | 'manager' | 'cook' | 'architect' = e.startsWith('manager')
       ? 'manager'
       : e.startsWith('cook')
@@ -923,13 +933,22 @@ export const devMocks = {
       role,
       displayName: role.charAt(0).toUpperCase() + role.slice(1),
       storeId: db.store.id,
-      storeSlug: db.store.slug,
+      storeSlug: db.store.slug || 'local-store',
       waiterTypeId: waiter?.waiterTypeId ?? null,
       cookTypeId: cook?.cookTypeId ?? null,
       waiterType,
       cookType,
     };
-    return Promise.resolve({ accessToken: 'offline-token', user });
+    return Promise.resolve({
+      accessToken: 'offline-token',
+      user,
+      store: {
+        id: db.store.id,
+        slug: db.store.slug || 'local-store',
+        name: db.store.name,
+        orderingMode: db.store.orderingMode,
+      },
+    });
   },
 
   // Orders

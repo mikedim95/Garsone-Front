@@ -19,7 +19,7 @@ import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
 import { OrderModifiersDialog } from "@/components/cook/OrderModifiersDialog";
 import { LayoutGrid, List, ListChecks } from "lucide-react";
-import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
+import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from "@/lib/storeSlug";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -854,14 +854,18 @@ export default function CookDashboard() {
   const classicViewLabel = t("cook.classic_view", { defaultValue: "Classic" });
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
-  const storeTitle =
-    (() => {
-      try {
-        return localStorage.getItem('STORE_NAME');
-      } catch {
-        return null;
-      }
-    })() || user?.storeSlug || t('cook.dashboard') || 'Cook Dashboard';
+  const storedStoreName = (() => {
+    try {
+      return localStorage.getItem('STORE_NAME');
+    } catch {
+      return null;
+    }
+  })();
+  const storeTitle = resolveStoreDisplayName(
+    storedStoreName,
+    user?.storeSlug,
+    t('cook.dashboard') || 'Cook Dashboard'
+  );
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>

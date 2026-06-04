@@ -17,7 +17,7 @@ import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
 import { TableCardView } from '@/components/waiter/TableCardView';
-import { getStoredStoreSlug, setStoredStoreSlug } from '@/lib/storeSlug';
+import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from '@/lib/storeSlug';
 import { StatusFilter } from '@/components/waiter/StatusFilter';
 import { TimeRangePicker } from '@/components/waiter/TimeRangePicker';
 import { WaiterMenuTab } from './WaiterMenuTab';
@@ -883,14 +883,18 @@ export default function WaiterDashboard() {
   const loadingOrders = !assignmentsLoaded || !shiftLoaded;
   // Always allow waiter to place orders for their assigned tables
   const enableWaiterMenu = true;
-  const storeTitle =
-    (() => {
-      try {
-        return localStorage.getItem('STORE_NAME');
-      } catch {
-        return null;
-      }
-    })() || user?.storeSlug || t('waiter.dashboard');
+  const storedStoreName = (() => {
+    try {
+      return localStorage.getItem('STORE_NAME');
+    } catch {
+      return null;
+    }
+  })();
+  const storeTitle = resolveStoreDisplayName(
+    storedStoreName,
+    user?.storeSlug,
+    t('waiter.dashboard')
+  );
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>

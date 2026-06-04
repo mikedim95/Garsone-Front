@@ -12,7 +12,7 @@ import {
   writeOfflineStorageFlag,
 } from "@/lib/offlineMode";
 import { HomeLink } from "@/components/HomeLink";
-import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
+import { formatStoreSlugLabel, getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 
 type RealtimeStatusDetail = { connected?: boolean };
 
@@ -92,22 +92,23 @@ export default function Login() {
         storeId: user.storeId || store?.id,
         storeSlug: user.storeSlug || store?.slug || user.storeSlug,
       };
-      if (store?.slug) {
+      const loginStoreSlug = enrichedUser.storeSlug || store?.slug || "";
+      if (loginStoreSlug) {
         try {
-          setStoredStoreSlug(store.slug);
+          setStoredStoreSlug(loginStoreSlug);
           window.dispatchEvent(
-            new CustomEvent("store-slug-changed", { detail: { slug: store.slug } })
+            new CustomEvent("store-slug-changed", { detail: { slug: loginStoreSlug } })
           );
         } catch (error) {
           console.warn("Failed to persist store slug on login", error);
         }
       }
-      if (store?.name) {
-        try {
-          localStorage.setItem("STORE_NAME", store.name);
-        } catch (error) {
-          console.warn("Failed to persist store name on login", error);
-        }
+      try {
+        const loginStoreName = store?.name || formatStoreSlugLabel(loginStoreSlug);
+        if (loginStoreName) localStorage.setItem("STORE_NAME", loginStoreName);
+        else localStorage.removeItem("STORE_NAME");
+      } catch (error) {
+        console.warn("Failed to persist store name on login", error);
       }
       login(enrichedUser, accessToken);
       if (enrichedUser.mustChangePassword) {

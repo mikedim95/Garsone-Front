@@ -48,6 +48,7 @@ import {
   Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolveStoreDisplayName } from "@/lib/storeSlug";
 import { Card } from "@/components/ui/card";
 import { ManagerMenuPanel } from "@/features/manager/ManagerMenuPanel";
 import { Badge } from "@/components/ui/badge";
@@ -2663,7 +2664,7 @@ export default function ManagerDashboard() {
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <DashboardHeader
           supertitle={t("manager.dashboard")}
-          title={storeName || user?.storeSlug || t("manager.dashboard")}
+          title={resolveStoreDisplayName(storeName, user?.storeSlug, t("manager.dashboard"))}
           subtitle={undefined}
           rightContent={
             user ? (
