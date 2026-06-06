@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
@@ -524,7 +524,6 @@ export default function TableMenu() {
   const languageCode = activeLanguage.startsWith("el") ? "el" : "en";
   const preferGreek = languageCode === "el";
   const showActiveOrders = false; // Temporarily hide the Active Orders UI
-  const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
@@ -1305,16 +1304,6 @@ export default function TableMenu() {
       setCategorySelected(false);
       setSelectedCategory(null);
       setOrderPlacedSignal((s) => s + 1);
-      const qs = new URLSearchParams();
-      if (activeTableId) {
-        qs.set("tableId", activeTableId);
-      }
-      const qsString = qs.toString();
-      navigate(
-        qsString
-          ? `/order/${summary.id}/thanks?${qsString}`
-          : `/order/${summary.id}/thanks`
-      );
       return summary;
     } catch (error) {
       console.error("Immediate checkout failed:", {
@@ -1783,6 +1772,7 @@ export default function TableMenu() {
               key="category-select"
               categories={categories}
               loading={loading}
+              variant={usesImmediateGuestCheckout ? "noor" : "default"}
               onSelect={(catId) => {
                 setSelectedCategory(catId);
                 setCategorySelected(true);
@@ -1817,6 +1807,15 @@ export default function TableMenu() {
               }
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
+              showBackButton={!usesImmediateGuestCheckout}
+              showAllCategory={!usesImmediateGuestCheckout}
+              primaryCtaLabel={
+                usesImmediateGuestCheckout
+                  ? t("menu.submit_order_return_menu", {
+                      defaultValue: "Submit and return to menu",
+                    })
+                  : undefined
+              }
               callButtonLabel={callButtonLabel}
               callStatus={calling}
               callPrompted={callPrompted}

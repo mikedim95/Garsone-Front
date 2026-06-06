@@ -9,7 +9,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { ScrollArea } from '../ui/scroll-area';
@@ -39,6 +39,8 @@ interface Props {
   onCheckout: (note?: string) => void | Promise<any>;
   onImmediateCheckout?: (note?: string) => void | Promise<any>;
   showPaymentButton?: boolean;
+  showBackButton?: boolean;
+  showAllCategory?: boolean;
   primaryCtaLabel?: string;
   secondaryCtaLabel?: string;
   callButtonLabel?: string | null;
@@ -62,6 +64,7 @@ interface ItemGridProps {
   previewImageLabel: string;
   active?: boolean;
   showPrices?: boolean;
+  selectedQuantities: Map<string, number>;
 }
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
@@ -79,6 +82,7 @@ const ItemGrid = ({
   previewImageLabel,
   active = false,
   showPrices = true,
+  selectedQuantities,
 }: ItemGridProps) => (
   <div className="grid grid-cols-2 gap-3 sm:gap-4 [content-visibility:auto] [contain-intrinsic-size:1px_600px]">
     {items.map((item, index) => {
@@ -88,11 +92,15 @@ const ItemGrid = ({
       const description = item.displayDescription ?? item.description ?? "";
       const unavailable = item.available === false;
       const eagerImage = active && index < 4;
+      const selectedQuantity = selectedQuantities.get(item.id) ?? 0;
+      const isSelected = selectedQuantity > 0;
       return (
         <Card
           key={item.id}
           interactive={false}
-          className={`menu-item-card group relative overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm ${
+          className={`menu-item-card group relative overflow-hidden rounded-2xl border bg-card shadow-sm transition-all duration-300 ${
+            isSelected ? 'border-primary ring-2 ring-primary/70 shadow-primary/25 shadow-xl' : 'border-border/30'
+          } ${
             unavailable ? 'opacity-50' : 'hover:border-primary/30'
           }`}
           style={{ contain: 'layout paint style' }}
@@ -115,13 +123,21 @@ const ItemGrid = ({
                   decoding="async"
                   {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
                   draggable={false}
-                  className="menu-card-image w-full h-full object-cover"
+                  className={`menu-card-image w-full h-full object-cover transition-all duration-500 ${
+                    isSelected ? 'scale-[1.03] brightness-110 saturate-125' : ''
+                  }`}
                 />
               </button>
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
+            {isSelected && (
+              <div className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground shadow-lg">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {selectedQuantity}
+              </div>
+            )}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
               <h3 className="font-semibold text-[13px] sm:text-sm text-white drop-shadow leading-snug mb-1 line-clamp-2 tracking-tight">
                 {displayName}
@@ -170,6 +186,8 @@ export const SwipeableMenuView = ({
   openCartSignal = 0,
   orderPlacedSignal = 0,
   showPaymentButton = true,
+  showBackButton = true,
+  showAllCategory = true,
   showCartButton = true,
   primaryCtaLabel,
 }: Props) => {
@@ -195,6 +213,17 @@ export const SwipeableMenuView = ({
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
+  const selectedQuantities = useMemo(() => {
+    const quantities = new Map<string, number>();
+    for (const cartItem of cartItems) {
+      quantities.set(
+        cartItem.item.id,
+        (quantities.get(cartItem.item.id) ?? 0) + cartItem.quantity
+      );
+    }
+    return quantities;
+  }, [cartItems]);
+
   const itemCountByCategory = useMemo(() => {
     const counts = new Map<string, number>();
     for (const category of categories) counts.set(category.id, 0);
@@ -212,20 +241,24 @@ export const SwipeableMenuView = ({
     return counts;
   }, [categories, items]);
 
-  // Category tabs with "All" prepended
+  // Category tabs with optional "All" prepended
   const allCategories = useMemo(
     () => [
-      {
-        id: 'all',
-        title: t('menu.category_all', { defaultValue: 'All' }),
-        count: itemCountByCategory.get('all') ?? items.length,
-      },
+      ...(showAllCategory
+        ? [
+            {
+              id: 'all',
+              title: t('menu.category_all', { defaultValue: 'All' }),
+              count: itemCountByCategory.get('all') ?? items.length,
+            },
+          ]
+        : []),
       ...categories.map((category) => ({
         ...category,
         count: itemCountByCategory.get(category.id) ?? 0,
       })),
     ],
-    [categories, itemCountByCategory, items.length, t]
+    [categories, itemCountByCategory, items.length, showAllCategory, t]
   );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
@@ -504,7 +537,7 @@ export const SwipeableMenuView = ({
     return grouped;
   }, [categories, itemsByCategory]);
 
-  const activeCategoryId = allCategories[safeSelectedIndex]?.id ?? 'all';
+  const activeCategoryId = allCategories[safeSelectedIndex]?.id ?? categories[0]?.id ?? 'all';
   const visibleGroupedItems = groupedByCategoryId.get(activeCategoryId) ?? [];
 
   useEffect(() => {
@@ -543,15 +576,17 @@ export const SwipeableMenuView = ({
       >
         <div className="relative flex items-center gap-2 overflow-hidden rounded-2xl border border-border/45 bg-card/85 px-2 py-2 shadow-[0_16px_42px_rgba(15,23,42,0.10)] backdrop-blur-xl">
           <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            aria-label={t('common.back', { defaultValue: 'Back' })}
-            className="relative z-10 h-10 w-10 shrink-0 rounded-full border border-border/45 bg-background/70 text-foreground/70 shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          {showBackButton && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              aria-label={t('common.back', { defaultValue: 'Back' })}
+              className="relative z-10 h-10 w-10 shrink-0 rounded-full border border-border/45 bg-background/70 text-foreground/70 shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
 
           <div
             ref={tabsContainerRef}
@@ -657,6 +692,7 @@ export const SwipeableMenuView = ({
                             addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                             previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                             active
+                            selectedQuantities={selectedQuantities}
                           />
                         ))}
                       {subgroups
@@ -697,6 +733,7 @@ export const SwipeableMenuView = ({
                                   previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                                   active
                                   showPrices={!sharedPriceLabel}
+                                  selectedQuantities={selectedQuantities}
                                 />
                               </AccordionContent>
                             </AccordionItem>
@@ -714,6 +751,7 @@ export const SwipeableMenuView = ({
                         addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                         previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                         active
+                        selectedQuantities={selectedQuantities}
                       />
                   )}
                 </section>
