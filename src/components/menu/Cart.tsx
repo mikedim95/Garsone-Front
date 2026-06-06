@@ -74,7 +74,6 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
 
   const [queueAhead, setQueueAhead] = useState<number | null>(null);
   const [queueLoading, setQueueLoading] = useState(false);
-  const [submittedAhead, setSubmittedAhead] = useState<number | null>(null);
   const [lastSubmitWasEdit, setLastSubmitWasEdit] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
 
@@ -522,12 +521,10 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                     setLastSubmitWasEdit(isEditingExisting);
                     setPlacing(true);
                     const result = await onCheckout(note || undefined);
-                    const aheadValue = queueAhead ?? 0;
                     setReviewOpen(false);
                     setQueueAhead(null);
                     setNote("");
                     if (result) {
-                      setSubmittedAhead(aheadValue);
                       setSubmittedOrder(result);
                       setSuccessOpen(true);
                     }
@@ -550,12 +547,10 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                       setLastSubmitWasEdit(isEditingExisting);
                       setPlacing(true);
                       const result = await onImmediateCheckout(note || undefined);
-                      const aheadValue = queueAhead ?? 0;
                       setReviewOpen(false);
                       setQueueAhead(null);
                       setNote("");
                       if (result) {
-                        setSubmittedAhead(aheadValue);
                         setSubmittedOrder(result);
                         setSuccessOpen(true);
                       }
@@ -591,7 +586,6 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
           setSuccessOpen(open);
           if (!open) {
             setSubmittedOrder(null);
-            setSubmittedAhead(null);
           }
         }}
       >
@@ -602,12 +596,8 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
             </span>
             <div>
               <h2 className="text-lg font-semibold text-foreground">
-                Order submitted
+                Thank you for your order
               </h2>
-              <p className="text-sm text-muted-foreground">
-                Your order is on its way to the kitchen. Priority number:{" "}
-                {submittedAhead ?? queueAhead ?? 0}
-              </p>
             </div>
           </div>
 

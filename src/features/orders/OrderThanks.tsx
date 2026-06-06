@@ -1,42 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { HomeLink } from '@/components/HomeLink';
 import { AppBurger } from '@/components/AppBurger';
-import { CheckCircle, Clock, Utensils } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
 import { setStoredStoreSlug } from '@/lib/storeSlug';
 
-type OrderReadyPayload = {
-  orderId?: string;
-  tableId?: string;
-};
-
 export default function OrderThanks() {
-  const { orderId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const [ready, setReady] = useState(false);
-  const [queuePosition, setQueuePosition] = useState<number | null>(null);
-  const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
-  const { tableId, paid } = useMemo(() => {
+  const { tableId } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
     return {
       tableId: qs.get('tableId') || undefined,
-      paid: qs.get('paid') === '1',
     };
   }, [location.search]);
-  const [storeSlug, setStoreSlug] = useState<string>('');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const store = await api.getStore();
-        if (mounted && store?.store?.slug) {
-          setStoreSlug(store.store.slug);
-        }
+        if (!mounted) return;
         if (store?.store?.name) {
           try {
             localStorage.setItem('STORE_NAME', store.store.name);
@@ -58,30 +45,6 @@ export default function OrderThanks() {
     })();
     return () => { mounted = false; };
   }, []);
-
-  useEffect(() => {
-    if (!orderId || !storeSlug) return;
-    let active = true;
-    api
-      .getPublicOrderSummary(orderId, { storeSlug })
-      .then((summary) => {
-        if (!active) return;
-        const nextQueue =
-          typeof summary.queuePosition === 'number' ? summary.queuePosition : null;
-        const nextEstimate =
-          typeof summary.estimatedMinutes === 'number'
-            ? summary.estimatedMinutes
-            : null;
-        setQueuePosition(nextQueue);
-        setEstimatedMinutes(nextEstimate);
-      })
-      .catch((error) => {
-        console.warn('Failed to load order summary', error);
-      });
-    return () => {
-      active = false;
-    };
-  }, [storeSlug, orderId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex items-center justify-center p-4">
@@ -130,61 +93,9 @@ export default function OrderThanks() {
           transition={{ delay: 0.3 }}
         >
           <h1 className="text-2xl font-semibold text-foreground mb-2">
-            Thank you!
+            Thank you for your order
           </h1>
-          <p className="text-muted-foreground text-sm mb-8">
-            {paid 
-              ? 'Payment confirmed — your order is being prepared.' 
-              : 'Your order has been sent to the kitchen.'}
-          </p>
         </motion.div>
-
-        {/* Status Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="space-y-3 mb-8"
-        >
-          {/* Queue Position / Priority */}
-          <div className="bg-card/50 backdrop-blur-sm border border-border/50 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Utensils className="w-5 h-5 text-primary" strokeWidth={1.5} />
-            </div>
-            <div className="text-left flex-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Queue Position</p>
-              <p className="text-lg font-medium text-foreground">
-                {queuePosition !== null ? `#${queuePosition}` : '—'}
-              </p>
-            </div>
-          </div>
-
-          {/* Estimated Time */}
-          <div className="bg-card/50 backdrop-blur-sm border border-border/50 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5 text-primary" strokeWidth={1.5} />
-            </div>
-            <div className="text-left flex-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Estimated Time</p>
-              <p className="text-lg font-medium text-foreground">
-                {estimatedMinutes !== null ? `~${estimatedMinutes} min` : '—'}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Ready notification */}
-        {ready && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-primary/10 border border-primary/20 rounded-xl p-4 mb-6"
-          >
-            <p className="text-sm text-primary font-medium">
-              Your order is ready!
-            </p>
-          </motion.div>
-        )}
 
         {/* Back Button */}
         <motion.div
