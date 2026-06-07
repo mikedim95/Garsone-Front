@@ -120,8 +120,8 @@ const ItemGrid = ({
                   decoding="async"
                   {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
                   draggable={false}
-                  className={`menu-card-image w-full h-full object-cover transition-all duration-500 ${
-                    isSelected ? 'scale-[1.03] brightness-110 saturate-125' : ''
+                  className={`menu-card-image w-full h-full bg-black object-contain transition-all duration-500 ${
+                    isSelected ? 'brightness-110 saturate-125' : ''
                   }`}
                 />
               ) : (
