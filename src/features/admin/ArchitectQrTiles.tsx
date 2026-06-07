@@ -274,6 +274,23 @@ const buildNodeConfigPayload = (nodeConfig: RemoteNodeConfig): RemoteNodeConfig 
   })),
 });
 
+const pickPrimaryRemoteNode = (nodes: RemoteNode[] = []) => {
+  if (!nodes.length) return null;
+  const withConfig = nodes.filter((node) => node.config && Object.keys(node.config).length > 0);
+  const candidates = withConfig.length ? withConfig : nodes;
+  return (
+    candidates.find((node) => node.slug === "main") ??
+    candidates
+      .slice()
+      .sort((a, b) => {
+        const aTime = new Date(a.updatedAt ?? a.lastSeenAt ?? a.createdAt ?? 0).getTime();
+        const bTime = new Date(b.updatedAt ?? b.lastSeenAt ?? b.createdAt ?? 0).getTime();
+        return bTime - aTime;
+      })[0] ??
+    null
+  );
+};
+
 const lifecycleCopy: Record<
   TileLifecycle,
   { label: string; variant: "outline" | "warning" | "info" | "success" }
@@ -756,7 +773,7 @@ export default function ArchitectQrTiles() {
       setLoadingNode(true);
       try {
         const res = await api.adminListStoreNodes(storeId);
-        const node = res.nodes?.[0] ?? null;
+        const node = pickPrimaryRemoteNode(res.nodes ?? []);
         setRemoteNode(node);
         if (node?.config) {
           const configWifi =
@@ -825,7 +842,7 @@ export default function ArchitectQrTiles() {
       for (let attempt = 0; attempt < 10; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
         const res = await api.adminListStoreNodes(storeId);
-        const node = res.nodes?.[0] ?? null;
+        const node = pickPrimaryRemoteNode(res.nodes ?? []);
         if (!node) continue;
         setRemoteNode(node);
         const ack = node.config?.lastConfigAck;
@@ -2434,43 +2451,6 @@ export default function ArchitectQrTiles() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-destructive/30 bg-destructive/5">
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                          Danger Zone
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Delete historical operational data for {selectedStore.name}.
-                        </CardDescription>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setHistoryDialogOpen(true)}
-                        disabled={purgingHistory}
-                      >
-                        {purgingHistory ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="mr-2 h-4 w-4" />
-                        )}
-                        Delete history
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Removes orders, order items, table visit history, locality approvals,
-                      waiter shifts, kitchen ticket counters, audit/event history, and node
-                      event history. Menu, staff accounts, tables, QR tiles, printers, and
-                      venue settings stay intact.
-                    </p>
-                  </CardContent>
-                </Card>
-
                 {pendingNodes.some((node) => node.status === "PENDING") ? (
                   <Card>
                     <CardHeader className="pb-4">
@@ -2630,6 +2610,11 @@ export default function ArchitectQrTiles() {
                                 onChange={(event) => updateWifiNetwork(index, { password: event.target.value })}
                                 placeholder={wifi.passwordSet ? "Leave blank to keep existing" : ""}
                               />
+                              {wifi.passwordSet ? (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  A password is saved; leave this blank to keep it.
+                                </p>
+                              ) : null}
                             </div>
                             <div className="md:col-span-2">
                               <Label>Priority</Label>
@@ -2695,6 +2680,11 @@ export default function ArchitectQrTiles() {
                           onChange={(event) => updateNodeField("mqttPass", event.target.value)}
                           placeholder={nodeConfig.mqttPassSet ? "Leave blank to keep existing" : ""}
                         />
+                        {nodeConfig.mqttPassSet ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            A password is saved; leave this blank to keep it.
+                          </p>
+                        ) : null}
                       </div>
                       <div>
                         <Label>Status seconds</Label>
@@ -2792,7 +2782,48 @@ export default function ArchitectQrTiles() {
                           Rotate token
                         </Button>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+                        No saved remote-node config exists for this venue yet. Save node to create and publish one.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-destructive/30 bg-destructive/5">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                          Danger Zone
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          Delete historical operational data for {selectedStore.name}.
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setHistoryDialogOpen(true)}
+                        disabled={purgingHistory}
+                      >
+                        {purgingHistory ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-2 h-4 w-4" />
+                        )}
+                        Delete history
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Removes orders, order items, table visit history, locality approvals,
+                      waiter shifts, kitchen ticket counters, audit/event history, and node
+                      event history. Menu, staff accounts, tables, QR tiles, printers, and
+                      venue settings stay intact.
+                    </p>
                   </CardContent>
                 </Card>
                 </TabsContent>
