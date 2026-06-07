@@ -553,7 +553,7 @@ export default function TableMenu() {
     enabled: bootstrapQueryEnabled,
     staleTime: 30_000,
     gcTime: 5 * 60_000,
-    refetchOnMount: false,
+    refetchOnMount: "always",
     refetchOnReconnect: true,
     refetchOnWindowFocus: false,
     refetchInterval: false,
