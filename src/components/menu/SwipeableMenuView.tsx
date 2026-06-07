@@ -56,12 +56,10 @@ interface Props {
 interface ItemGridProps {
   items: MenuItem[];
   onAdd: (item: MenuItem) => void;
-  onPreviewImage: (item: MenuItem) => void;
   formatPrice: (n: number) => string;
   getPrice: (item: MenuItem) => number;
   fallbackLabel: string;
   addItemLabel: string;
-  previewImageLabel: string;
   active?: boolean;
   showPrices?: boolean;
   selectedQuantities: Map<string, number>;
@@ -74,12 +72,10 @@ const SWIPE_AXIS_LOCK_RATIO = 1.25;
 const ItemGrid = ({
   items,
   onAdd,
-  onPreviewImage,
   formatPrice,
   getPrice,
   fallbackLabel,
   addItemLabel,
-  previewImageLabel,
   active = false,
   showPrices = true,
   selectedQuantities,
@@ -106,13 +102,14 @@ const ItemGrid = ({
           style={{ contain: 'layout paint style' }}
         >
           <div className="relative aspect-[4/5] overflow-hidden">
-            {item.image ? (
-              <button
-                type="button"
-                className="absolute inset-0 block h-full w-full overflow-hidden text-left"
-                onClick={() => onPreviewImage(item)}
-                aria-label={`${previewImageLabel}: ${displayName}`}
-              >
+            <button
+              type="button"
+              className="absolute inset-0 block h-full w-full overflow-hidden text-left disabled:cursor-not-allowed"
+              onClick={() => onAdd(item)}
+              disabled={unavailable}
+              aria-label={`${addItemLabel}: ${displayName}`}
+            >
+              {item.image ? (
                 <img
                   src={item.image}
                   alt={displayName}
@@ -127,10 +124,10 @@ const ItemGrid = ({
                     isSelected ? 'scale-[1.03] brightness-110 saturate-125' : ''
                   }`}
                 />
-              </button>
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
-            )}
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
+              )}
+            </button>
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
             {isSelected && (
               <div className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground shadow-lg">
@@ -153,15 +150,6 @@ const ItemGrid = ({
                     {formatPrice(price)}
                   </span>
                 ) : null}
-                <button
-                  type="button"
-                  className="pointer-events-auto w-7 h-7 rounded-full bg-white/25 border border-white/30 flex items-center justify-center transition-colors group-hover:bg-primary group-hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={() => onAdd(item)}
-                  disabled={unavailable}
-                  aria-label={`${addItemLabel}: ${displayName}`}
-                >
-                  <span className="text-white text-base font-light leading-none">+</span>
-                </button>
               </div>
             </div>
           </div>
@@ -200,7 +188,6 @@ export const SwipeableMenuView = ({
   const [cartOpen, setCartOpen] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
-  const [previewItem, setPreviewItem] = useState<MenuItem | null>(null);
   const [isRinging, setIsRinging] = useState(false);
   const [bellDialogOpen, setBellDialogOpen] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(1);
@@ -409,12 +396,6 @@ export const SwipeableMenuView = ({
     cartItems.length === 1
       ? t('menu.item_count_one', { count: cartItems.length, defaultValue: '{{count}} item' })
       : t('menu.item_count_other', { count: cartItems.length, defaultValue: '{{count}} items' });
-  const previewName =
-    previewItem?.displayName ??
-    previewItem?.name ??
-    previewItem?.title ??
-    t('menu.item', { defaultValue: 'Item' });
-  const previewDescription = previewItem?.displayDescription ?? previewItem?.description ?? '';
 
   const handleCheckout = async () => {
     if (checkoutBusy) return;
@@ -685,12 +666,10 @@ export const SwipeableMenuView = ({
                             key="__no-sub__"
                             items={s.items}
                             onAdd={handleAddItemClick}
-                            onPreviewImage={setPreviewItem}
                             formatPrice={formatPrice}
                             getPrice={getPrice}
                             fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                             addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
-                            previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                             active
                             selectedQuantities={selectedQuantities}
                           />
@@ -725,12 +704,10 @@ export const SwipeableMenuView = ({
                                 <ItemGrid
                                   items={s.items}
                                   onAdd={handleAddItemClick}
-                                  onPreviewImage={setPreviewItem}
                                   formatPrice={formatPrice}
                                   getPrice={getPrice}
                                   fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                                   addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
-                                  previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                                   active
                                   showPrices={!sharedPriceLabel}
                                   selectedQuantities={selectedQuantities}
@@ -744,12 +721,10 @@ export const SwipeableMenuView = ({
                       <ItemGrid
                         items={group.items}
                         onAdd={handleAddItemClick}
-                        onPreviewImage={setPreviewItem}
                         formatPrice={formatPrice}
                         getPrice={getPrice}
                         fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                         addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
-                        previewImageLabel={t('menu.view_image', { defaultValue: 'View image' })}
                         active
                         selectedQuantities={selectedQuantities}
                       />
@@ -817,32 +792,6 @@ export const SwipeableMenuView = ({
           )}
         </motion.div>
       </div>
-
-      <Dialog open={!!previewItem} onOpenChange={(open) => (!open ? setPreviewItem(null) : undefined)}>
-        <DialogContent className="max-w-3xl overflow-hidden p-0">
-          <DialogTitle className="sr-only">
-            {t('menu.image_preview_title', { name: previewName, defaultValue: '{{name}} image' })}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            {previewDescription || t('menu.image_preview_description', { defaultValue: 'Menu item image preview' })}
-          </DialogDescription>
-          {previewItem?.image ? (
-            <div className="flex max-h-[82vh] min-h-[42vh] items-center justify-center bg-black">
-              <img
-                src={previewItem.image}
-                alt={previewName}
-                className="max-h-[82vh] w-full object-contain"
-              />
-            </div>
-          ) : null}
-          <div className="space-y-1 px-4 pb-4 pt-3">
-            <h3 className="text-base font-semibold text-foreground">{previewName}</h3>
-            {previewDescription ? (
-              <p className="text-sm text-muted-foreground">{previewDescription}</p>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Call Waiter Confirmation Dialog */}
       <AlertDialog open={bellDialogOpen} onOpenChange={setBellDialogOpen}>

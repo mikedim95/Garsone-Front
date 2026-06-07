@@ -27,6 +27,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
   const [qty, setQty] = useState<number>(initialQty || 1);
+  const [submitted, setSubmitted] = useState(false);
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
   const formatter = useMemo(() => {
     try {
@@ -44,6 +45,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
   useEffect(() => {
     setSelected(initialSelected || {});
     setQty(initialQty || 1);
+    setSubmitted(false);
   }, [initialSelected, initialQty, item?.id, open]);
 
   const effectiveModifiers: Modifier[] = useMemo(() => item?.modifiers || [], [item]);
@@ -62,8 +64,13 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
   };
 
   const handleConfirm = () => {
+    if (!canConfirm) {
+      setSubmitted(true);
+      return;
+    }
     onConfirm(selected, Math.max(1, qty));
     setSelected({});
+    setSubmitted(false);
   };
 
   return (
@@ -83,12 +90,12 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium">
                     {mod.name}
-                    {mod.required || (mod.minSelect ?? 0) > 0 ? (
-                      <span className="ml-2 text-xs text-destructive">
-                        {t('menu.required_label', { defaultValue: '(required)' })}
-                      </span>
-                    ) : null}
                   </h4>
+                  {submitted && (!!mod.required || (mod.minSelect ?? 0) > 0) && !selected[mod.id] ? (
+                    <span className="ml-3 text-xs font-medium text-destructive">
+                      {t('menu.choose_required_modifier', { defaultValue: 'Choose one option' })}
+                    </span>
+                  ) : null}
                 </div>
                 <RadioGroup
                   value={selected[mod.id]}
@@ -144,7 +151,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
           <Button variant="ghost" onClick={onClose}>
             {t('actions.cancel', { defaultValue: 'Cancel' })}
           </Button>
-          <Button onClick={handleConfirm} disabled={!canConfirm}>
+          <Button onClick={handleConfirm}>
             {t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
           </Button>
         </DialogFooter>
