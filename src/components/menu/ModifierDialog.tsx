@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import type { MenuItem, Modifier } from '@/types';
 import { useTranslation } from 'react-i18next';
 
-type SelectionMap = { [modifierId: string]: string };
+type SelectionMap = { [modifierId: string]: string | string[] };
 
 interface Props {
   open: boolean;
@@ -55,12 +56,26 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
     return effectiveModifiers.every((m) => {
       const required = !!m.required || (m.minSelect ?? 0) > 0;
       if (!required) return true;
-      return !!selected[m.id];
+      const value = selected[m.id];
+      return Array.isArray(value) ? value.length > 0 : !!value;
     });
   }, [effectiveModifiers, selected]);
 
   const handlePick = (modifierId: string, optionId: string) => {
     setSelected((prev) => ({ ...prev, [modifierId]: optionId }));
+  };
+
+  const handleToggle = (modifierId: string, optionId: string, checked: boolean) => {
+    setSelected((prev) => {
+      const current = prev[modifierId];
+      const values = Array.isArray(current) ? current : current ? [current] : [];
+      const next = checked ? [...new Set([...values, optionId])] : values.filter((id) => id !== optionId);
+      if (!next.length) {
+        const { [modifierId]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [modifierId]: next };
+    });
   };
 
   const handleConfirm = () => {
@@ -85,43 +100,82 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
 
         <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-1">
           {effectiveModifiers?.length ? (
-            effectiveModifiers.map((mod) => (
-              <div key={mod.id} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">
-                    {mod.name}
-                  </h4>
-                  {submitted && (!!mod.required || (mod.minSelect ?? 0) > 0) && !selected[mod.id] ? (
-                    <span className="ml-3 text-xs font-medium text-destructive">
-                      {t('menu.choose_required_modifier', { defaultValue: 'Choose one option' })}
-                    </span>
-                  ) : null}
-                </div>
-                <RadioGroup
-                  value={selected[mod.id]}
-                  onValueChange={(val) => handlePick(mod.id, val)}
-                  className="grid grid-cols-1 gap-2"
-                >
-                  {mod.options.map((opt) => {
-                    const delta = getModifierPriceDelta(opt);
-                    return (
-                    <Label
-                      key={opt.id}
-                      htmlFor={`${mod.id}-${opt.id}`}
-                      className="flex items-center gap-3 p-3 border rounded cursor-pointer"
+            effectiveModifiers.map((mod) => {
+              const currentValue = selected[mod.id];
+              const missingRequired =
+                submitted &&
+                (!!mod.required || (mod.minSelect ?? 0) > 0) &&
+                (Array.isArray(currentValue) ? currentValue.length === 0 : !currentValue);
+              const allowsMultiple = mod.maxSelect === null || (mod.maxSelect ?? 1) > 1;
+
+              return (
+                <div key={mod.id} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium">{mod.name}</h4>
+                    {missingRequired ? (
+                      <span className="ml-3 text-xs font-medium text-destructive">
+                        {t('menu.choose_required_modifier', { defaultValue: 'Choose one option' })}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {allowsMultiple ? (
+                    <div className="grid grid-cols-1 gap-2">
+                      {mod.options.map((opt) => {
+                        const delta = getModifierPriceDelta(opt);
+                        const checked = Array.isArray(currentValue)
+                          ? currentValue.includes(opt.id)
+                          : currentValue === opt.id;
+                        return (
+                          <Label
+                            key={opt.id}
+                            htmlFor={`${mod.id}-${opt.id}`}
+                            className="flex items-center gap-3 p-3 border rounded cursor-pointer"
+                          >
+                            <Checkbox
+                              id={`${mod.id}-${opt.id}`}
+                              checked={checked}
+                              onCheckedChange={(value) => handleToggle(mod.id, opt.id, value === true)}
+                            />
+                            <span className="flex-1">{opt.label}</span>
+                            {delta !== 0 && (
+                              <span className="text-sm text-muted-foreground">
+                                {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
+                              </span>
+                            )}
+                          </Label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <RadioGroup
+                      value={Array.isArray(currentValue) ? currentValue[0] : currentValue}
+                      onValueChange={(val) => handlePick(mod.id, val)}
+                      className="grid grid-cols-1 gap-2"
                     >
-                      <RadioGroupItem id={`${mod.id}-${opt.id}`} value={opt.id} />
-                      <span className="flex-1">{opt.label}</span>
-                      {delta !== 0 && (
-                        <span className="text-sm text-muted-foreground">
-                          {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
-                        </span>
-                      )}
-                    </Label>
-                  )})}
-                </RadioGroup>
-              </div>
-            ))
+                      {mod.options.map((opt) => {
+                        const delta = getModifierPriceDelta(opt);
+                        return (
+                          <Label
+                            key={opt.id}
+                            htmlFor={`${mod.id}-${opt.id}`}
+                            className="flex items-center gap-3 p-3 border rounded cursor-pointer"
+                          >
+                            <RadioGroupItem id={`${mod.id}-${opt.id}`} value={opt.id} />
+                            <span className="flex-1">{opt.label}</span>
+                            {delta !== 0 && (
+                              <span className="text-sm text-muted-foreground">
+                                {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
+                              </span>
+                            )}
+                          </Label>
+                        );
+                      })}
+                    </RadioGroup>
+                  )}
+                </div>
+              );
+            })
           ) : null}
         </div>
 

@@ -101,11 +101,13 @@ export const ElegantMenuView = ({
 
   const getSelectedModifiersTotal = (cartItem: CartItem) => {
     if (!cartItem.selectedModifiers) return 0;
-    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
-      const option = cartItem.item.modifiers
-        ?.find((modifier) => modifier.id === modifierId)
-        ?.options.find((opt) => opt.id === optionId);
-      return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionIds]) => {
+      const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+      const modifierOptions = cartItem.item.modifiers?.find((modifier) => modifier.id === modifierId)?.options ?? [];
+      return sum + ids.reduce((optionSum, optionId) => {
+        const option = modifierOptions.find((opt) => opt.id === optionId);
+        return optionSum + (option ? getModifierOptionPriceDelta(option) : 0);
+      }, 0);
     }, 0);
   };
 
@@ -219,7 +221,7 @@ export const ElegantMenuView = ({
     setEditingItemIndex(index);
   };
 
-  const handleConfirmEditModifiers = (selectedModifiers: Record<string, string>, qty: number) => {
+  const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
     if (editingItemIndex !== null) {
       updateItemModifiers(editingItemIndex, selectedModifiers);
       if (qty !== cartItems[editingItemIndex].quantity) {
@@ -546,15 +548,18 @@ export const ElegantMenuView = ({
                           {hasModifiers && (
                             <div className="mb-1 space-y-0.5">
                               {cartItem.item.modifiers?.map((modifier) => {
-                                const selectedOptionId = cartItem.selectedModifiers[modifier.id];
-                                const selectedOption = modifier.options.find(opt => opt.id === selectedOptionId);
-                                if (!selectedOption) return null;
-                                const optionDelta = getModifierOptionPriceDelta(selectedOption);
+                                const selectedOptionIds = cartItem.selectedModifiers[modifier.id];
+                                const ids = Array.isArray(selectedOptionIds) ? selectedOptionIds : selectedOptionIds ? [selectedOptionIds] : [];
+                                const selectedOptions = ids
+                                  .map((id) => modifier.options.find((opt) => opt.id === id))
+                                  .filter(Boolean);
+                                if (!selectedOptions.length) return null;
+                                const optionDelta = selectedOptions.reduce((sum, option) => sum + getModifierOptionPriceDelta(option!), 0);
                                 
                                 return (
                                   <div key={modifier.id} className="text-[10px] text-muted-foreground">
                                     <span className="font-medium">{modifier.name || modifier.title}:</span>{' '}
-                                    <span>{selectedOption.label || selectedOption.title}</span>
+                                    <span>{selectedOptions.map((option) => option!.label || option!.title).join(', ')}</span>
                                     {optionDelta > 0 && (
                                       <span className="text-primary ml-1">
                                         +{formatPrice(optionDelta)}

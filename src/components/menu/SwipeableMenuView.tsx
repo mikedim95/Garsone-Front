@@ -94,21 +94,21 @@ const ItemGrid = ({
         <Card
           key={item.id}
           interactive={false}
-          className={`menu-item-card group relative overflow-hidden rounded-2xl border bg-card shadow-sm transition-all duration-300 ${
-            isSelected ? 'border-primary ring-2 ring-primary/70 shadow-primary/25 shadow-xl' : 'border-border/30'
+          className={`menu-item-card group relative overflow-hidden rounded-xl border bg-card shadow-sm transition-all duration-300 ${
+            isSelected ? 'border-primary ring-2 ring-primary/50 shadow-primary/15' : 'border-border/30'
           } ${
             unavailable ? 'opacity-50' : 'hover:border-primary/30'
           }`}
           style={{ contain: 'layout paint style' }}
         >
-          <div className="relative aspect-[4/5] overflow-hidden">
-            <button
-              type="button"
-              className="absolute inset-0 block h-full w-full overflow-hidden text-left disabled:cursor-not-allowed"
-              onClick={() => onAdd(item)}
-              disabled={unavailable}
-              aria-label={`${addItemLabel}: ${displayName}`}
-            >
+          <button
+            type="button"
+            className="block h-full w-full text-left disabled:cursor-not-allowed"
+            onClick={() => onAdd(item)}
+            disabled={unavailable}
+            aria-label={`${addItemLabel}: ${displayName}`}
+          >
+            <div className="relative aspect-[4/3] overflow-hidden bg-black">
               {item.image ? (
                 <img
                   src={item.image}
@@ -120,39 +120,36 @@ const ItemGrid = ({
                   decoding="async"
                   {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
                   draggable={false}
-                  className={`menu-card-image w-full h-full bg-black object-contain transition-all duration-500 ${
+                  className={`menu-card-image h-full w-full object-contain transition-all duration-500 ${
                     isSelected ? 'brightness-110 saturate-125' : ''
                   }`}
                 />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
               )}
-            </button>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
-            {isSelected && (
-              <div className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground shadow-lg">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                {selectedQuantity}
-              </div>
-            )}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
-              <h3 className="font-semibold text-[13px] sm:text-sm text-white drop-shadow leading-snug mb-1 line-clamp-2 tracking-tight">
+              {isSelected && (
+                <div className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground shadow-lg">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {selectedQuantity}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1 px-3 py-3">
+              <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight text-foreground sm:text-sm">
                 {displayName}
               </h3>
               {description ? (
-                <p className="mb-2 line-clamp-2 text-[11px] leading-snug text-white/75 drop-shadow">
+                <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                   {description}
                 </p>
               ) : null}
-              <div className={`flex items-center ${showPrices ? 'justify-between' : 'justify-end'}`}>
-                {showPrices ? (
-                  <span className="text-base sm:text-lg font-semibold text-white drop-shadow tabular-nums">
-                    {formatPrice(price)}
-                  </span>
-                ) : null}
-              </div>
+              {showPrices ? (
+                <span className="block text-base font-semibold tabular-nums text-foreground sm:text-lg">
+                  {formatPrice(price)}
+                </span>
+              ) : null}
             </div>
-          </div>
+          </button>
         </Card>
       );
     })}
@@ -378,11 +375,13 @@ export const SwipeableMenuView = ({
 
   const getSelectedModifiersTotal = (cartItem: CartItem) => {
     if (!cartItem.selectedModifiers) return 0;
-    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
-      const option = cartItem.item.modifiers
-        ?.find((modifier) => modifier.id === modifierId)
-        ?.options.find((opt) => opt.id === optionId);
-      return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionIds]) => {
+      const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+      const modifierOptions = cartItem.item.modifiers?.find((modifier) => modifier.id === modifierId)?.options ?? [];
+      return sum + ids.reduce((optionSum, optionId) => {
+        const option = modifierOptions.find((opt) => opt.id === optionId);
+        return optionSum + (option ? getModifierOptionPriceDelta(option) : 0);
+      }, 0);
     }, 0);
   };
 
@@ -417,7 +416,7 @@ export const SwipeableMenuView = ({
     setEditingItemIndex(index);
   };
 
-  const handleConfirmEditModifiers = (selectedModifiers: Record<string, string>, qty: number) => {
+  const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
     if (editingItemIndex !== null) {
       updateItemModifiers(editingItemIndex, selectedModifiers);
       if (qty !== cartItems[editingItemIndex].quantity) {

@@ -88,7 +88,10 @@ export const CookOrderItem = ({
   };
 
   const modifierText = Object.entries(item.selectedModifiers || {})
-    .map(([modifierId, optionId]) => item.selectedModifierLabels?.[modifierId] || optionId)
+    .flatMap(([modifierId, optionIds]) => {
+      const fallback = Array.isArray(optionIds) ? optionIds : [optionIds];
+      return item.selectedModifierLabels?.[modifierId] || fallback.join(", ");
+    })
     .join(", ");
 
   return (

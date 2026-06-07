@@ -468,7 +468,7 @@ const mapOrderItemModifiers = (
   orderItem?: SubmittedOrderItem,
   menuItem?: MenuItem
 ) => {
-  const selections: Record<string, string> = {};
+  const selections: Record<string, string | string[]> = {};
   if (!orderItem?.modifiers || !Array.isArray(orderItem.modifiers))
     return selections;
   for (const mod of orderItem.modifiers) {
@@ -479,7 +479,12 @@ const mapOrderItemModifiers = (
     const matchingMod = menuItem?.modifiers?.find((m) => m.id === modId);
     const matchingOpt = matchingMod?.options.find((o) => o.id === optId);
     if (matchingMod && matchingOpt) {
-      selections[modId] = optId;
+      const current = selections[modId];
+      if (!current) {
+        selections[modId] = optId;
+      } else {
+        selections[modId] = Array.isArray(current) ? [...current, optId] : [current, optId];
+      }
     }
   }
   return selections;
@@ -1052,7 +1057,7 @@ export default function TableMenu() {
   };
 
   const handleConfirmModifiers = (
-    selected: Record<string, string>,
+    selected: Record<string, string | string[]>,
     qty: number
   ) => {
     if (!customizeItem) return;
@@ -1107,20 +1112,22 @@ export default function TableMenu() {
       const menuItem = menuData.items.find((it) => it.id === rawItemId);
       if (!menuItem) continue;
 
-      const selectedModifiers: Record<string, string> = {};
+      const selectedModifiers: Record<string, string | string[]> = {};
       const modifiers = (orderItem as any).modifiers as any;
       if (Array.isArray(modifiers)) {
         for (const mod of modifiers) {
           const modifierId =
             (mod && (mod.modifierId || (mod.modifier && mod.modifier.id))) ??
             undefined;
-          const optionId =
-            (mod &&
-              (mod.modifierOptionId ||
-                (Array.isArray(mod.optionIds) && mod.optionIds[0]))) ??
-            undefined;
-          if (modifierId && optionId) {
-            selectedModifiers[String(modifierId)] = String(optionId);
+          const optionIds =
+            mod && Array.isArray(mod.optionIds)
+              ? mod.optionIds
+              : mod?.modifierOptionId
+              ? [mod.modifierOptionId]
+              : [];
+          if (modifierId && optionIds.length) {
+            selectedModifiers[String(modifierId)] =
+              optionIds.length === 1 ? String(optionIds[0]) : optionIds.map(String);
           }
         }
       }
@@ -1396,11 +1403,13 @@ export default function TableMenu() {
         const basePrice = item.item.priceCents;
         const modifiersPrice = Object.keys(item.selectedModifiers).reduce(
           (modSum, modId) => {
-            const optionId = item.selectedModifiers[modId];
-            const option = item.item.modifiers
-              ?.find((m) => m.id === modId)
-              ?.options.find((o) => o.id === optionId);
-            return modSum + (option?.priceDeltaCents ?? 0);
+            const optionIds = item.selectedModifiers[modId];
+            const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+            const options = item.item.modifiers?.find((m) => m.id === modId)?.options ?? [];
+            return modSum + ids.reduce((sum, optionId) => {
+              const option = options.find((o) => o.id === optionId);
+              return sum + (option?.priceDeltaCents ?? 0);
+            }, 0);
           },
           0
         );

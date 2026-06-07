@@ -82,11 +82,13 @@ export function OrderModifiersDialog({
         menuItem?.name ||
         menuItem?.title ||
         `Item ${index + 1}`;
-      const selections = Object.entries(line.selectedModifiers ?? {}).map(
-        ([modifierId, optionId]) => {
+      const selections = Object.entries(line.selectedModifiers ?? {}).flatMap(
+        ([modifierId, optionIds]) => {
           const modifier = menuItem?.modifiers?.find((mod) => mod.id === modifierId);
-          const option = modifier?.options?.find((opt) => opt.id === optionId);
-          return {
+          const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+          return ids.map((optionId) => {
+            const option = modifier?.options?.find((opt) => opt.id === optionId);
+            return {
             modifierId,
             optionId,
             modifierLabel: modifier?.name || modifier?.title || modifierId,
@@ -95,7 +97,8 @@ export function OrderModifiersDialog({
               option?.title ||
               line.selectedModifierLabels?.[modifierId] ||
               optionId,
-          };
+            };
+          });
         }
       );
       return { line, itemName, selections };

@@ -18,11 +18,13 @@ const getModifierOptionPriceDelta = (
 
 const getSelectedModifiersTotal = (cartItem: CartItem) => {
   if (!cartItem.selectedModifiers) return 0;
-  return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
-    const option = cartItem.item.modifiers
-      ?.find((modifier) => modifier.id === modifierId)
-      ?.options.find((opt) => opt.id === optionId);
-    return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+  return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionIds]) => {
+    const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+    const modifierOptions = cartItem.item.modifiers?.find((modifier) => modifier.id === modifierId)?.options ?? [];
+    return sum + ids.reduce((optionSum, optionId) => {
+      const option = modifierOptions.find((opt) => opt.id === optionId);
+      return optionSum + (option ? getModifierOptionPriceDelta(option) : 0);
+    }, 0);
   }, 0);
 };
 
@@ -35,7 +37,7 @@ interface CartStore {
   setItems: (items: CartItem[]) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
-  updateItemModifiers: (index: number, selectedModifiers: { [modifierId: string]: string }) => void;
+  updateItemModifiers: (index: number, selectedModifiers: CartItem['selectedModifiers']) => void;
   clearCart: () => void;
   getTotal: () => number;
 }

@@ -58,7 +58,7 @@ export interface ModifierOption {
 export interface CartItem {
   item: MenuItem;
   quantity: number;
-  selectedModifiers: { [modifierId: string]: string };
+  selectedModifiers: { [modifierId: string]: string | string[] };
   selectedModifierLabels?: { [modifierId: string]: string };
   orderItemId?: string;
   status?: OrderItemStatus;

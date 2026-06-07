@@ -484,14 +484,17 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {Object.entries(cartItem.selectedModifiers || {}).map(
-                        ([modId, optId]) => {
+                        ([modId, optIds]) => {
                           const mod = cartItem.item.modifiers?.find(
                             (m) => m.id === modId
                           );
-                          const opt = mod?.options.find((o) => o.id === optId);
+                          const ids = Array.isArray(optIds) ? optIds : [optIds];
+                          const labels = ids
+                            .map((id) => mod?.options.find((o) => o.id === id)?.label)
+                            .filter(Boolean);
                           return (
                             <div key={modId}>
-                              {mod?.name}: {opt?.label}
+                              {mod?.name}: {labels.join(', ')}
                             </div>
                           );
                         }

@@ -11,7 +11,16 @@ import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, Mo
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
-type CustomModifier = { id?: string; titleEn: string; titleEl: string; required: boolean; isAvailable: boolean; options: CustomOption[]; originalOptionIds?: string[] };
+type CustomModifier = {
+  id?: string;
+  titleEn: string;
+  titleEl: string;
+  required: boolean;
+  selectionMode: 'single' | 'multiple';
+  isAvailable: boolean;
+  options: CustomOption[];
+  originalOptionIds?: string[];
+};
 type CategoryForm = { titleEn: string; titleEl: string; sortOrder: string; imageUrl: string };
 type SubcategorySummary = {
   key: string;
@@ -374,6 +383,7 @@ export const ManagerMenuPanel = () => {
           titleEn: mod.titleEn || mod.title || '',
           titleEl: mod.titleEl || mod.title || '',
           required: links.find((l) => l.modifierId === mod.id)?.isRequired ?? mod.minSelect > 0,
+          selectionMode: mod.maxSelect === 1 ? 'single' : 'multiple',
           isAvailable: mod.isAvailable ?? true,
           options: (mod.options || (mod as any).modifierOptions || []).map((opt: any) => ({
             id: opt.id,
@@ -1264,7 +1274,7 @@ export const ManagerMenuPanel = () => {
                   <h3 className="text-base font-semibold">Modifiers</h3>
                   <p className="text-sm text-muted-foreground">Extras, choices and add-ons shown to guests.</p>
                 </div>
-                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, isAvailable:true, options:[] }])}>
+                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, selectionMode:'single', isAvailable:true, options:[] }])}>
                   <Plus className="mr-2 h-4 w-4" />{" "}
                   {t("manager.add_modifier", {
                     defaultValue: "Add modifier",
@@ -1283,6 +1293,22 @@ export const ManagerMenuPanel = () => {
                       }}/>
                     </div>
                     <div className="mb-3 flex flex-wrap items-center gap-3">
+                      <div className="flex rounded-md border border-border bg-card p-1 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, selectionMode: 'single' }: m))}
+                          className={`rounded px-3 py-1.5 transition-colors ${cm.selectionMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          At most 1
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, selectionMode: 'multiple' }: m))}
+                          className={`rounded px-3 py-1.5 transition-colors ${cm.selectionMode === 'multiple' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          Zero, 1 or many
+                        </button>
+                      </div>
                       <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.required} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, required: v}: m));
@@ -1427,12 +1453,14 @@ export const ManagerMenuPanel = () => {
                         const seenModifiers = new Set<string>();
                         for (const cm of customMods) {
                           if (!cm.titleEn.trim() && !cm.titleEl.trim()) continue;
+                          const maxSelect = cm.selectionMode === 'single' ? 1 : Math.max(1, cm.options.length);
                           let modifierId = cm.id;
                           if (modifierId) {
                             await api.updateModifier(modifierId, {
                               titleEn: cm.titleEn.trim(),
                               titleEl: cm.titleEl.trim(),
                               minSelect: cm.required ? 1 : 0,
+                              maxSelect,
                               isAvailable: cm.isAvailable,
                             });
                           } else {
@@ -1440,6 +1468,7 @@ export const ManagerMenuPanel = () => {
                               titleEn: cm.titleEn.trim(),
                               titleEl: cm.titleEl.trim(),
                               minSelect: cm.required ? 1 : 0,
+                              maxSelect,
                               isAvailable: cm.isAvailable,
                             });
                             modifierId = createdModifier.modifier.id;

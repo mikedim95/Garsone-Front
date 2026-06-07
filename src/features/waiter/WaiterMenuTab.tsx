@@ -309,7 +309,7 @@ export function WaiterMenuTab({
   };
 
   const handleConfirmModifiers = (
-    selected: Record<string, string>,
+    selected: Record<string, string | string[]>,
     qty: number
   ) => {
     if (!customizeItem) return;
