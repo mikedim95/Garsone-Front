@@ -944,7 +944,7 @@ export const ManagerMenuPanel = () => {
               <div>
                 <span className="text-sm font-medium">Category image</span>
                 <p className="text-xs text-muted-foreground">
-                  This appears as the background on the first menu page.
+                  Choose one image from your computer. It uploads when you save.
                 </p>
               </div>
               {categoryImagePreview || categoryForm.imageUrl ? (
@@ -963,25 +963,15 @@ export const ManagerMenuPanel = () => {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(event) => handleCategoryImageFile(event.target.files?.[0])}
+                  onChange={(event) => {
+                    handleCategoryImageFile(event.target.files?.[0]);
+                    event.currentTarget.value = '';
+                  }}
                 />
               </label>
               {categoryImageUploadStatus ? (
                 <p className="text-xs text-muted-foreground">{categoryImageUploadStatus}</p>
               ) : null}
-              <div className="grid gap-2">
-                <span className="text-sm font-medium">Custom image URL</span>
-                <Input
-                  placeholder="https://..."
-                  value={categoryForm.imageUrl}
-                  onChange={(e) => {
-                    setCategoryForm((prev) => ({ ...prev, imageUrl: e.target.value }));
-                    setCategoryImagePreview(e.target.value);
-                    setCategoryImageFile(null);
-                    setCategoryImageUploadStatus('');
-                  }}
-                />
-              </div>
               {categoryImagePreview || categoryForm.imageUrl ? (
                 <Button
                   type="button"
