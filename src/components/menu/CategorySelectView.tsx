@@ -1,6 +1,5 @@
 import type { MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ChefHat, Cloud, Coffee, Salad, UtensilsCrossed, Wine, Cake, Soup, Sandwich, Pizza, IceCream } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Props {
@@ -9,68 +8,6 @@ interface Props {
   loading?: boolean;
   variant?: 'default' | 'noor';
 }
-
-const categoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  appetizer: Salad,
-  appetizers: Salad,
-  starter: Salad,
-  starters: Salad,
-  salad: Salad,
-  salads: Salad,
-  soup: Soup,
-  soups: Soup,
-  main: UtensilsCrossed,
-  mains: UtensilsCrossed,
-  entree: UtensilsCrossed,
-  entrees: UtensilsCrossed,
-  pizza: Pizza,
-  pizzas: Pizza,
-  burger: Sandwich,
-  burgers: Sandwich,
-  sandwich: Sandwich,
-  sandwiches: Sandwich,
-  drink: Coffee,
-  drinks: Coffee,
-  beverage: Coffee,
-  beverages: Coffee,
-  coffee: Coffee,
-  wine: Wine,
-  wines: Wine,
-  cocktail: Wine,
-  cocktails: Wine,
-  dessert: Cake,
-  desserts: Cake,
-  sweet: IceCream,
-  sweets: IceCream,
-  ice: IceCream,
-};
-
-const getCategoryIcon = (title: string) => {
-  const lower = title.toLowerCase();
-  for (const [key, Icon] of Object.entries(categoryIcons)) {
-    if (lower.includes(key)) return Icon;
-  }
-  return ChefHat;
-};
-
-const noorCategoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  shisha: Cloud,
-  hookah: Cloud,
-  coffee: Coffee,
-  coffees: Coffee,
-  drink: Wine,
-  drinks: Wine,
-  beverage: Coffee,
-  beverages: Coffee,
-};
-
-const getNoorCategoryIcon = (title: string) => {
-  const lower = title.toLowerCase();
-  for (const [key, Icon] of Object.entries(noorCategoryIcons)) {
-    if (lower.includes(key)) return Icon;
-  }
-  return getCategoryIcon(title);
-};
 
 const categoryGradients = [
   'from-primary/20 to-primary/5',
@@ -108,13 +45,12 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
                   bg-gradient-to-br ${gradient}
                   border ${isNoor ? 'border-white/10' : 'border-border/40'} backdrop-blur-sm
                   shadow-lg overflow-hidden
-                  flex flex-col items-center justify-center gap-3 p-4
+                  flex flex-col items-center justify-end gap-3 p-4
                 `}
               >
                 <div className={isNoor ? "absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" : "absolute inset-0 bg-gradient-to-t from-background/20 to-transparent"} />
 
-                <Skeleton className={isNoor ? "relative z-10 h-14 w-14 rounded-2xl bg-black/35" : "relative z-10 h-14 w-14 rounded-2xl bg-background/55"} />
-                <Skeleton className={isNoor ? "relative z-10 h-4 w-20 rounded-full bg-black/35" : "relative z-10 h-4 w-20 rounded-full bg-background/55"} />
+                <Skeleton className={isNoor ? "relative z-10 h-5 w-24 rounded-full bg-black/35" : "relative z-10 h-5 w-24 rounded-full bg-background/55"} />
 
                 <div className={isNoor ? "absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-fuchsia-500/10" : "absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-primary/5"} />
               </div>
@@ -139,9 +75,8 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
 
       <div className={isNoor ? "relative grid grid-cols-2 gap-4 max-w-xl mx-auto" : "grid grid-cols-2 gap-4 max-w-lg mx-auto"}>
         {categories.map((cat, idx) => {
-          const Icon = isNoor ? getNoorCategoryIcon(cat.title) : getCategoryIcon(cat.title);
           const gradient = isNoor ? getNoorGradient(idx) : categoryGradients[idx % categoryGradients.length];
-          const imageUrl = isNoor ? '' : cat.imageUrl?.trim();
+          const imageUrl = cat.imageUrl?.trim();
 
           return (
             <button
@@ -158,22 +93,25 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
               `}
             >
               {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  loading={idx < 4 ? 'eager' : 'lazy'}
-                />
+                <>
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full scale-110 object-cover blur-sm transition-transform duration-500 group-hover:scale-125"
+                    loading={idx < 4 ? 'eager' : 'lazy'}
+                  />
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover opacity-75 transition-transform duration-500 group-hover:scale-105"
+                    loading={idx < 4 ? 'eager' : 'lazy'}
+                  />
+                </>
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-br from-transparent to-background/10" />
               )}
 
               <div className={isNoor ? "absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent transition-opacity duration-300" : "absolute inset-0 bg-gradient-to-t from-background/90 via-background/35 to-transparent transition-opacity duration-300 group-hover:from-background/80"} />
-              {!imageUrl && (
-                <div className={isNoor ? "relative z-10 mb-auto mt-auto w-14 h-14 rounded-2xl bg-black/35 backdrop-blur-sm flex items-center justify-center shadow-xl group-hover:bg-fuchsia-500/20 transition-all duration-300" : "relative z-10 mb-auto mt-auto w-14 h-14 rounded-2xl bg-background/60 backdrop-blur-sm flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:bg-primary/10 transition-all duration-300"}>
-                  <Icon className={isNoor ? "h-7 w-7 text-fuchsia-400 group-hover:scale-110 transition-transform duration-300" : "h-7 w-7 text-primary group-hover:scale-110 transition-transform duration-300"} />
-                </div>
-              )}
               
               <span className={isNoor ? "relative z-10 text-sm font-bold text-white text-center leading-tight line-clamp-2" : "relative z-10 text-sm font-semibold text-foreground text-center leading-tight line-clamp-2"}>
                 {cat.title}

@@ -50,18 +50,6 @@ type ItemForm = {
   printerTopic: string;
 };
 
-const NOOR_CATEGORY_IMAGE_BASE_URL =
-  'https://order-flow-api-3uuy.onrender.com/media/garsone-media/noor/Menu';
-
-const categoryImagePool = [
-  { label: 'Coffee', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/cappuccino.webp` },
-  { label: 'Beverages', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/natural-juice.webp` },
-  { label: 'Drinks', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/drink-special.webp` },
-  { label: 'Beer', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/beer-corona.webp` },
-  { label: 'Shisha', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/shisha-special-love66.webp` },
-  { label: 'Food', url: `${NOOR_CATEGORY_IMAGE_BASE_URL}/mixed-grill.webp` },
-];
-
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 export const ManagerMenuPanel = () => {
@@ -118,6 +106,9 @@ export const ManagerMenuPanel = () => {
     sortOrder: '0',
     imageUrl: '',
   });
+  const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
+  const [categoryImagePreview, setCategoryImagePreview] = useState('');
+  const [categoryImageUploadStatus, setCategoryImageUploadStatus] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
   const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('edit');
   const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
@@ -269,8 +260,26 @@ export const ManagerMenuPanel = () => {
     return `${trimmed}${trimmed.includes('?') ? '&' : '?'}v=${Date.now()}`;
   };
 
+  const handleCategoryImageFile = (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Upload failed', description: 'Choose an image file.' });
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      toast({ title: 'Upload failed', description: 'Image must be 8 MB or smaller.' });
+      return;
+    }
+    setCategoryImageFile(file);
+    setCategoryImagePreview(URL.createObjectURL(file));
+    setCategoryImageUploadStatus('Ready to upload');
+  };
+
   const openCategoryCreate = () => {
     setCategoryForm({ titleEn: '', titleEl: '', sortOrder: String(categories.length * 10), imageUrl: '' });
+    setCategoryImageFile(null);
+    setCategoryImagePreview('');
+    setCategoryImageUploadStatus('');
     setEditingCategory(null);
     setCategoryDialogMode('create');
     setCategoryDialogOpen(true);
@@ -283,6 +292,9 @@ export const ManagerMenuPanel = () => {
       sortOrder: String(cat.sortOrder ?? 0),
       imageUrl: cat.imageUrl || '',
     });
+    setCategoryImageFile(null);
+    setCategoryImagePreview(cat.imageUrl || '');
+    setCategoryImageUploadStatus('');
     setEditingCategory(cat);
     setCategoryDialogMode('edit');
     setCategoryDialogOpen(true);
@@ -294,13 +306,19 @@ export const ManagerMenuPanel = () => {
     const titleEn = categoryForm.titleEn.trim() || fallbackEn;
     const titleEl = categoryForm.titleEl.trim() || fallbackEl || titleEn;
     const sortOrder = Number.parseInt(categoryForm.sortOrder, 10);
-    const imageUrl = categoryForm.imageUrl.trim();
+    let imageUrl = categoryForm.imageUrl.trim();
     if (!titleEn || !titleEl) {
       toast({ title: 'Title required', description: 'Both English and Greek category names are required.' });
       return;
     }
     setSavingCategory(true);
     try {
+      if (categoryImageFile) {
+        setCategoryImageUploadStatus('Uploading image...');
+        const uploaded = await api.managerUploadImage(categoryImageFile, { storeSlug });
+        imageUrl = withFreshImageVersion(uploaded.publicUrl);
+        setCategoryImageUploadStatus('Image uploaded');
+      }
       if (categoryDialogMode === 'create') {
         await api.createCategory(titleEn, titleEl, Number.isFinite(sortOrder) ? sortOrder : undefined, undefined, imageUrl || null);
         toast({ title: 'Category added', description: titleEn });
@@ -316,6 +334,9 @@ export const ManagerMenuPanel = () => {
       await load();
       setCategoryDialogOpen(false);
       setEditingCategory(null);
+      setCategoryImageFile(null);
+      setCategoryImagePreview('');
+      setCategoryImageUploadStatus('');
       setCategoryDialogMode('edit');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update category';
@@ -870,6 +891,9 @@ export const ManagerMenuPanel = () => {
           if (!open) {
             setEditingCategory(null);
             setCategoryForm({ titleEn: '', titleEl: '', sortOrder: '0', imageUrl: '' });
+            setCategoryImageFile(null);
+            setCategoryImagePreview('');
+            setCategoryImageUploadStatus('');
             setCategoryDialogMode('edit');
           }
         }}
@@ -918,44 +942,58 @@ export const ManagerMenuPanel = () => {
             </label>
             <div className="space-y-3">
               <div>
-                <span className="text-sm font-medium">First menu page image</span>
+                <span className="text-sm font-medium">Category image</span>
                 <p className="text-xs text-muted-foreground">
-                  This image appears on the category tile before guests enter the menu.
+                  This appears as the background on the first menu page.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {categoryImagePool.map((image) => {
-                  const selected = categoryForm.imageUrl === image.url;
-                  return (
-                    <button
-                      key={image.url}
-                      type="button"
-                      onClick={() => setCategoryForm((prev) => ({ ...prev, imageUrl: image.url }))}
-                      className={`overflow-hidden rounded-lg border text-left transition ${
-                        selected ? 'border-primary ring-2 ring-primary/30' : 'border-border/70 hover:border-primary/50'
-                      }`}
-                    >
-                      <img src={image.url} alt="" className="h-20 w-full object-cover" />
-                      <span className="block px-2 py-1.5 text-xs font-medium">{image.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {categoryImagePreview || categoryForm.imageUrl ? (
+                <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+                  <img
+                    src={categoryImagePreview || categoryForm.imageUrl}
+                    alt=""
+                    className="h-40 w-full object-cover"
+                  />
+                </div>
+              ) : null}
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-4 text-sm font-medium transition hover:border-primary/60 hover:bg-primary/5">
+                <ImagePlus className="h-4 w-4" />
+                Upload category image
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => handleCategoryImageFile(event.target.files?.[0])}
+                />
+              </label>
+              {categoryImageUploadStatus ? (
+                <p className="text-xs text-muted-foreground">{categoryImageUploadStatus}</p>
+              ) : null}
               <div className="grid gap-2">
                 <span className="text-sm font-medium">Custom image URL</span>
                 <Input
                   placeholder="https://..."
                   value={categoryForm.imageUrl}
-                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                  onChange={(e) => {
+                    setCategoryForm((prev) => ({ ...prev, imageUrl: e.target.value }));
+                    setCategoryImagePreview(e.target.value);
+                    setCategoryImageFile(null);
+                    setCategoryImageUploadStatus('');
+                  }}
                 />
               </div>
-              {categoryForm.imageUrl ? (
+              {categoryImagePreview || categoryForm.imageUrl ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="px-0"
-                  onClick={() => setCategoryForm((prev) => ({ ...prev, imageUrl: '' }))}
+                  onClick={() => {
+                    setCategoryForm((prev) => ({ ...prev, imageUrl: '' }));
+                    setCategoryImageFile(null);
+                    setCategoryImagePreview('');
+                    setCategoryImageUploadStatus('');
+                  }}
                 >
                   Clear image
                 </Button>
