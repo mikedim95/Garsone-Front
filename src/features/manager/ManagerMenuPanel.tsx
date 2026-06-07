@@ -1271,8 +1271,14 @@ export const ManagerMenuPanel = () => {
             <section className="rounded-lg border border-border/70 bg-card/30 p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-semibold">Modifiers</h3>
-                  <p className="text-sm text-muted-foreground">Extras, choices and add-ons shown to guests.</p>
+                  <h3 className="text-base font-semibold">
+                    {t("manager.modifiers", { defaultValue: "Modifiers" })}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("manager.modifiers_description", {
+                      defaultValue: "Extras, choices and add-ons shown to guests.",
+                    })}
+                  </p>
                 </div>
                 <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, selectionMode:'single', isAvailable:true, options:[] }])}>
                   <Plus className="mr-2 h-4 w-4" />{" "}
@@ -1299,21 +1305,21 @@ export const ManagerMenuPanel = () => {
                           onClick={() => setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, selectionMode: 'single' }: m))}
                           className={`rounded px-3 py-1.5 transition-colors ${cm.selectionMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                          At most 1
+                          {t("manager.modifier_max_one", { defaultValue: "Max 1" })}
                         </button>
                         <button
                           type="button"
                           onClick={() => setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, selectionMode: 'multiple' }: m))}
                           className={`rounded px-3 py-1.5 transition-colors ${cm.selectionMode === 'multiple' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                          Zero, 1 or many
+                          {t("manager.modifier_more_than_one", { defaultValue: "More than 1" })}
                         </button>
                       </div>
                       <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.required} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, required: v}: m));
                         }}/>
-                        Required
+                        {t("manager.required", { defaultValue: "Required" })}
                       </label>
                       <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.isAvailable} onChange={(e)=>{
