@@ -456,14 +456,14 @@ export const ElegantMenuView = ({
           setCartOpen(open);
         }}
       >
-        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
+        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85dvh] max-h-[calc(100dvh-0.75rem)] sm:h-auto sm:max-h-[90dvh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
-          <Card className="border-0 shadow-none h-full flex flex-col">
+          <Card className="border-0 shadow-none h-full min-h-0 flex flex-col">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
               {/* Bottom-sheet drag handle (mobile only) */}
               <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
@@ -484,7 +484,7 @@ export const ElegantMenuView = ({
               </div>
             </div>
 
-            <ScrollArea className="max-h-[45vh] sm:max-h-[35vh]">
+            <ScrollArea className="min-h-0 flex-1">
             {cartItems.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
@@ -607,7 +607,7 @@ export const ElegantMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="sticky bottom-0 p-3 sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
+              <div className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-foreground">
                     {t('menu.total', { defaultValue: 'Total' })}

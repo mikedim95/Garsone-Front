@@ -816,14 +816,14 @@ export const SwipeableMenuView = ({
       {/* Cart Modal */}
       {showCartButton && (
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
+        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85dvh] max-h-[calc(100dvh-0.75rem)] sm:h-auto sm:max-h-[90dvh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
-          <Card className="border-0 shadow-none h-full flex flex-col">
+          <Card className="border-0 shadow-none h-full min-h-0 flex flex-col">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
               <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
                 <div className="h-1.5 w-12 rounded-full bg-muted" />
@@ -843,7 +843,7 @@ export const SwipeableMenuView = ({
               </div>
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               {cartItems.length === 0 ? (
                 <div className="p-8 text-center">
                   <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
@@ -928,7 +928,7 @@ export const SwipeableMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="p-4 border-t border-border/40 space-y-4 bg-card/50">
+              <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-border/40 space-y-4 bg-card/50">
                 <Textarea
                   placeholder={t('menu.order_note_placeholder', { defaultValue: 'Add a note to your order...' })}
                   value={orderNote}
