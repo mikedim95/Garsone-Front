@@ -243,41 +243,6 @@ const getLocalizedShishaSubcategory = (subcategory: string, preferGreek: boolean
   return preferGreek ? label.el : label.en;
 };
 
-type DrinkCategoryKind = "coffees" | "beers" | "drinks";
-
-const normalizeMenuTaxonomyText = (value?: string | null) =>
-  (value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-const resolveDrinkCategoryKind = (values: Array<string | null | undefined>): DrinkCategoryKind | null => {
-  const normalizedValues = values.map(normalizeMenuTaxonomyText).filter(Boolean);
-  if (normalizedValues.some((value) => ["coffee", "coffees", "cafe", "cafes"].includes(value))) {
-    return "coffees";
-  }
-  if (normalizedValues.some((value) => ["beer", "beers"].includes(value))) {
-    return "beers";
-  }
-  if (
-    normalizedValues.some((value) =>
-      ["drink", "drinks", "beverage", "beverages", "refreshment", "refreshments"].includes(value)
-    )
-  ) {
-    return "drinks";
-  }
-  return null;
-};
-
-const drinkSubcategoryLabels: Record<DrinkCategoryKind, { en: string; el: string }> = {
-  coffees: { en: "Coffees", el: "Καφέδες" },
-  beers: { en: "Beers", el: "Μπύρες" },
-  drinks: { en: "Drinks", el: "Ποτά" },
-};
-
 const buildMenuState = (
   payload: Partial<MenuStateData> & {
     categories?: Array<{
@@ -292,57 +257,19 @@ const buildMenuState = (
   preferGreek: boolean
 ): MenuStateData => {
   const rawCategories = payload?.categories ?? [];
-  const drinkKindByCategoryId = new Map<string, DrinkCategoryKind>();
-  for (const category of rawCategories) {
-    if (!category.id) continue;
-    const kind = resolveDrinkCategoryKind([category.titleEn, category.titleEl, category.title]);
-    if (kind) drinkKindByCategoryId.set(category.id, kind);
-  }
-  const preferredDrinkCategory =
-    rawCategories.find((category) => {
-      const kind = category.id ? drinkKindByCategoryId.get(category.id) : null;
-      return kind === "drinks";
-    }) ?? rawCategories.find((category) => category.id && drinkKindByCategoryId.has(category.id));
-  const drinkCategoryId = preferredDrinkCategory?.id ?? "drinks";
-  const localizedDrinkTitle = resolveLocalizedMenuText(preferGreek, {
-    en: preferredDrinkCategory?.titleEn || "Drinks",
-    el: preferredDrinkCategory?.titleEl || "Ποτά",
-    localized: preferredDrinkCategory?.title,
-    legacy: preferGreek ? "Ποτά" : "Drinks",
-  });
-  let drinkCategoryInserted = false;
-
   const categories = mapCategories(
-    rawCategories.reduce<Array<{ id?: string; title?: string; imageUrl?: string | null }>>((acc, cat) => {
-      const isDrinkFamily = Boolean(cat.id && drinkKindByCategoryId.has(cat.id));
-      if (isDrinkFamily) {
-        if (!drinkCategoryInserted) {
-          acc.push({
-            id: drinkCategoryId,
-            title: localizedDrinkTitle,
-            imageUrl: preferredDrinkCategory?.imageUrl ?? cat.imageUrl ?? null,
-          });
-          drinkCategoryInserted = true;
-        }
-        return acc;
-      }
-      acc.push({
+    rawCategories.map((cat) => ({
         ...cat,
         title: resolveLocalizedMenuText(preferGreek, {
           en: cat.titleEn,
           el: cat.titleEl,
           localized: cat.title,
         }),
-      });
-      return acc;
-    }, [])
+      }))
   );
   const categoryTitleById = new Map(
     categories.map((category) => [category.id, category.title])
   );
-  if (drinkCategoryInserted) {
-    categoryTitleById.set(drinkCategoryId, localizedDrinkTitle);
-  }
   const rawCategoryById = new Map(rawCategories.map((category) => [category.id, category]));
 
   const localizedModifiers = (mods?: Modifier[]) =>
@@ -371,14 +298,6 @@ const buildMenuState = (
     categories,
     items: (payload?.items ?? []).map((item) => {
       const rawCategory = item.categoryId ? rawCategoryById.get(item.categoryId) : undefined;
-      const drinkKind =
-        (item.categoryId ? drinkKindByCategoryId.get(item.categoryId) : null) ||
-        resolveDrinkCategoryKind([
-          item.category,
-          rawCategory?.titleEn,
-          rawCategory?.titleEl,
-          rawCategory?.title,
-        ]);
       const name = resolveLocalizedMenuText(preferGreek, {
         en: item.titleEn ?? item.name,
         el: item.titleEl,
@@ -397,9 +316,7 @@ const buildMenuState = (
       });
       const imageUrl = item.imageUrl ?? item.image ?? "";
       const categoryTitle =
-        drinkKind
-          ? localizedDrinkTitle
-          : item.category ?? categoryTitleById.get(item.categoryId || "");
+        categoryTitleById.get(item.categoryId || "") ?? item.category;
       const presentation = getItemPresentation({
         name,
         description,
@@ -407,12 +324,10 @@ const buildMenuState = (
       });
       const displaySubcategory = /shisha/i.test(categoryTitle)
         ? getLocalizedShishaSubcategory(subcategory, preferGreek)
-        : drinkKind
-        ? drinkSubcategoryLabels[drinkKind][preferGreek ? "el" : "en"]
         : subcategory;
       return {
         ...item,
-        categoryId: drinkKind ? drinkCategoryId : item.categoryId,
+        categoryId: item.categoryId,
         category: categoryTitle,
         name,
         subcategory: displaySubcategory || null,
