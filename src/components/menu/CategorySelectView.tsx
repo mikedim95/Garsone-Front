@@ -1,6 +1,6 @@
 import type { MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ChefHat, Coffee, Salad, UtensilsCrossed, Wine, Cake, Soup, Sandwich, Pizza, IceCream } from 'lucide-react';
+import { ChefHat, Cloud, Coffee, Salad, UtensilsCrossed, Wine, Cake, Soup, Sandwich, Pizza, IceCream } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Props {
@@ -51,6 +51,25 @@ const getCategoryIcon = (title: string) => {
     if (lower.includes(key)) return Icon;
   }
   return ChefHat;
+};
+
+const noorCategoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  shisha: Cloud,
+  hookah: Cloud,
+  coffee: Coffee,
+  coffees: Coffee,
+  drink: Wine,
+  drinks: Wine,
+  beverage: Coffee,
+  beverages: Coffee,
+};
+
+const getNoorCategoryIcon = (title: string) => {
+  const lower = title.toLowerCase();
+  for (const [key, Icon] of Object.entries(noorCategoryIcons)) {
+    if (lower.includes(key)) return Icon;
+  }
+  return getCategoryIcon(title);
 };
 
 const categoryGradients = [
@@ -120,9 +139,9 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
 
       <div className={isNoor ? "relative grid grid-cols-2 gap-4 max-w-xl mx-auto" : "grid grid-cols-2 gap-4 max-w-lg mx-auto"}>
         {categories.map((cat, idx) => {
-          const Icon = getCategoryIcon(cat.title);
+          const Icon = isNoor ? getNoorCategoryIcon(cat.title) : getCategoryIcon(cat.title);
           const gradient = isNoor ? getNoorGradient(idx) : categoryGradients[idx % categoryGradients.length];
-          const imageUrl = cat.imageUrl?.trim();
+          const imageUrl = isNoor ? '' : cat.imageUrl?.trim();
 
           return (
             <button
