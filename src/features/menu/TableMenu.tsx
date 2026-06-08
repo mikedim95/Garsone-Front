@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
@@ -445,6 +445,7 @@ export default function TableMenu() {
   const preferGreek = languageCode === "el";
   const showActiveOrders = false; // Temporarily hide the Active Orders UI
   const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
   const { theme, setTheme } = useTheme();
@@ -1226,6 +1227,11 @@ export default function TableMenu() {
       setCategorySelected(false);
       setSelectedCategory(null);
       setOrderPlacedSignal((s) => s + 1);
+      const successParams = new URLSearchParams({ tableId: activeTableId });
+      if (storeSlug) {
+        successParams.set("storeSlug", storeSlug);
+      }
+      navigate(`/order/${summary.id}/thanks?${successParams.toString()}`);
       return summary;
     } catch (error) {
       console.error("Immediate checkout failed:", {

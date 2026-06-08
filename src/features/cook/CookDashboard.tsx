@@ -25,7 +25,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const normalizePrinterTopicValue = (value?: string | null) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : '';
+  typeof value === "string"
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9:_-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "")
+    : "";
 
 const pickOptionId = (value: unknown): string | null => {
   if (typeof value === "string") return value;

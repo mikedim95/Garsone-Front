@@ -1,22 +1,31 @@
-import { useEffect, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { HomeLink } from '@/components/HomeLink';
-import { AppBurger } from '@/components/AppBurger';
-import { CheckCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { api } from '@/lib/api';
-import { setStoredStoreSlug } from '@/lib/storeSlug';
+import { useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { HomeLink } from "@/components/HomeLink";
+import { AppBurger } from "@/components/AppBurger";
+import { ArrowLeft, CheckCircle } from "lucide-react";
+import { motion } from "framer-motion";
+import { api } from "@/lib/api";
+import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 export default function OrderThanks() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { tableId } = useMemo(() => {
+  const { tableId, storeSlug } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
     return {
-      tableId: qs.get('tableId') || undefined,
+      tableId: qs.get("tableId") || undefined,
+      storeSlug: qs.get("storeSlug") || undefined,
     };
   }, [location.search]);
+
+  const menuPath = useMemo(() => {
+    if (!tableId) return "/";
+    const qs = new URLSearchParams();
+    if (storeSlug) qs.set("storeSlug", storeSlug);
+    const suffix = qs.toString();
+    return `/${tableId}${suffix ? `?${suffix}` : ""}`;
+  }, [storeSlug, tableId]);
 
   useEffect(() => {
     let mounted = true;
@@ -26,24 +35,30 @@ export default function OrderThanks() {
         if (!mounted) return;
         if (store?.store?.name) {
           try {
-            localStorage.setItem('STORE_NAME', store.store.name);
+            localStorage.setItem("STORE_NAME", store.store.name);
           } catch (error) {
-            console.warn('Failed to persist STORE_NAME', error);
+            console.warn("Failed to persist STORE_NAME", error);
           }
         }
         if (store?.store?.slug) {
           try {
             setStoredStoreSlug(store.store.slug);
-            window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: store.store.slug } }));
+            window.dispatchEvent(
+              new CustomEvent("store-slug-changed", {
+                detail: { slug: store.store.slug },
+              })
+            );
           } catch (error) {
-            console.warn('Failed to persist STORE_SLUG', error);
+            console.warn("Failed to persist STORE_SLUG", error);
           }
         }
       } catch (error) {
-        console.error('Failed to load store info', error);
+        console.error("Failed to load store info", error);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
@@ -55,14 +70,13 @@ export default function OrderThanks() {
         <AppBurger />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
         className="max-w-sm w-full text-center"
       >
-        {/* Success Icon */}
-        <motion.div 
+        <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -74,10 +88,12 @@ export default function OrderThanks() {
               animate={{ scale: 1 }}
               transition={{ delay: 0.4, type: "spring", stiffness: 300 }}
             >
-              <CheckCircle className="h-12 w-12 text-primary" strokeWidth={1.5} />
+              <CheckCircle
+                className="h-12 w-12 text-primary"
+                strokeWidth={1.5}
+              />
             </motion.div>
           </div>
-          {/* Subtle ring animation */}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1.2, opacity: 0 }}
@@ -86,35 +102,27 @@ export default function OrderThanks() {
           />
         </motion.div>
 
-        {/* Main Message */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
         >
           <h1 className="text-2xl font-semibold text-foreground mb-2">
-            Thank you for your order
+            Order successful
           </h1>
         </motion.div>
 
-        {/* Back Button */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
         >
           <Button
-            variant="ghost"
-            onClick={() => {
-              if (tableId) {
-                navigate(`/${tableId}`);
-              } else {
-                navigate("/");
-              }
-            }}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => navigate(menuPath)}
+            className="mt-8 h-12 rounded-full px-6 font-semibold shadow-lg"
           >
-            ← Back to Menu
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Go back to menu
           </Button>
         </motion.div>
       </motion.div>
