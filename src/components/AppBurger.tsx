@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Home, LogIn, LogOut, QrCode, User } from 'lucide-react';
+import { LogIn, LogOut, QrCode, User } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Link, useNavigate } from 'react-router-dom';
 import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
@@ -12,9 +12,10 @@ interface AppBurgerProps {
   className?: string;
   title?: string;
   children?: React.ReactNode; // page-specific actions
+  showChildren?: boolean;
 }
 
-export const AppBurger = ({ className = '', title, children }: AppBurgerProps) => {
+export const AppBurger = ({ className = '', title, children, showChildren = true }: AppBurgerProps) => {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
   const { dashboardDark, themeClass } = useDashboardTheme();
@@ -59,7 +60,6 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
         <div className="px-4 py-3 space-y-4">
           <section className="space-y-2">
             <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.navigation', { defaultValue: 'Navigation' })}</h3>
-            <NavLink to="/" label={t('nav.home')} icon={<Home className="h-4 w-4" />} />
             {canViewProfile ? (
               <NavLink
                 to="/profile"
@@ -88,7 +88,7 @@ export const AppBurger = ({ className = '', title, children }: AppBurgerProps) =
               {t('app.preferences', { defaultValue: 'Preferences' })}
             </h3>
             <div className="flex flex-col gap-2">
-              {children}
+              {showChildren ? children : null}
               <DashboardThemeToggle />
             </div>
           </section>

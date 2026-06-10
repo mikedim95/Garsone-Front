@@ -1,4 +1,5 @@
 import type { MenuCategory } from '@/types';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -7,6 +8,7 @@ interface Props {
   onSelect: (categoryId: string) => void;
   loading?: boolean;
   variant?: 'default' | 'noor';
+  footer?: ReactNode;
 }
 
 const categoryGradients = [
@@ -18,7 +20,7 @@ const categoryGradients = [
   'from-accent/15 to-primary/10',
 ];
 
-export const CategorySelectView = ({ categories, onSelect, loading, variant = 'default' }: Props) => {
+export const CategorySelectView = ({ categories, onSelect, loading, variant = 'default', footer }: Props) => {
   const { t } = useTranslation();
   const isNoor = variant === 'noor';
 
@@ -124,6 +126,7 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
           );
         })}
       </div>
+      {footer ? <div className="mt-8">{footer}</div> : null}
     </div>
   );
 };

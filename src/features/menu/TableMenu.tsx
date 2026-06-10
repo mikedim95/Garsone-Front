@@ -360,15 +360,6 @@ const matchesCategory = (
   return item.category === category.title;
 };
 
-const parseStoredOrder = (value: string): SubmittedOrderSummary | null => {
-  try {
-    return JSON.parse(value) as SubmittedOrderSummary;
-  } catch (error) {
-    console.warn("Failed to parse stored order", error);
-    return null;
-  }
-};
-
 const isWaiterCallMessage = (
   payload: unknown
 ): payload is { tableId: string; action?: string } =>
@@ -479,18 +470,7 @@ export default function TableMenu() {
   );
   const [callPrompted, setCallPrompted] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(
-    () => {
-      if (typeof window === "undefined") return null;
-      try {
-        const stored = window.localStorage.getItem("table:last-order");
-        return stored ? parseStoredOrder(stored) : null;
-      } catch (error) {
-        console.warn("Failed to hydrate stored order", error);
-        return null;
-      }
-    }
-  );
+  const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(null);
   const [placedOrders, setPlacedOrders] = useState<SubmittedOrderSummary[]>([]);
   const [placedLoading, setPlacedLoading] = useState(false);
   const [placedError, setPlacedError] = useState<string | null>(null);
@@ -726,22 +706,6 @@ export default function TableMenu() {
       })();
     }
   }, [storeSlug, tableLookupCode, clearMenuCache]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      if (lastOrder) {
-        window.localStorage.setItem(
-          "table:last-order",
-          JSON.stringify(lastOrder)
-        );
-      } else {
-        window.localStorage.removeItem("table:last-order");
-      }
-    } catch (error) {
-      console.warn("Failed to persist last order", error);
-    }
-  }, [lastOrder]);
 
   useEffect(() => {
     if (lastOrder?.tableLabel) {
@@ -1569,6 +1533,74 @@ export default function TableMenu() {
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
 
+  const lastOrderCard = canEditLastOrder && lastOrder ? (
+    <div className="mx-auto w-full max-w-lg rounded-2xl border border-border/60 bg-card/90 px-4 py-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            {t("menu.last_order_heading", {
+              defaultValue: "Your last order",
+            })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t("menu.last_order_placed_time", {
+              time: new Date(lastOrder.createdAt || Date.now()).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              defaultValue: `Placed ${new Date(
+                lastOrder.createdAt || Date.now()
+              ).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}`,
+            })}
+          </p>
+        </div>
+        <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+          {lastOrderStatusLabel}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-2 text-sm">
+        {(lastOrder.items ?? []).map((item: SubmittedOrderItem, idx: number) => (
+          <div
+            key={`landing-last-order-${idx}`}
+            className="flex items-center justify-between gap-3"
+          >
+            <span className="min-w-0 truncate font-medium text-foreground">
+              {item?.title ??
+                item?.item?.name ??
+                t("menu.last_order_item_fallback", {
+                  index: idx + 1,
+                  defaultValue: `Item ${idx + 1}`,
+                })}
+            </span>
+            <span className="shrink-0 text-muted-foreground">
+              x{item?.quantity ?? item?.qty ?? 1}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between text-sm font-semibold">
+        <span>{t("menu.total")}</span>
+        <span>EUR {computeOrderTotal(lastOrder).toFixed(2)}</span>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-4 w-full justify-center"
+        onClick={handleEditLastOrder}
+      >
+        <Pencil className="mr-2 h-4 w-4" />
+        {t("actions.edit", { defaultValue: "Edit order" })}
+      </Button>
+    </div>
+  ) : null;
+
   return (
     <div
       className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-hidden")}
@@ -1604,7 +1636,7 @@ export default function TableMenu() {
                 )}
               </button>
               <LanguageSwitcher />
-              <AppBurger title={headerTitle}>
+              <AppBurger title={headerTitle} showChildren={false}>
                 {lastOrder ? (
                   <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
@@ -1703,6 +1735,7 @@ export default function TableMenu() {
               categories={categories}
               loading={loading}
               variant={usesImmediateGuestCheckout ? "noor" : "default"}
+              footer={lastOrderCard}
               onSelect={(catId) => {
                 setSelectedCategory(catId);
                 setCategorySelected(true);
