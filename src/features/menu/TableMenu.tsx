@@ -1867,7 +1867,7 @@ export default function TableMenu() {
         position: "fixed",
         left: 0,
         right: 0,
-        bottom: 0,
+        bottom: activeOrderBarExpanded ? 0 : 64,
         zIndex: 45,
       }}
     >
@@ -2075,7 +2075,7 @@ export default function TableMenu() {
               ? categorySelected
                 ? "pb-44"
                 : "pb-28"
-              : hasActiveOrderBar && "pb-20"
+              : hasActiveOrderBar && "pb-32"
           )}
         >
           {!guestOrderingEnabled && (
