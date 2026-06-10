@@ -1606,6 +1606,7 @@ export default function ArchitectQrTiles() {
           topicSuffix,
           mac: printer.mac,
           label: printer.label || `Printer ${index + 1}`,
+          type: printer.type,
         });
         toast({
           title: "Test print sent",

@@ -1240,7 +1240,7 @@ export const api = {
         }),
   adminTestStorePrinter: (
     storeId: string,
-    printer: { topicSuffix: string; mac?: string; label?: string }
+    printer: { topicSuffix: string; mac?: string; label?: string; type?: "58" | "80" }
   ): Promise<RemoteNodePrinterTestResponse> =>
     isOffline()
       ? Promise.resolve({
