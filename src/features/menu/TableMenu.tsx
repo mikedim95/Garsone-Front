@@ -2048,7 +2048,7 @@ export default function TableMenu() {
         </div>
 
         <Dialog open={activeOrderOpen} onOpenChange={setActiveOrderOpen}>
-          <DialogContent className="w-[95vw] sm:w-auto max-w-lg h-[82dvh] max-h-[calc(100dvh-0.75rem)] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-2xl">
+          <DialogContent className="inset-x-0 bottom-0 top-auto left-0 right-0 h-[min(86dvh,100dvh)] max-h-[100dvh] w-screen max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 [translate:0_0] sm:inset-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:h-[82dvh] sm:max-h-[calc(100dvh-0.75rem)] sm:w-auto sm:max-w-lg sm:rounded-2xl sm:border sm:[translate:-50%_-50%]">
             <DialogTitle className="sr-only">
               {t("menu.active_order_heading", {
                 defaultValue: "Your active order",
@@ -2100,7 +2100,7 @@ export default function TableMenu() {
                 </div>
 
                 <div className="shrink-0 border-b border-border/60 bg-card/70 px-4 py-3">
-                  <div className="flex gap-2 overflow-x-auto pb-1">
+                  <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
                     {statusSteps.map((step) => {
                       const isActive = step === activeOrder.status;
                       return (
@@ -2132,20 +2132,20 @@ export default function TableMenu() {
                     </div>
                   ) : null}
 
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-foreground">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-semibold text-foreground">
                       {t("menu.selected_items", {
                         defaultValue: "Selected items",
                       })}
                     </p>
                     {canEditActiveOrder ? (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="shrink-0 text-right text-xs text-muted-foreground">
                         {t("menu.tap_item_to_edit", {
                           defaultValue: "Tap an item to edit",
                         })}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {t("menu.order_locked", { defaultValue: "Locked" })}
                       </span>
                     )}
@@ -2165,7 +2165,7 @@ export default function TableMenu() {
                           type="button"
                           key={`${activeOrder.id}-${item.id ?? item.itemId ?? index}`}
                           className={clsx(
-                            "w-full rounded-2xl border border-border/60 bg-card/80 p-3 text-left transition-colors",
+                            "w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left transition-colors",
                             canEditActiveOrder
                               ? "hover:border-primary/50 hover:bg-card"
                               : "cursor-default"
@@ -2174,18 +2174,18 @@ export default function TableMenu() {
                             handleActiveOrderItemClick(activeOrder, item, index)
                           }
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
+                              <div className="flex min-w-0 items-start gap-2">
+                                <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
                                   {quantity}
                                 </span>
-                                <span className="font-semibold text-foreground">
+                                <span className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
                                   {name}
                                 </span>
                               </div>
                               {modifierLabels.length > 0 ? (
-                                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                <div className="mt-2 space-y-1 break-words pl-8 text-xs text-muted-foreground">
                                   {modifierLabels.map((label, labelIndex) => (
                                     <div key={`${item.id ?? index}-${labelIndex}`}>
                                       {label}
@@ -2200,7 +2200,7 @@ export default function TableMenu() {
                                 </p>
                               )}
                             </div>
-                            <span className="shrink-0 rounded-full border border-border/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                            <span className="max-w-[32vw] shrink-0 truncate rounded-full border border-border/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground sm:max-w-none">
                               {canEditActiveOrder
                                 ? t("actions.edit", { defaultValue: "Edit" })
                                 : t("menu.locked", { defaultValue: "Locked" })}
@@ -2223,7 +2223,7 @@ export default function TableMenu() {
                       }}
                     >
                       <Pencil className="mr-2 h-4 w-4" />
-                      {t("actions.edit", { defaultValue: "Edit order" })}
+                      {t("menu.edit_order", { defaultValue: "Edit order" })}
                     </Button>
                   ) : (
                     <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">

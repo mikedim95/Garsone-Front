@@ -575,19 +575,21 @@ export const SwipeableMenuView = ({
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        className="sticky top-0 z-30 mb-5 px-3 pt-3 pb-2"
+        className="sticky top-0 z-30 mb-5 -mx-4 px-0 pt-3 pb-2 sm:mx-0 sm:px-3"
       >
-        <div className="relative overflow-hidden rounded-[22px] border border-border/55 bg-gradient-to-b from-card/95 via-card/88 to-card/76 p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+        <div className="relative overflow-hidden rounded-none border-y border-border/55 bg-gradient-to-b from-card/95 via-card/88 to-card/76 p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:rounded-[22px] sm:border">
           <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-primary/45 to-transparent" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background/10 to-transparent" />
-          <div className="relative flex items-center gap-2 overflow-hidden rounded-[18px] border border-border/30 bg-background/35 px-2 py-2">
+          <div className="relative flex items-center gap-2 overflow-hidden rounded-none border border-border/30 bg-background/35 px-0 py-2 sm:rounded-[18px] sm:px-2">
+          <div className="pointer-events-none absolute inset-y-2 left-0 z-20 w-10 bg-gradient-to-r from-background/95 via-background/70 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-2 right-0 z-20 w-10 bg-gradient-to-l from-background/95 via-background/70 to-transparent" />
           {showBackButton && (
             <Button
               variant="ghost"
               size="icon"
               onClick={onBack}
               aria-label={t('common.back', { defaultValue: 'Back' })}
-              className="relative z-10 h-10 w-10 shrink-0 rounded-full border border-border/45 bg-background/70 text-foreground/70 shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground"
+              className="relative z-30 ml-2 h-10 w-10 shrink-0 rounded-full border border-border/45 bg-background/70 text-foreground/70 shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground sm:ml-0"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -603,9 +605,8 @@ export const SwipeableMenuView = ({
           </motion.div>
           <div
             ref={tabsContainerRef}
-            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-5"
+            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-2 sm:px-5"
           >
-            <div className="pointer-events-none sticky left-0 z-20 -ml-5 h-12 w-8 shrink-0 bg-gradient-to-r from-background/90 via-background/70 to-transparent" />
             {allCategories.map((cat) => {
               const isActive = selectedCategory === cat.id;
               const selectedCount = selectedCountByCategory.get(cat.id) ?? 0;
@@ -663,11 +664,10 @@ export const SwipeableMenuView = ({
                 </motion.button>
               );
             })}
-            <div className="pointer-events-none sticky right-0 z-20 -mr-5 h-12 w-8 shrink-0 bg-gradient-to-l from-background/90 via-background/70 to-transparent" />
           </div>
           <motion.div
             aria-hidden="true"
-            className="pointer-events-none absolute right-3 top-1/2 z-20 flex -translate-y-1/2 items-center rounded-full bg-background/70 p-1 text-primary/80 shadow-sm ring-1 ring-border/40"
+            className="pointer-events-none absolute right-0 top-1/2 z-30 flex -translate-y-1/2 items-center rounded-full bg-background/70 p-1 text-primary/80 shadow-sm ring-1 ring-border/40 sm:right-3"
             animate={{ x: [0, 4, 0], opacity: [0.55, 1, 0.55] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
           >
