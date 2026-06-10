@@ -1,12 +1,6 @@
 import { useState } from 'react';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
@@ -42,45 +36,7 @@ export const Navigation = () => {
           </a>
 
           {/* Desktop Menu */}
-          <div className="hidden md:flex items-center gap-4 sm:gap-6 flex-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className={navLinkClass}>
-                  {t('nav.solutions', { defaultValue: 'Solutions' })}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="border border-border/50 bg-card/95 dark:bg-background/95 shadow-2xl backdrop-blur-xl">
-                <DropdownMenuItem className="font-medium text-foreground/85 focus:text-foreground focus:bg-accent/20">
-                  {t('nav.solutions_restaurants', { defaultValue: 'For Restaurants' })}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="font-medium text-foreground/85 focus:text-foreground focus:bg-accent/20">
-                  {t('nav.solutions_cafes', { defaultValue: 'For Cafes' })}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="font-medium text-foreground/85 focus:text-foreground focus:bg-accent/20">
-                  {t('nav.solutions_bars', { defaultValue: 'For Bars' })}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className={navLinkClass}>
-                  {t('nav.resources', { defaultValue: 'Resources' })}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="border border-border/50 bg-card/95 dark:bg-background/95 shadow-2xl backdrop-blur-xl">
-                <DropdownMenuItem className="font-medium text-foreground/85 focus:text-foreground focus:bg-accent/20">
-                  {t('nav.resources_docs', { defaultValue: 'Documentation' })}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="font-medium text-foreground/85 focus:text-foreground focus:bg-accent/20">
-                  {t('nav.resources_api', { defaultValue: 'API Reference' })}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="font-medium text-foreground/85 focus:text-foreground focus:bg-accent/20">
-                  {t('nav.resources_support', { defaultValue: 'Support' })}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
+          <div className="hidden md:flex items-center gap-3 flex-1">
             <Button asChild variant="ghost" className={navLinkClass}>
               <a href="#demo-qr">{t('nav.demo', { defaultValue: 'Demo' })}</a>
             </Button>
@@ -151,20 +107,6 @@ const LandingMobileMenu = () => {
             <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">
               {t('app.navigation', { defaultValue: 'Navigation' })}
             </h3>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-sm font-medium"
-              type="button"
-            >
-              {t('nav.solutions', { defaultValue: 'Solutions' })}
-            </Button>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-sm font-medium"
-              type="button"
-            >
-              {t('nav.resources', { defaultValue: 'Resources' })}
-            </Button>
             <Button
               asChild
               variant="ghost"
