@@ -1,8 +1,16 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import clsx from "clsx";
 import { createPortal } from "react-dom";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useDragControls, type PanInfo } from "framer-motion";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
 import { Button } from "@/components/ui/button";
@@ -559,6 +567,10 @@ const statusToneByStatus: Record<
 const getStatusTone = (status?: OrderStatus) =>
   statusToneByStatus[status ?? "PLACED"] ?? statusToneByStatus.PLACED;
 
+const ACTIVE_ORDER_MINIMIZE_DISTANCE_PX = 86;
+const ACTIVE_ORDER_MINIMIZE_VELOCITY_PX = 650;
+const ACTIVE_ORDER_MINIMIZE_ANIMATION_MS = 180;
+
 const getStoredName = () => {
   if (typeof window === "undefined") return null;
   try {
@@ -608,6 +620,10 @@ export default function TableMenu() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [activeOrderOpen, setActiveOrderOpen] = useState(false);
+  const [activeOrderSheetMinimizing, setActiveOrderSheetMinimizing] =
+    useState(false);
+  const activeOrderDragControls = useDragControls();
+  const activeOrderMinimizeTimerRef = useRef<number | null>(null);
   const [activeLineEditor, setActiveLineEditor] = useState<{
     orderId: string;
     cartIndex: number;
@@ -671,6 +687,60 @@ export default function TableMenu() {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  const minimizeActiveOrderSheet = () => {
+    setHighlightLastOrderButton(false);
+    setActiveOrderBarExpanded(false);
+
+    if (typeof window === "undefined") {
+      setActiveOrderOpen(false);
+      return;
+    }
+
+    if (activeOrderMinimizeTimerRef.current !== null) {
+      window.clearTimeout(activeOrderMinimizeTimerRef.current);
+    }
+
+    setActiveOrderSheetMinimizing(true);
+    activeOrderMinimizeTimerRef.current = window.setTimeout(() => {
+      setActiveOrderOpen(false);
+      setActiveOrderSheetMinimizing(false);
+      activeOrderMinimizeTimerRef.current = null;
+    }, ACTIVE_ORDER_MINIMIZE_ANIMATION_MS);
+  };
+
+  const handleActiveOrderSheetPointerDown = (
+    event: ReactPointerEvent<HTMLElement>
+  ) => {
+    if (activeOrderSheetMinimizing || event.button !== 0) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.matchMedia("(max-width: 1279px)").matches
+    ) {
+      return;
+    }
+
+    activeOrderDragControls.start(event);
+  };
+
+  const handleActiveOrderSheetDragEnd = (
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    const draggedDown = info.offset.y >= ACTIVE_ORDER_MINIMIZE_DISTANCE_PX;
+    const flungDown = info.velocity.y >= ACTIVE_ORDER_MINIMIZE_VELOCITY_PX;
+    if (draggedDown || flungDown) {
+      minimizeActiveOrderSheet();
+    }
+  };
+
+  const handleActiveOrderOpenChange = (open: boolean) => {
+    if (!open) {
+      setActiveOrderBarExpanded(false);
+      setActiveOrderSheetMinimizing(false);
+    }
+    setActiveOrderOpen(open);
+  };
 
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const clearMenuCache = useMenuStore((s) => s.clear);
@@ -910,6 +980,14 @@ export default function TableMenu() {
   useEffect(() => {
     placedOrdersRef.current = placedOrders;
   }, [placedOrders]);
+
+  useEffect(() => {
+    return () => {
+      if (activeOrderMinimizeTimerRef.current !== null) {
+        window.clearTimeout(activeOrderMinimizeTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeOrder?.id) {
@@ -2157,8 +2235,32 @@ export default function TableMenu() {
           )}
         </div>
 
-        <Dialog open={activeOrderOpen} onOpenChange={setActiveOrderOpen}>
-          <DialogContent hideCloseButton className="!left-0 !right-0 !bottom-0 !top-auto h-[min(86dvh,100dvh)] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-[82dvh] xl:max-h-[calc(100dvh-0.75rem)] xl:!w-auto xl:!max-w-lg xl:rounded-2xl xl:border xl:![translate:-50%_-50%]">
+        <Dialog open={activeOrderOpen} onOpenChange={handleActiveOrderOpenChange}>
+          <DialogContent
+            hideCloseButton
+            motionProps={{
+              animate: activeOrderSheetMinimizing
+                ? { opacity: 0.96, scale: 0.98, y: "104%" }
+                : { opacity: 1, scale: 1, y: 0 },
+              drag: "y",
+              dragControls: activeOrderDragControls,
+              dragDirectionLock: true,
+              dragConstraints: { top: 0, bottom: 0 },
+              dragElastic: { top: 0, bottom: 0.36 },
+              dragListener: false,
+              dragMomentum: false,
+              dragTransition: { bounceStiffness: 420, bounceDamping: 36 },
+              onDragEnd: handleActiveOrderSheetDragEnd,
+              transition: activeOrderSheetMinimizing
+                ? {
+                    duration: ACTIVE_ORDER_MINIMIZE_ANIMATION_MS / 1000,
+                    ease: [0.32, 0.72, 0, 1],
+                  }
+                : { type: "spring", stiffness: 350, damping: 28, mass: 0.8 },
+              whileDrag: { scale: 0.995 },
+            }}
+            className="!left-0 !right-0 !bottom-0 !top-auto h-[min(86dvh,100dvh)] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-[82dvh] xl:max-h-[calc(100dvh-0.75rem)] xl:!w-auto xl:!max-w-lg xl:rounded-2xl xl:border xl:![translate:-50%_-50%]"
+          >
             <DialogTitle className="sr-only">
               {t("menu.active_order_heading", {
                 defaultValue: "Your active order",
@@ -2173,9 +2275,10 @@ export default function TableMenu() {
               <div className="flex h-full min-h-0 flex-col bg-background">
                 <div
                   className={clsx(
-                    "relative overflow-hidden bg-gradient-to-r px-5 pb-5 pt-4 text-white",
+                    "relative cursor-grab touch-none overflow-hidden bg-gradient-to-r px-5 pb-5 pt-4 text-white active:cursor-grabbing",
                     activeOrderTone.bar
                   )}
+                  onPointerDown={handleActiveOrderSheetPointerDown}
                 >
                   <div className="sm:hidden flex justify-center pb-3" aria-hidden="true">
                     <div className="h-1.5 w-12 rounded-full bg-white/35" />
@@ -2183,7 +2286,8 @@ export default function TableMenu() {
                   <button
                     type="button"
                     className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/14 text-white hover:bg-white/22"
-                    onClick={() => setActiveOrderOpen(false)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={minimizeActiveOrderSheet}
                     aria-label={t("actions.close", { defaultValue: "Close" })}
                   >
                     <X className="h-4 w-4" />

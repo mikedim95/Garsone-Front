@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, type MotionProps } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 
@@ -15,6 +15,7 @@ const DialogClose = DialogPrimitive.Close
 
 type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
   hideCloseButton?: boolean
+  motionProps?: MotionProps
 }
 
 const DialogOverlay = React.forwardRef<
@@ -35,7 +36,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, hideCloseButton = false, ...props }, ref) => (
+>(({ className, children, hideCloseButton = false, motionProps, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -66,6 +67,7 @@ const DialogContent = React.forwardRef<
           "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg [translate:-50%_-50%] gap-4 border border-border/40 bg-background p-6 shadow-lg sm:rounded-lg max-h-[90dvh] overflow-y-auto",
           className
         )}
+        {...motionProps}
       >
         {children}
         {!hideCloseButton && (
