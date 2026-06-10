@@ -9,7 +9,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { ScrollArea } from '../ui/scroll-area';
@@ -577,8 +577,10 @@ export const SwipeableMenuView = ({
         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         className="sticky top-0 z-30 mb-5 px-3 pt-3 pb-2"
       >
-        <div className="relative flex items-center gap-2 overflow-hidden rounded-2xl border border-border/45 bg-card/85 px-2 py-2 shadow-[0_16px_42px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-          <div className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+        <div className="relative overflow-hidden rounded-[22px] border border-border/55 bg-gradient-to-b from-card/95 via-card/88 to-card/76 p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+          <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-primary/45 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background/10 to-transparent" />
+          <div className="relative flex items-center gap-2 overflow-hidden rounded-[18px] border border-border/30 bg-background/35 px-2 py-2">
           {showBackButton && (
             <Button
               variant="ghost"
@@ -591,10 +593,19 @@ export const SwipeableMenuView = ({
             </Button>
           )}
 
+          <motion.div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-12 top-1/2 z-20 hidden -translate-y-1/2 items-center text-primary/75 sm:flex"
+            animate={{ x: [0, -3, 0], opacity: [0.45, 0.9, 0.45] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </motion.div>
           <div
             ref={tabsContainerRef}
-            className="relative flex flex-1 items-center gap-1 overflow-x-auto scrollbar-hide scroll-smooth"
+            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-5"
           >
+            <div className="pointer-events-none sticky left-0 z-20 -ml-5 h-12 w-8 shrink-0 bg-gradient-to-r from-background/90 via-background/70 to-transparent" />
             {allCategories.map((cat) => {
               const isActive = selectedCategory === cat.id;
               const selectedCount = selectedCountByCategory.get(cat.id) ?? 0;
@@ -610,20 +621,23 @@ export const SwipeableMenuView = ({
                   whileTap={{ scale: 0.97 }}
                   animate={hasSelectedItems ? { y: [0, -1, 0] } : { y: 0 }}
                   transition={hasSelectedItems ? { duration: 1.8, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-                  className={`relative h-11 min-w-[86px] shrink-0 overflow-hidden rounded-xl border px-3 text-left transition-all duration-300 ${
+                  className={`relative h-12 min-w-[96px] shrink-0 overflow-hidden rounded-2xl border px-3.5 text-left shadow-sm transition-all duration-300 ${
                     isActive
-                      ? 'border-primary text-primary-foreground'
+                      ? 'border-primary/90 text-primary-foreground shadow-[0_12px_28px_rgba(0,0,0,0.20)]'
                       : hasSelectedItems
-                        ? 'border-primary/55 bg-primary/10 text-foreground ring-2 ring-primary/35 shadow-primary/10 hover:bg-primary/15'
-                        : 'border-transparent text-muted-foreground hover:bg-muted/55 hover:text-foreground'
+                        ? 'border-primary/55 bg-primary/10 text-foreground ring-2 ring-primary/30 shadow-primary/10 hover:bg-primary/15'
+                        : 'border-border/35 bg-card/45 text-muted-foreground hover:border-primary/30 hover:bg-muted/65 hover:text-foreground hover:shadow-md'
                   }`}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="active-category-pill"
-                      className="absolute inset-0 rounded-xl bg-primary shadow-[0_10px_24px_rgba(0,0,0,0.18)]"
+                      className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 shadow-[0_12px_28px_rgba(0,0,0,0.20)]"
                       transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.8 }}
                     />
+                  )}
+                  {isActive && (
+                    <span className="absolute inset-x-3 top-1 z-10 h-px rounded-full bg-primary-foreground/40" />
                   )}
                   {hasSelectedItems && !isActive && (
                     <motion.span
@@ -635,7 +649,7 @@ export const SwipeableMenuView = ({
                     </motion.span>
                   )}
                   <span className="relative z-10 flex h-full flex-col justify-center">
-                    <span className="max-w-[128px] truncate text-[13px] font-semibold leading-4 tracking-normal">
+                    <span className="max-w-[140px] truncate text-[13px] font-semibold leading-4 tracking-normal">
                       {cat.title}
                     </span>
                     <span
@@ -649,6 +663,16 @@ export const SwipeableMenuView = ({
                 </motion.button>
               );
             })}
+            <div className="pointer-events-none sticky right-0 z-20 -mr-5 h-12 w-8 shrink-0 bg-gradient-to-l from-background/90 via-background/70 to-transparent" />
+          </div>
+          <motion.div
+            aria-hidden="true"
+            className="pointer-events-none absolute right-3 top-1/2 z-20 flex -translate-y-1/2 items-center rounded-full bg-background/70 p-1 text-primary/80 shadow-sm ring-1 ring-border/40"
+            animate={{ x: [0, 4, 0], opacity: [0.55, 1, 0.55] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </motion.div>
           </div>
         </div>
       </motion.div>
