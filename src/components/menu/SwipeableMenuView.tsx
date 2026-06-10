@@ -66,8 +66,14 @@ interface ItemGridProps {
 }
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
-const SWIPE_DISTANCE_PX = 56;
-const SWIPE_VELOCITY_PX = 520;
+const SWIPE_DISTANCE_PX = 44;
+const SWIPE_VELOCITY_PX = 420;
+const MENU_SWIPE_TRANSITION = {
+  type: 'spring' as const,
+  stiffness: 260,
+  damping: 30,
+  mass: 0.7,
+};
 
 const ItemGrid = ({
   items,
@@ -80,7 +86,7 @@ const ItemGrid = ({
   showPrices = true,
   selectedQuantities,
 }: ItemGridProps) => (
-  <div className="grid grid-cols-2 gap-3 sm:gap-4 [content-visibility:auto] [contain-intrinsic-size:1px_600px]">
+  <div className="grid grid-cols-2 gap-3 sm:gap-4">
     {items.map((item, index) => {
       const price = getPrice(item);
       const displayName =
@@ -649,31 +655,30 @@ export const SwipeableMenuView = ({
         className="menu-content-frame overflow-x-hidden pb-32"
         onClickCapture={handleContentClickCapture}
       >
-        <AnimatePresence initial={false} mode="popLayout" custom={swipeDirection}>
+        <AnimatePresence initial={false} custom={swipeDirection}>
           <motion.div
             key={activeCategoryId}
             custom={swipeDirection}
             drag="x"
+            dragDirectionLock
             dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.22}
+            dragElastic={0.14}
             dragMomentum={false}
             onDragStart={handleContentDragStart}
             onDragEnd={handleContentDragEnd}
             initial={(direction: number) => ({
-              opacity: 0.9,
-              x: direction > 0 ? '105%' : '-105%',
-              rotate: direction > 0 ? 2.5 : -2.5,
-              scale: 0.985,
+              opacity: 0.98,
+              x: direction > 0 ? '96%' : '-96%',
+              scale: 0.995,
             })}
-            animate={{ opacity: 1, x: 0, rotate: 0, scale: 1 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={(direction: number) => ({
-              opacity: 0.9,
-              x: direction > 0 ? '-105%' : '105%',
-              rotate: direction > 0 ? -2.5 : 2.5,
-              scale: 0.985,
+              opacity: 0.98,
+              x: direction > 0 ? '-96%' : '96%',
+              scale: 0.995,
             })}
-            transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }}
-            className="cursor-grab touch-pan-y active:cursor-grabbing"
+            transition={MENU_SWIPE_TRANSITION}
+            className="menu-swipe-pane cursor-grab touch-pan-y active:cursor-grabbing"
           >
             {visibleGroupedItems.map((group) => {
               const subgroups = buildSubgroups(group.items);
