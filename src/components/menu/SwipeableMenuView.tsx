@@ -51,6 +51,7 @@ interface Props {
   openCartSignal?: number;
   orderPlacedSignal?: number;
   showCartButton?: boolean;
+  cartBottomOffset?: 'default' | 'raised';
 }
 
 interface ItemGridProps {
@@ -174,6 +175,7 @@ export const SwipeableMenuView = ({
   showBackButton = true,
   showAllCategory = true,
   showCartButton = true,
+  cartBottomOffset = 'default',
   primaryCtaLabel,
 }: Props) => {
   const { t } = useTranslation();
@@ -224,6 +226,27 @@ export const SwipeableMenuView = ({
     counts.set('all', items.length);
     return counts;
   }, [categories, items]);
+
+  const selectedCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) counts.set(category.id, 0);
+
+    for (const cartItem of cartItems) {
+      const quantity = cartItem.quantity ?? 1;
+      const item = cartItem.item;
+      if (item.categoryId && counts.has(item.categoryId)) {
+        counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + quantity);
+        continue;
+      }
+      const categoryByTitle = categories.find((category) => category.title === item.category);
+      if (categoryByTitle) {
+        counts.set(categoryByTitle.id, (counts.get(categoryByTitle.id) ?? 0) + quantity);
+      }
+    }
+
+    counts.set('all', cartItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0));
+    return counts;
+  }, [cartItems, categories]);
 
   // Category tabs with optional "All" prepended
   const allCategories = useMemo(
@@ -574,6 +597,8 @@ export const SwipeableMenuView = ({
           >
             {allCategories.map((cat) => {
               const isActive = selectedCategory === cat.id;
+              const selectedCount = selectedCountByCategory.get(cat.id) ?? 0;
+              const hasSelectedItems = selectedCount > 0;
               return (
                 <motion.button
                   key={cat.id}
@@ -583,10 +608,14 @@ export const SwipeableMenuView = ({
                   type="button"
                   onClick={() => handleCategorySelect(cat.id)}
                   whileTap={{ scale: 0.97 }}
-                  className={`relative h-11 min-w-[86px] shrink-0 overflow-hidden rounded-xl px-3 text-left transition-colors duration-200 ${
+                  animate={hasSelectedItems ? { y: [0, -1, 0] } : { y: 0 }}
+                  transition={hasSelectedItems ? { duration: 1.8, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+                  className={`relative h-11 min-w-[86px] shrink-0 overflow-hidden rounded-xl border px-3 text-left transition-all duration-300 ${
                     isActive
-                      ? 'text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted/55 hover:text-foreground'
+                      ? 'border-primary text-primary-foreground'
+                      : hasSelectedItems
+                        ? 'border-primary/55 bg-primary/10 text-foreground ring-2 ring-primary/35 shadow-primary/10 hover:bg-primary/15'
+                        : 'border-transparent text-muted-foreground hover:bg-muted/55 hover:text-foreground'
                   }`}
                 >
                   {isActive && (
@@ -595,6 +624,15 @@ export const SwipeableMenuView = ({
                       className="absolute inset-0 rounded-xl bg-primary shadow-[0_10px_24px_rgba(0,0,0,0.18)]"
                       transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.8 }}
                     />
+                  )}
+                  {hasSelectedItems && !isActive && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute right-1.5 top-1.5 z-20 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground shadow"
+                    >
+                      {selectedCount}
+                    </motion.span>
                   )}
                   <span className="relative z-10 flex h-full flex-col justify-center">
                     <span className="max-w-[128px] truncate text-[13px] font-semibold leading-4 tracking-normal">
@@ -736,7 +774,13 @@ export const SwipeableMenuView = ({
       </div>
 
       {/* Delicate Floating Action Bar */}
-      <div className="fixed bottom-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
+      <div
+        className={`fixed left-4 right-4 z-50 flex justify-center pointer-events-none transition-[bottom] duration-300 ${
+          cartBottomOffset === 'raised'
+            ? 'bottom-[calc(6rem+env(safe-area-inset-bottom))]'
+            : 'bottom-[calc(1rem+env(safe-area-inset-bottom))]'
+        }`}
+      >
         <motion.div
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}

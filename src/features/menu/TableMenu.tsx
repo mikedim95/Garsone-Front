@@ -1616,16 +1616,13 @@ export default function TableMenu() {
 
   const lastOrderButton = canEditLastOrder && lastOrder ? (
     <div
-      className={clsx(
-        "fixed inset-x-0 z-50 px-4",
-        categorySelected ? "bottom-20" : "bottom-4"
-      )}
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] px-4"
     >
       <Button
         type="button"
         variant="default"
         className={clsx(
-          "mx-auto flex min-h-14 w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-2xl",
+          "pointer-events-auto mx-auto flex min-h-14 w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0",
           highlightLastOrderButton &&
             "animate-pulse ring-4 ring-primary/35 ring-offset-2 ring-offset-background"
         )}
@@ -1842,6 +1839,7 @@ export default function TableMenu() {
               callStatus={calling}
               callPrompted={callPrompted}
               onCallClick={handleFloatingCallClick}
+              cartBottomOffset={lastOrderButton ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
               showPaymentButton={!usesImmediateGuestCheckout && !isEditingExisting}
             />
