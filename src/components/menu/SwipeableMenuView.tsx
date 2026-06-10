@@ -68,11 +68,32 @@ interface ItemGridProps {
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
 const SWIPE_DISTANCE_PX = 44;
 const SWIPE_VELOCITY_PX = 420;
+const SWIPE_INTENT_DEADZONE_PX = 18;
 const MENU_SWIPE_TRANSITION = {
   type: 'spring' as const,
   stiffness: 260,
   damping: 30,
   mass: 0.7,
+};
+
+const getCategorySwipeOffset = (info: PanInfo): -1 | 0 | 1 => {
+  const offsetX = info.offset.x;
+  const velocityX = info.velocity.x;
+
+  if (Math.abs(offsetX) >= SWIPE_DISTANCE_PX) {
+    return offsetX < 0 ? 1 : -1;
+  }
+
+  if (Math.abs(velocityX) < SWIPE_VELOCITY_PX) {
+    return 0;
+  }
+
+  const hasClearOffsetIntent = Math.abs(offsetX) >= SWIPE_INTENT_DEADZONE_PX;
+  if (hasClearOffsetIntent && Math.sign(offsetX) !== Math.sign(velocityX)) {
+    return 0;
+  }
+
+  return velocityX < 0 ? 1 : -1;
 };
 
 const ItemGrid = ({
@@ -286,10 +307,11 @@ export const SwipeableMenuView = ({
 
   const handleSwipeCategory = (offset: -1 | 1) => {
     const nextCategory = allCategories[safeSelectedIndex + offset];
-    if (!nextCategory) return;
+    if (!nextCategory) return false;
 
     setSwipeDirection(offset);
     onCategoryChange(nextCategory.id);
+    return true;
   };
 
   const handleContentDragStart = () => {
@@ -297,22 +319,13 @@ export const SwipeableMenuView = ({
   };
 
   const handleContentDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const horizontalOffset = info.offset.x;
-    const horizontalVelocity = info.velocity.x;
-    const swipedLeft =
-      horizontalOffset <= -SWIPE_DISTANCE_PX || horizontalVelocity <= -SWIPE_VELOCITY_PX;
-    const swipedRight =
-      horizontalOffset >= SWIPE_DISTANCE_PX || horizontalVelocity >= SWIPE_VELOCITY_PX;
-
-    if (swipedLeft) {
-      handleSwipeCategory(1);
-    } else if (swipedRight) {
-      handleSwipeCategory(-1);
-    }
+    const categoryOffset = getCategorySwipeOffset(info);
+    const changedCategory =
+      categoryOffset !== 0 ? handleSwipeCategory(categoryOffset) : false;
 
     window.setTimeout(() => {
       suppressClickAfterSwipeRef.current = false;
-    }, swipedLeft || swipedRight ? 220 : 0);
+    }, changedCategory ? 220 : 0);
   };
 
   const handleContentClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
