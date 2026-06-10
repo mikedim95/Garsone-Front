@@ -1067,9 +1067,61 @@ export default function TableMenu() {
     setCartOpenSignal((s) => s + 1);
   };
 
-  const handleEditLastOrder = () => {
+  const handleOrderAcceptedDuringEdit = (orderId: string) => {
+    setLastOrder((prev) =>
+      prev && prev.id === orderId ? { ...prev, status: "PREPARING" } : prev
+    );
+    setPlacedOrders((prev) =>
+      prev.map((order) =>
+        order.id === orderId ? { ...order, status: "PREPARING" } : order
+      )
+    );
+    clearCart();
+    stopEditingLastOrder();
+    setCategorySelected(false);
+    setSelectedCategory(null);
+    setOrderPlacedSignal((s) => s + 1);
+    toast({
+      title: t("menu.edit_order_accepted_during_edit_title", {
+        defaultValue: "Order already accepted",
+      }),
+      description: t("menu.edit_order_accepted_during_edit_desc", {
+        defaultValue:
+          "The kitchen accepted this order while you were editing. Your changes were not applied.",
+      }),
+    });
+  };
+
+  const handleEditLastOrder = async () => {
     if (!lastOrder || !lastOrder.id) return;
     setHighlightLastOrderButton(false);
+    if (activeTableId) {
+      try {
+        const res = await api.getPublicTableOrders(activeTableId, {
+          storeSlug: storeSlug || undefined,
+          take: 10,
+        });
+        const freshOrder = (res?.orders ?? [])
+          .map(toOrderSummary)
+          .find((order) => order.id === lastOrder.id);
+        if (freshOrder) {
+          setLastOrder((prev) =>
+            prev && prev.id === freshOrder.id
+              ? { ...prev, ...freshOrder }
+              : freshOrder
+          );
+          upsertPlacedOrder(freshOrder);
+          if (freshOrder.status && freshOrder.status !== "PLACED") {
+            handleOrderAcceptedDuringEdit(freshOrder.id);
+            return;
+          }
+          loadOrderIntoCart(freshOrder);
+          return;
+        }
+      } catch (error) {
+        console.warn("Failed to refresh order before edit", error);
+      }
+    }
     loadOrderIntoCart(lastOrder);
   };
 
@@ -1189,6 +1241,7 @@ export default function TableMenu() {
         approval?.method || "direct_submit"
       );
       setCheckoutBusy(true);
+      const wasEditing = Boolean(editingOrderId);
       const response = editingOrderId
         ? await api.editOrder(editingOrderId, payload)
         : await api.createOrder(payload);
@@ -1216,6 +1269,9 @@ export default function TableMenu() {
       if (storeSlug) {
         successParams.set("storeSlug", storeSlug);
       }
+      if (wasEditing) {
+        successParams.set("updated", "1");
+      }
       navigate(`/order/${summary.id}/thanks?${successParams.toString()}`);
       return summary;
     } catch (error) {
@@ -1227,6 +1283,10 @@ export default function TableMenu() {
         payload,
       });
       const message = error instanceof Error ? error.message : String(error ?? "");
+      if (editingOrderId && error instanceof ApiError && error.status === 409) {
+        handleOrderAcceptedDuringEdit(editingOrderId);
+        return null;
+      }
       if (
         error instanceof ApiError &&
         error.status === 403 &&
@@ -1554,8 +1614,13 @@ export default function TableMenu() {
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
 
-  const lastOrderButton = canEditLastOrder && lastOrder && !categorySelected ? (
-    <div className="fixed inset-x-0 bottom-4 z-50 px-4">
+  const lastOrderButton = canEditLastOrder && lastOrder ? (
+    <div
+      className={clsx(
+        "fixed inset-x-0 z-50 px-4",
+        categorySelected ? "bottom-20" : "bottom-4"
+      )}
+    >
       <Button
         type="button"
         variant="default"
@@ -1701,7 +1766,7 @@ export default function TableMenu() {
         <div
           className={clsx(
             "max-w-6xl mx-auto px-4 py-8 flex-1 w-full",
-            lastOrderButton && "pb-28"
+            lastOrderButton && (categorySelected ? "pb-44" : "pb-28")
           )}
         >
           {!guestOrderingEnabled && (
@@ -1749,19 +1814,25 @@ export default function TableMenu() {
               }}
               onAddItem={handleAddItem}
               onCheckout={
-                usesImmediateGuestCheckout
+                usesImmediateGuestCheckout || isEditingExisting
                   ? handleImmediateCheckout
                   : handleCheckout
               }
               onImmediateCheckout={
-                usesImmediateGuestCheckout ? undefined : handleImmediateCheckout
+                usesImmediateGuestCheckout || isEditingExisting
+                  ? undefined
+                  : handleImmediateCheckout
               }
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
               showBackButton={!usesImmediateGuestCheckout}
               showAllCategory={!usesImmediateGuestCheckout}
               primaryCtaLabel={
-                usesImmediateGuestCheckout
+                isEditingExisting
+                  ? t("menu.update_order", {
+                      defaultValue: "Update order",
+                    })
+                  : usesImmediateGuestCheckout
                   ? t("menu.submit_order_return_menu", {
                       defaultValue: "Submit and return to menu",
                     })
@@ -1772,7 +1843,7 @@ export default function TableMenu() {
               callPrompted={callPrompted}
               onCallClick={handleFloatingCallClick}
               showCartButton={guestOrderingEnabled}
-              showPaymentButton={!usesImmediateGuestCheckout}
+              showPaymentButton={!usesImmediateGuestCheckout && !isEditingExisting}
             />
           )}
         </div>

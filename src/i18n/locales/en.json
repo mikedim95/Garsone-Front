@@ -72,12 +72,15 @@
                  "edit_order_unavailable_desc":  "Place an order first.",
                  "edit_order_locked_title":  "Kitchen already accepted",
                  "edit_order_locked_desc":  "Edits are disabled once the kitchen starts preparing.",
+                 "edit_order_accepted_during_edit_title":  "Order already accepted",
+                 "edit_order_accepted_during_edit_desc":  "The kitchen accepted this order while you were editing. Your changes were not applied.",
                  "edit_order_items_missing":  "Items are no longer available to edit.",
                  "edit_order_partial_title":  "Some items were skipped",
                  "edit_order_partial_desc":  "{{count}} item(s) are unavailable and were removed.",
                  "toast_edit_unavailable_title":  "Order cannot be edited",
                  "toast_edit_unavailable_desc":  "The kitchen has already started preparing your order.",
                  "toast_edit_items_missing_desc":  "We could not load your previous items. Please create a new order.",
+                 "update_order":  "Update order",
                   "call_status_pending":  "Calling...",
                   "call_status_accepted":  "Coming...",
                   "active_orders_title": "Active Orders",
@@ -112,6 +115,11 @@
                   "locality_scan_failed": "Scan failed. Try again.",
                   "locality_scan_start_failed": "Unable to start NFC scanning.",
                   "locality_qr_invalid": "Enter a valid QR link or code."
+              },
+    "order":  {
+                  "success_title":  "Order successful",
+                  "updated_success_title":  "Order changed successfully",
+                  "go_back_to_menu":  "Go back to menu"
               },
     "waiter":  {
                    "dashboard":  "Waiter Dashboard",

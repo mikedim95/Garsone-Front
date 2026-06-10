@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 import { motion } from "framer-motion";
@@ -9,11 +10,13 @@ import { setStoredStoreSlug } from "@/lib/storeSlug";
 export default function OrderThanks() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { tableId, storeSlug } = useMemo(() => {
+  const { t } = useTranslation();
+  const { tableId, storeSlug, updated } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
     return {
       tableId: qs.get("tableId") || undefined,
       storeSlug: qs.get("storeSlug") || undefined,
+      updated: qs.get("updated") === "1",
     };
   }, [location.search]);
 
@@ -100,7 +103,13 @@ export default function OrderThanks() {
           transition={{ delay: 0.3 }}
         >
           <h1 className="text-2xl font-semibold text-foreground mb-2">
-            Order successful
+            {updated
+              ? t("order.updated_success_title", {
+                  defaultValue: "Order changed successfully",
+                })
+              : t("order.success_title", {
+                  defaultValue: "Order successful",
+                })}
           </h1>
         </motion.div>
 
@@ -114,7 +123,7 @@ export default function OrderThanks() {
             className="mt-8 h-12 rounded-full px-6 font-semibold shadow-lg"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Go back to menu
+            {t("order.go_back_to_menu", { defaultValue: "Go back to menu" })}
           </Button>
         </motion.div>
       </motion.div>

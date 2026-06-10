@@ -72,12 +72,15 @@
     "edit_order_unavailable_desc": "Κάντε πρώτα μια παραγγελία.",
     "edit_order_locked_title": "Η κουζίνα έχει ήδη αποδεχτεί",
     "edit_order_locked_desc": "Η επεξεργασία απενεργοποιείται μόλις ξεκινήσει η προετοιμασία.",
+    "edit_order_accepted_during_edit_title": "Η παραγγελία έχει ήδη γίνει αποδεκτή",
+    "edit_order_accepted_during_edit_desc": "Η κουζίνα αποδέχτηκε την παραγγελία όσο την επεξεργαζόσασταν. Οι αλλαγές σας δεν εφαρμόστηκαν.",
     "edit_order_items_missing": "Τα προϊόντα δεν είναι πλέον διαθέσιμα για επεξεργασία.",
     "edit_order_partial_title": "Κάποια προϊόντα παραλείφθηκαν",
     "edit_order_partial_desc": "{{count}} προϊόν(τα) δεν είναι διαθέσιμα και αφαιρέθηκαν.",
     "toast_edit_unavailable_title": "Η παραγγελία δεν μπορεί να επεξεργαστεί",
     "toast_edit_unavailable_desc": "Η κουζίνα έχει ήδη ξεκινήσει την προετοιμασία της παραγγελίας.",
     "toast_edit_items_missing_desc": "Δεν μπορέσαμε να φορτώσουμε τα προηγούμενα προϊόντα. Δημιουργήστε νέα παραγγελία.",
+    "update_order": "Ενημέρωση παραγγελίας",
     "call_status_pending": "Κλήση…",
     "call_status_accepted": "Έρχεται…",
     "active_orders_title": "Ενεργές παραγγελίες",
@@ -112,6 +115,11 @@
     "locality_scan_failed": "Η σάρωση απέτυχε. Δοκιμάστε ξανά.",
     "locality_scan_start_failed": "Δεν ήταν δυνατή η έναρξη σάρωσης NFC.",
     "locality_qr_invalid": "Πληκτρολογήστε έγκυρο σύνδεσμο ή κωδικό QR."
+  },
+  "order": {
+    "success_title": "Η παραγγελία ολοκληρώθηκε",
+    "updated_success_title": "Η παραγγελία ενημερώθηκε επιτυχώς",
+    "go_back_to_menu": "Επιστροφή στο μενού"
   },
   "waiter": {
     "dashboard": "Πίνακας σερβιτόρου",
