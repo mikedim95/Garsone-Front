@@ -2102,7 +2102,7 @@ export default function TableMenu() {
         </div>
 
         <Dialog open={activeOrderOpen} onOpenChange={setActiveOrderOpen}>
-          <DialogContent className="!left-0 !right-0 !bottom-0 !top-auto h-[min(86dvh,100dvh)] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] sm:!left-1/2 sm:!right-auto sm:!bottom-auto sm:!top-1/2 sm:h-[82dvh] sm:max-h-[calc(100dvh-0.75rem)] sm:!w-auto sm:!max-w-lg sm:rounded-2xl sm:border sm:![translate:-50%_-50%]">
+          <DialogContent className="!left-0 !right-0 !bottom-0 !top-auto h-[min(86dvh,100dvh)] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] md:!left-1/2 md:!right-auto md:!bottom-auto md:!top-1/2 md:h-[82dvh] md:max-h-[calc(100dvh-0.75rem)] md:!w-auto md:!max-w-lg md:rounded-2xl md:border md:![translate:-50%_-50%]">
             <DialogTitle className="sr-only">
               {t("menu.active_order_heading", {
                 defaultValue: "Your active order",
