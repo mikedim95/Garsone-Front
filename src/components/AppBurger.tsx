@@ -1,36 +1,33 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { LogIn, LogOut, QrCode, User } from 'lucide-react';
+import { Palette } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Link, useNavigate } from 'react-router-dom';
 import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
-import { useAuthStore } from '@/store/authStore';
 
 interface AppBurgerProps {
   className?: string;
   title?: string;
   children?: React.ReactNode; // page-specific actions
   showChildren?: boolean;
+  themeOnly?: boolean;
 }
 
-export const AppBurger = ({ className = '', title, children, showChildren = true }: AppBurgerProps) => {
+export const AppBurger = ({
+  className = '',
+  title,
+  children,
+  showChildren = true,
+  themeOnly = false,
+}: AppBurgerProps) => {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
   const { dashboardDark, themeClass } = useDashboardTheme();
-  const { user, logout } = useAuthStore();
-  const navigate = useNavigate();
   const themedSheet = clsx(themeClass, { dark: dashboardDark });
-  const canViewProfile = Boolean(
-    user && ['waiter', 'manager', 'cook'].includes(user.role)
-  );
-
-  const handleLogout = () => {
-    logout();
-    setOpen(false);
-    navigate("/login");
-  };
+  const drawerTitle = themeOnly
+    ? t('app.theme_settings', { defaultValue: 'Theme settings' })
+    : title ?? t('menu.title');
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -54,38 +51,14 @@ export const AppBurger = ({ className = '', title, children, showChildren = true
       >
         <SheetHeader>
           <SheetTitle className="text-base font-semibold">
-            {title ?? t('menu.title')}
+            {drawerTitle}
           </SheetTitle>
         </SheetHeader>
         <div className="px-4 py-3 space-y-4">
           <section className="space-y-2">
-            <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">{t('app.navigation', { defaultValue: 'Navigation' })}</h3>
-            {canViewProfile ? (
-              <NavLink
-                to="/profile"
-                label={t('app.profile', { defaultValue: 'Profile' })}
-                icon={<User className="h-4 w-4" />}
-              />
-            ) : null}
-            <NavLink to="/login" label={t('nav.login')} icon={<LogIn className="h-4 w-4" />} />
-            {user?.role === 'architect' && (
-              <NavLink to="/GarsoneAdmin" label="Garsone Admin" icon={<QrCode className="h-4 w-4" />} />
-            )}
-            {user ? (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-destructive/10 hover:bg-destructive/20 text-destructive px-3 py-2 text-sm transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                {t('logout', { defaultValue: 'Logout' })}
-              </button>
-            ) : null}
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">
-              {t('app.preferences', { defaultValue: 'Preferences' })}
+            <h3 className="flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+              <Palette className="h-3.5 w-3.5" />
+              {t('app.theme_only', { defaultValue: 'Theme only' })}
             </h3>
             <div className="flex flex-col gap-2">
               {showChildren ? children : null}
@@ -97,13 +70,3 @@ export const AppBurger = ({ className = '', title, children, showChildren = true
     </Sheet>
   );
 };
-
-const NavLink = ({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) => (
-  <Link
-    to={to}
-    className="flex items-center gap-2 rounded-lg border border-border/40 bg-card px-3 py-2 text-sm hover:bg-accent transition-colors"
-  >
-    <span className="text-primary">{icon}</span>
-    <span className="">{label}</span>
-  </Link>
-);

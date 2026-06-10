@@ -1044,6 +1044,8 @@ export default function TableMenu() {
     setLastOrder(order);
     setEditingOrderId(order.id || null);
     setActiveOrdersOpen(false);
+    setSelectedCategory(selectedCategory || (usesImmediateGuestCheckout ? categories[0]?.id : "all") || "all");
+    setCategorySelected(true);
     setCartOpenSignal((s) => s + 1);
   };
 
@@ -1533,70 +1535,29 @@ export default function TableMenu() {
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
 
-  const lastOrderCard = canEditLastOrder && lastOrder ? (
-    <div className="mx-auto w-full max-w-lg rounded-2xl border border-border/60 bg-card/90 px-4 py-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-foreground">
+  const lastOrderButton = canEditLastOrder && lastOrder && !categorySelected ? (
+    <div className="fixed inset-x-0 bottom-4 z-50 px-4">
+      <Button
+        type="button"
+        variant="default"
+        className="mx-auto flex min-h-14 w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+        onClick={handleEditLastOrder}
+      >
+        <span className="min-w-0 text-left">
+          <span className="block truncate text-sm font-semibold">
             {t("menu.last_order_heading", {
               defaultValue: "Your last order",
             })}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t("menu.last_order_placed_time", {
-              time: new Date(lastOrder.createdAt || Date.now()).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              defaultValue: `Placed ${new Date(
-                lastOrder.createdAt || Date.now()
-              ).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}`,
-            })}
-          </p>
-        </div>
-        <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-          {lastOrderStatusLabel}
+          </span>
+          <span className="block text-xs opacity-80">
+            {t("actions.edit", { defaultValue: "Edit order" })} · EUR{" "}
+            {computeOrderTotal(lastOrder).toFixed(2)}
+          </span>
         </span>
-      </div>
-
-      <div className="mt-3 space-y-2 text-sm">
-        {(lastOrder.items ?? []).map((item: SubmittedOrderItem, idx: number) => (
-          <div
-            key={`landing-last-order-${idx}`}
-            className="flex items-center justify-between gap-3"
-          >
-            <span className="min-w-0 truncate font-medium text-foreground">
-              {item?.title ??
-                item?.item?.name ??
-                t("menu.last_order_item_fallback", {
-                  index: idx + 1,
-                  defaultValue: `Item ${idx + 1}`,
-                })}
-            </span>
-            <span className="shrink-0 text-muted-foreground">
-              x{item?.quantity ?? item?.qty ?? 1}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-3 flex items-center justify-between text-sm font-semibold">
-        <span>{t("menu.total")}</span>
-        <span>EUR {computeOrderTotal(lastOrder).toFixed(2)}</span>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="mt-4 w-full justify-center"
-        onClick={handleEditLastOrder}
-      >
-        <Pencil className="mr-2 h-4 w-4" />
-        {t("actions.edit", { defaultValue: "Edit order" })}
+        <span className="flex shrink-0 items-center gap-2 text-sm font-semibold">
+          <Pencil className="h-4 w-4" />
+          {t("actions.edit", { defaultValue: "Edit" })}
+        </span>
       </Button>
     </div>
   ) : null;
@@ -1636,7 +1597,7 @@ export default function TableMenu() {
                 )}
               </button>
               <LanguageSwitcher />
-              <AppBurger title={headerTitle} showChildren={false}>
+              <AppBurger title={headerTitle} showChildren={false} themeOnly>
                 {lastOrder ? (
                   <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
@@ -1714,7 +1675,12 @@ export default function TableMenu() {
           </div>
         </header>
 
-        <div className="max-w-6xl mx-auto px-4 py-8 flex-1 w-full">
+        <div
+          className={clsx(
+            "max-w-6xl mx-auto px-4 py-8 flex-1 w-full",
+            lastOrderButton && "pb-28"
+          )}
+        >
           {!guestOrderingEnabled && (
             <div className="mb-6 rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
               <p className="text-sm font-semibold text-foreground">
@@ -1735,7 +1701,6 @@ export default function TableMenu() {
               categories={categories}
               loading={loading}
               variant={usesImmediateGuestCheckout ? "noor" : "default"}
-              footer={lastOrderCard}
               onSelect={(catId) => {
                 setSelectedCategory(catId);
                 setCategorySelected(true);
@@ -1788,6 +1753,8 @@ export default function TableMenu() {
             />
           )}
         </div>
+
+        {lastOrderButton}
 
         {showActiveOrders && activeOrdersOpen && !categorySelected && (
           <div className="max-w-6xl mx-auto px-4 w-full my-6">
