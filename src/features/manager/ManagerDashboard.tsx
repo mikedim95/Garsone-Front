@@ -150,7 +150,7 @@ interface StaffTypeForm {
   title: string;
   printerTopic: string;
 }
-type EditableCookType = {
+type EditableStaffType = {
   id: string;
   title: string;
   printerTopic: string;
@@ -473,7 +473,7 @@ export default function ManagerDashboard() {
     null
   );
   const [editCookTypeModalOpen, setEditCookTypeModalOpen] = useState(false);
-  const [activeCookType, setActiveCookType] = useState<EditableCookType | null>(
+  const [activeCookType, setActiveCookType] = useState<EditableStaffType | null>(
     null
   );
   const [savingCookType, setSavingCookType] = useState(false);
@@ -486,6 +486,10 @@ export default function ManagerDashboard() {
   const [deletingWaiterTypeId, setDeletingWaiterTypeId] = useState<
     string | null
   >(null);
+  const [editWaiterTypeModalOpen, setEditWaiterTypeModalOpen] = useState(false);
+  const [activeWaiterType, setActiveWaiterType] =
+    useState<EditableStaffType | null>(null);
+  const [savingWaiterType, setSavingWaiterType] = useState(false);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [tableForm, setTableForm] = useState<{
     id?: string;
@@ -2554,6 +2558,41 @@ export default function ManagerDashboard() {
     }
   };
 
+  const openEditWaiterType = (type: WaiterType) => {
+    const printerTopic =
+      type.printerTopic && printerTopics.includes(type.printerTopic)
+        ? type.printerTopic
+        : "";
+    setActiveWaiterType({
+      id: type.id,
+      title: type.title,
+      printerTopic,
+    });
+    setEditWaiterTypeModalOpen(true);
+  };
+
+  const handleUpdateWaiterType = async () => {
+    if (!activeWaiterType) return;
+    const title = activeWaiterType.title.trim();
+    if (!title) return;
+    setSavingWaiterType(true);
+    try {
+      const printerTopic = activeWaiterType.printerTopic.trim();
+      await api.updateWaiterType(activeWaiterType.id, {
+        title,
+        printerTopic: printerTopic.length > 0 ? printerTopic : null,
+      });
+      setEditWaiterTypeModalOpen(false);
+      setActiveWaiterType(null);
+      await loadStaffTypes();
+      await loadWaiterData();
+    } catch (error) {
+      console.error("Failed to update waiter type", error);
+    } finally {
+      setSavingWaiterType(false);
+    }
+  };
+
   const handleDeleteWaiterType = async (typeId: string) => {
     if (!window.confirm("Delete this waiter type?")) return;
     setDeletingWaiterTypeId(typeId);
@@ -4091,19 +4130,29 @@ export default function ManagerDashboard() {
                                       </p>
                                     </div>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                                    onClick={() => handleDeleteWaiterType(type.id)}
-                                    disabled={deletingWaiterTypeId === type.id}
-                                  >
-                                    {deletingWaiterTypeId === type.id ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    )}
-                                  </Button>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => openEditWaiterType(type)}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteWaiterType(type.id)}
+                                      disabled={deletingWaiterTypeId === type.id}
+                                    >
+                                      {deletingWaiterTypeId === type.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                    </Button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -4499,7 +4548,6 @@ export default function ManagerDashboard() {
                 </TabsContent>
 
                 <TabsContent value="menu" className="space-y-6 min-w-0 overflow-x-hidden">
-                  <DateRangeHeader />
                   {managerMode === "pro" && (
                     <div className="grid gap-6 lg:grid-cols-2">
                       <Card className="p-4 sm:p-6">
@@ -5487,6 +5535,90 @@ export default function ManagerDashboard() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 Create type
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={editWaiterTypeModalOpen}
+          onOpenChange={(open) => {
+            setEditWaiterTypeModalOpen(open);
+            if (!open) {
+              setActiveWaiterType(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit waiter type</DialogTitle>
+            </DialogHeader>
+            {activeWaiterType ? (
+              <div className="space-y-4">
+                <DialogFormField index={0}>
+                  <Label htmlFor="edit-waiter-type-title">Title</Label>
+                  <Input
+                    id="edit-waiter-type-title"
+                    value={activeWaiterType.title}
+                    onChange={(e) =>
+                      setActiveWaiterType((prev) =>
+                        prev ? { ...prev, title: e.target.value } : prev
+                      )
+                    }
+                  />
+                </DialogFormField>
+                <DialogFormField index={1}>
+                  <Label>Printer topic</Label>
+                  <Select
+                    value={resolvePrinterValue(activeWaiterType.printerTopic, printerTopics)}
+                    onValueChange={(value) =>
+                      setActiveWaiterType((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              printerTopic:
+                                value === NO_PRINTER_VALUE ? "" : value,
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select printer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {printerTopics.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No printers configured in Architect settings.
+                    </p>
+                  ) : null}
+                </DialogFormField>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditWaiterTypeModalOpen(false)}
+              >
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleUpdateWaiterType}
+                disabled={savingWaiterType || !activeWaiterType?.title.trim()}
+                className="inline-flex items-center gap-2"
+              >
+                {savingWaiterType && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {t("actions.save_changes")}
               </Button>
             </DialogFooter>
           </DialogContent>
