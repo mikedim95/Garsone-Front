@@ -1,8 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { HomeLink } from "@/components/HomeLink";
-import { AppBurger } from "@/components/AppBurger";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
@@ -23,6 +21,7 @@ export default function OrderThanks() {
     if (!tableId) return "/";
     const qs = new URLSearchParams();
     if (storeSlug) qs.set("storeSlug", storeSlug);
+    qs.set("highlightLastOrder", "1");
     const suffix = qs.toString();
     return `/${tableId}${suffix ? `?${suffix}` : ""}`;
   }, [storeSlug, tableId]);
@@ -63,13 +62,6 @@ export default function OrderThanks() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex items-center justify-center p-4">
-      <div className="absolute top-4 left-4">
-        <HomeLink />
-      </div>
-      <div className="absolute top-4 right-4">
-        <AppBurger />
-      </div>
-
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

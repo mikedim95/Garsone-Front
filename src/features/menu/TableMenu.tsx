@@ -469,6 +469,12 @@ export default function TableMenu() {
     "idle"
   );
   const [callPrompted, setCallPrompted] = useState(false);
+  const [highlightLastOrderButton, setHighlightLastOrderButton] = useState(
+    () => {
+      if (typeof window === "undefined") return false;
+      return new URLSearchParams(window.location.search).get("highlightLastOrder") === "1";
+    }
+  );
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(null);
   const [placedOrders, setPlacedOrders] = useState<SubmittedOrderSummary[]>([]);
@@ -592,6 +598,18 @@ export default function TableMenu() {
     }
     clearStoredLocalityApproval();
   }, [cartItems]);
+
+  useEffect(() => {
+    const shouldHighlight =
+      new URLSearchParams(location.search).get("highlightLastOrder") === "1";
+    if (!shouldHighlight) return;
+    setHighlightLastOrderButton(true);
+    const timer = window.setTimeout(
+      () => setHighlightLastOrderButton(false),
+      4500
+    );
+    return () => window.clearTimeout(timer);
+  }, [location.search]);
 
   useEffect(() => {
     if (!bootstrapError) return;
@@ -1051,6 +1069,7 @@ export default function TableMenu() {
 
   const handleEditLastOrder = () => {
     if (!lastOrder || !lastOrder.id) return;
+    setHighlightLastOrderButton(false);
     loadOrderIntoCart(lastOrder);
   };
 
@@ -1540,7 +1559,11 @@ export default function TableMenu() {
       <Button
         type="button"
         variant="default"
-        className="mx-auto flex min-h-14 w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-2xl"
+        className={clsx(
+          "mx-auto flex min-h-14 w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-2xl",
+          highlightLastOrderButton &&
+            "animate-pulse ring-4 ring-primary/35 ring-offset-2 ring-offset-background"
+        )}
         onClick={handleEditLastOrder}
       >
         <span className="min-w-0 text-left">
