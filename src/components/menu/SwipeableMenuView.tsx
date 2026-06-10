@@ -864,14 +864,14 @@ export const SwipeableMenuView = ({
       {/* Cart Modal */}
       {showCartButton && (
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85dvh] max-h-[calc(100dvh-0.75rem)] sm:h-auto sm:max-h-[90dvh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
+        <DialogContent className="!left-0 !right-0 !bottom-0 !top-auto h-[85dvh] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-auto xl:max-h-[90dvh] xl:!w-auto xl:!max-w-2xl xl:rounded-lg xl:border xl:![translate:-50%_-50%]">
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
-          <Card className="border-0 shadow-none h-full min-h-0 flex flex-col">
+          <Card className="h-full min-h-0 min-w-0 overflow-hidden border-0 shadow-none flex flex-col">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
               <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
                 <div className="h-1.5 w-12 rounded-full bg-muted" />
@@ -915,7 +915,7 @@ export const SwipeableMenuView = ({
                     return (
                       <div
                         key={`${cartItem.item.id}-${idx}`}
-                        className="relative group bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/30 transition-all duration-300"
+                        className="relative group min-w-0 overflow-hidden bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/30 transition-all duration-300"
                       >
                         <button
                           aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
@@ -925,7 +925,7 @@ export const SwipeableMenuView = ({
                           <X className="h-3 w-3" />
                         </button>
 
-                        <div className="flex gap-2">
+                        <div className="flex min-w-0 gap-2 pr-1">
                           <img
                             src={cartItem.item.image}
                             alt={displayName}
@@ -933,14 +933,14 @@ export const SwipeableMenuView = ({
                             decoding="async"
                             className="w-12 h-12 rounded-md object-cover flex-shrink-0"
                           />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
                               <h4 className="font-semibold text-sm text-foreground truncate">{displayName}</h4>
-                              <span className="text-sm font-medium text-primary whitespace-nowrap">
+                              <span className="max-w-[34vw] shrink-0 truncate text-sm font-medium text-primary sm:max-w-none">
                                 {formatPrice(itemTotal)}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between mt-1">
+                            <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))}
@@ -959,10 +959,10 @@ export const SwipeableMenuView = ({
                               {hasModifiers && (
                                 <button
                                   onClick={() => handleEditModifiers(idx)}
-                                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                                  className="min-w-0 text-xs text-primary hover:underline flex items-center gap-1"
                                 >
                                   <Pencil className="h-3 w-3" />
-                                  {t('menu.edit', { defaultValue: 'Edit' })}
+                                  <span className="truncate">{t('menu.edit', { defaultValue: 'Edit' })}</span>
                                 </button>
                               )}
                             </div>
@@ -983,15 +983,15 @@ export const SwipeableMenuView = ({
                   onChange={(e) => setOrderNote(e.target.value)}
                   className="min-h-[60px] resize-none"
                 />
-                <div className="flex items-center justify-between">
+                <div className="flex min-w-0 items-center justify-between gap-3">
                   <span className="text-lg font-bold">{t('menu.total', { defaultValue: 'Total' })}</span>
-                  <span className="text-lg font-bold text-primary">{formatPrice(cartTotal)}</span>
+                  <span className="min-w-0 truncate text-lg font-bold text-primary">{formatPrice(cartTotal)}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex min-w-0 gap-2">
                   <Button
                     onClick={handleCheckout}
                     disabled={checkoutBusy}
-                    className="flex-1 h-12 text-base font-semibold"
+                    className="min-w-0 flex-1 h-12 text-base font-semibold"
                   >
                     {checkoutBusy ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -1002,7 +1002,9 @@ export const SwipeableMenuView = ({
                         ) : (
                           <ShoppingCart className="h-5 w-5 mr-2" />
                         )}
-                        {primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}
+                        <span className="min-w-0 truncate">
+                          {primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}
+                        </span>
                       </>
                     )}
                   </Button>
