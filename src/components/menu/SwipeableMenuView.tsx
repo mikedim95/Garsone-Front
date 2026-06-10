@@ -4,9 +4,8 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -68,7 +67,7 @@ interface ItemGridProps {
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
 const SWIPE_DISTANCE_PX = 56;
-const SWIPE_AXIS_LOCK_RATIO = 1.25;
+const SWIPE_VELOCITY_PX = 520;
 
 const ItemGrid = ({
   items,
@@ -194,7 +193,6 @@ export const SwipeableMenuView = ({
   // Ref for category tabs container to scroll active tab into view
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const suppressClickAfterSwipeRef = useRef(false);
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
@@ -288,58 +286,27 @@ export const SwipeableMenuView = ({
     onCategoryChange(nextCategory.id);
   };
 
-  const handleContentPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-
-    swipeStartRef.current = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-    };
-    suppressClickAfterSwipeRef.current = false;
+  const handleContentDragStart = () => {
+    suppressClickAfterSwipeRef.current = true;
   };
 
-  const handleContentPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = swipeStartRef.current;
-    if (!start || start.pointerId !== event.pointerId) return;
+  const handleContentDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const horizontalOffset = info.offset.x;
+    const horizontalVelocity = info.velocity.x;
+    const swipedLeft =
+      horizontalOffset <= -SWIPE_DISTANCE_PX || horizontalVelocity <= -SWIPE_VELOCITY_PX;
+    const swipedRight =
+      horizontalOffset >= SWIPE_DISTANCE_PX || horizontalVelocity >= SWIPE_VELOCITY_PX;
 
-    const dx = event.clientX - start.x;
-    const dy = event.clientY - start.y;
-    if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * SWIPE_AXIS_LOCK_RATIO) {
-      suppressClickAfterSwipeRef.current = true;
-    }
-  };
-
-  const handleContentPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = swipeStartRef.current;
-    if (!start || start.pointerId !== event.pointerId) return;
-
-    swipeStartRef.current = null;
-    const dx = event.clientX - start.x;
-    const dy = event.clientY - start.y;
-    const horizontalSwipe =
-      Math.abs(dx) >= SWIPE_DISTANCE_PX &&
-      Math.abs(dx) > Math.abs(dy) * SWIPE_AXIS_LOCK_RATIO;
-
-    if (horizontalSwipe) {
-      suppressClickAfterSwipeRef.current = true;
-      handleSwipeCategory(dx < 0 ? 1 : -1);
-      window.setTimeout(() => {
-        suppressClickAfterSwipeRef.current = false;
-      }, 160);
-      return;
+    if (swipedLeft) {
+      handleSwipeCategory(1);
+    } else if (swipedRight) {
+      handleSwipeCategory(-1);
     }
 
     window.setTimeout(() => {
       suppressClickAfterSwipeRef.current = false;
-    }, 0);
-  };
-
-  const handleContentPointerCancel = () => {
-    swipeStartRef.current = null;
-    window.setTimeout(() => {
-      suppressClickAfterSwipeRef.current = false;
-    }, 0);
+    }, swipedLeft || swipedRight ? 220 : 0);
   };
 
   const handleContentClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -679,21 +646,34 @@ export const SwipeableMenuView = ({
 
       {/* Selected category content */}
       <div
-        className="menu-content-frame pb-32"
-        onPointerDown={handleContentPointerDown}
-        onPointerMove={handleContentPointerMove}
-        onPointerUp={handleContentPointerUp}
-        onPointerCancel={handleContentPointerCancel}
+        className="menu-content-frame overflow-x-hidden pb-32"
         onClickCapture={handleContentClickCapture}
       >
-        <AnimatePresence initial={false} mode="wait" custom={swipeDirection}>
+        <AnimatePresence initial={false} mode="popLayout" custom={swipeDirection}>
           <motion.div
             key={activeCategoryId}
             custom={swipeDirection}
-            initial={(direction: number) => ({ opacity: 0, x: direction > 0 ? 28 : -28 })}
-            animate={{ opacity: 1, x: 0 }}
-            exit={(direction: number) => ({ opacity: 0, x: direction > 0 ? -28 : 28 })}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.22}
+            dragMomentum={false}
+            onDragStart={handleContentDragStart}
+            onDragEnd={handleContentDragEnd}
+            initial={(direction: number) => ({
+              opacity: 0.9,
+              x: direction > 0 ? '105%' : '-105%',
+              rotate: direction > 0 ? 2.5 : -2.5,
+              scale: 0.985,
+            })}
+            animate={{ opacity: 1, x: 0, rotate: 0, scale: 1 }}
+            exit={(direction: number) => ({
+              opacity: 0.9,
+              x: direction > 0 ? '-105%' : '105%',
+              rotate: direction > 0 ? -2.5 : 2.5,
+              scale: 0.985,
+            })}
+            transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }}
+            className="cursor-grab touch-pan-y active:cursor-grabbing"
           >
             {visibleGroupedItems.map((group) => {
               const subgroups = buildSubgroups(group.items);
