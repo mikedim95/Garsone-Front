@@ -995,10 +995,6 @@ export default function TableMenu() {
       return;
     }
     setActiveOrderBarExpanded(true);
-    const timer = window.setTimeout(() => {
-      setActiveOrderBarExpanded(false);
-    }, 5000);
-    return () => window.clearTimeout(timer);
   }, [activeOrder?.id, activeOrder?.status]);
 
   useEffect(() => {
