@@ -70,10 +70,8 @@ const SWIPE_DISTANCE_PX = 44;
 const SWIPE_VELOCITY_PX = 420;
 const SWIPE_INTENT_DEADZONE_PX = 18;
 const MENU_SWIPE_TRANSITION = {
-  type: 'spring' as const,
-  stiffness: 260,
-  damping: 30,
-  mass: 0.7,
+  duration: 0.22,
+  ease: [0.22, 1, 0.36, 1] as const,
 };
 
 const getCategorySwipeOffset = (info: PanInfo): -1 | 0 | 1 => {
@@ -668,30 +666,27 @@ export const SwipeableMenuView = ({
         className="menu-content-frame overflow-x-hidden pb-32"
         onClickCapture={handleContentClickCapture}
       >
+        <div className="grid min-w-0">
         <AnimatePresence initial={false} custom={swipeDirection}>
           <motion.div
             key={activeCategoryId}
             custom={swipeDirection}
             drag="x"
             dragDirectionLock
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.14}
+            dragConstraints={{ left: -96, right: 96 }}
+            dragElastic={0.08}
             dragMomentum={false}
             onDragStart={handleContentDragStart}
             onDragEnd={handleContentDragEnd}
             initial={(direction: number) => ({
-              opacity: 0.98,
-              x: direction > 0 ? '96%' : '-96%',
-              scale: 0.995,
+              x: direction > 0 ? '100%' : '-100%',
             })}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
+            animate={{ x: 0 }}
             exit={(direction: number) => ({
-              opacity: 0.98,
-              x: direction > 0 ? '-96%' : '96%',
-              scale: 0.995,
+              x: direction > 0 ? '-100%' : '100%',
             })}
             transition={MENU_SWIPE_TRANSITION}
-            className="menu-swipe-pane cursor-grab touch-pan-y active:cursor-grabbing"
+            className="menu-swipe-pane col-start-1 row-start-1 min-w-0 cursor-grab touch-pan-y active:cursor-grabbing"
           >
             {visibleGroupedItems.map((group) => {
               const subgroups = buildSubgroups(group.items);
@@ -793,6 +788,7 @@ export const SwipeableMenuView = ({
             })}
           </motion.div>
         </AnimatePresence>
+        </div>
       </div>
 
       {/* Delicate Floating Action Bar */}
