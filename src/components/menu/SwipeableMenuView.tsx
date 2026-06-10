@@ -920,12 +920,12 @@ export const SwipeableMenuView = ({
                         <button
                           aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
                           onClick={() => removeItem(cartItem.item.id)}
-                          className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 shadow-lg hover:scale-110 z-10"
+                          className="absolute right-2 top-2 z-10 rounded-full bg-destructive p-1.5 text-destructive-foreground shadow-lg hover:scale-110"
                         >
                           <X className="h-3 w-3" />
                         </button>
 
-                        <div className="flex min-w-0 gap-2 pr-1">
+                        <div className="flex min-w-0 gap-2 pr-8">
                           <img
                             src={cartItem.item.image}
                             alt={displayName}
