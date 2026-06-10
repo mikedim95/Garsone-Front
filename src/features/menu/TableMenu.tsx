@@ -5,6 +5,12 @@ import { useTranslation } from "react-i18next";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
@@ -26,7 +32,14 @@ import type {
   OrderStatus,
   OrderingMode,
 } from "@/types";
-import { Pencil, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Pencil,
+  ShoppingBag,
+  X,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
@@ -378,18 +391,34 @@ const mapOrderItemModifiers = (
   if (!orderItem?.modifiers || !Array.isArray(orderItem.modifiers))
     return selections;
   for (const mod of orderItem.modifiers) {
-    const modId = mod?.modifierId;
-    const optId = mod?.modifierOptionId;
-    if (!modId || !optId) continue;
+    const modId =
+      mod?.modifierId ??
+      (isRecord((mod as any)?.modifier) ? (mod as any).modifier.id : undefined);
+    const rawOptionIds = Array.isArray((mod as any)?.optionIds)
+      ? (mod as any).optionIds
+      : mod?.modifierOptionId
+      ? [mod.modifierOptionId]
+      : isRecord((mod as any)?.modifierOption) &&
+        typeof (mod as any).modifierOption.id === "string"
+      ? [(mod as any).modifierOption.id]
+      : [];
+    if (!modId || rawOptionIds.length === 0) continue;
     // Ensure the option still exists on the menu item before pre-filling
     const matchingMod = menuItem?.modifiers?.find((m) => m.id === modId);
-    const matchingOpt = matchingMod?.options.find((o) => o.id === optId);
-    if (matchingMod && matchingOpt) {
+    const optionIds = rawOptionIds
+      .map((value) => String(value))
+      .filter((optId) => matchingMod?.options.some((o) => o.id === optId));
+    if (matchingMod && optionIds.length > 0) {
       const current = selections[modId];
-      if (!current) {
-        selections[modId] = optId;
-      } else {
-        selections[modId] = Array.isArray(current) ? [...current, optId] : [current, optId];
+      for (const optId of optionIds) {
+        if (!current) {
+          selections[modId] =
+            optionIds.length === 1 ? optId : [...new Set(optionIds)];
+          break;
+        }
+        selections[modId] = Array.isArray(current)
+          ? [...new Set([...current, optId])]
+          : [...new Set([current, optId])];
       }
     }
   }
@@ -414,6 +443,121 @@ const mapOrderToCartItems = (
   return mapped;
 };
 
+const mergeCartItems = (items: CartItem[]): CartItem[] => {
+  const merged = new Map<string, CartItem>();
+  for (const cartItem of items) {
+    const key = `${cartItem.item.id}|${JSON.stringify(
+      cartItem.selectedModifiers || {}
+    )}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.quantity += cartItem.quantity;
+    } else {
+      merged.set(key, { ...cartItem });
+    }
+  }
+  return Array.from(merged.values());
+};
+
+const getSubmittedOrderItemId = (item?: SubmittedOrderItem | null) =>
+  item?.itemId || item?.item?.id || "";
+
+const getSubmittedOrderItemName = (
+  item: SubmittedOrderItem,
+  index: number,
+  fallback: string
+) => item.title ?? item.name ?? item.item?.displayName ?? item.item?.name ?? fallback.replace("{{index}}", String(index + 1));
+
+const getSubmittedOrderItemQuantity = (item?: SubmittedOrderItem | null) =>
+  Math.max(1, Number(item?.quantity ?? item?.qty ?? 1));
+
+const getSubmittedOrderItemModifierLabels = (item?: SubmittedOrderItem | null) =>
+  (item?.modifiers ?? [])
+    .map((modifier) => modifier?.title?.trim())
+    .filter((label): label is string => Boolean(label));
+
+const findMappedCartIndexForOrderItem = (
+  order: SubmittedOrderSummary,
+  orderItemIndex: number,
+  mappedItems: CartItem[],
+  menuItems: MenuItem[]
+) => {
+  const sourceItems = order.items ?? [];
+  const sourceItem = sourceItems[orderItemIndex];
+  const itemId = getSubmittedOrderItemId(sourceItem);
+  if (!itemId) return -1;
+  let targetOccurrence = 0;
+  for (let index = 0; index <= orderItemIndex; index += 1) {
+    const candidateId = getSubmittedOrderItemId(sourceItems[index]);
+    if (candidateId === itemId && menuItems.some((item) => item.id === candidateId)) {
+      targetOccurrence += 1;
+    }
+  }
+  let seen = 0;
+  return mappedItems.findIndex((cartItem) => {
+    if (cartItem.item.id !== itemId) return false;
+    seen += 1;
+    return seen === targetOccurrence;
+  });
+};
+
+const statusToneByStatus: Record<
+  OrderStatus,
+  {
+    bar: string;
+    badge: string;
+    dot: string;
+    chip: string;
+    text: string;
+  }
+> = {
+  PLACED: {
+    bar: "from-violet-600 to-fuchsia-600 text-white border-violet-300/40",
+    badge: "bg-white/18 text-white border-white/25",
+    dot: "bg-white",
+    chip: "border-violet-400/50 bg-violet-500/12 text-violet-100",
+    text: "text-violet-100",
+  },
+  PREPARING: {
+    bar: "from-amber-500 to-orange-600 text-white border-amber-200/40",
+    badge: "bg-white/18 text-white border-white/25",
+    dot: "bg-white",
+    chip: "border-amber-400/50 bg-amber-500/12 text-amber-100",
+    text: "text-amber-100",
+  },
+  READY: {
+    bar: "from-emerald-500 to-teal-600 text-white border-emerald-200/40",
+    badge: "bg-white/18 text-white border-white/25",
+    dot: "bg-white",
+    chip: "border-emerald-400/50 bg-emerald-500/12 text-emerald-100",
+    text: "text-emerald-100",
+  },
+  SERVED: {
+    bar: "from-sky-500 to-blue-600 text-white border-sky-200/40",
+    badge: "bg-white/18 text-white border-white/25",
+    dot: "bg-white",
+    chip: "border-sky-400/50 bg-sky-500/12 text-sky-100",
+    text: "text-sky-100",
+  },
+  PAID: {
+    bar: "from-slate-600 to-emerald-700 text-white border-emerald-200/30",
+    badge: "bg-white/18 text-white border-white/25",
+    dot: "bg-white",
+    chip: "border-emerald-400/50 bg-emerald-500/12 text-emerald-100",
+    text: "text-emerald-100",
+  },
+  CANCELLED: {
+    bar: "from-rose-600 to-red-700 text-white border-rose-200/40",
+    badge: "bg-white/18 text-white border-white/25",
+    dot: "bg-white",
+    chip: "border-rose-400/50 bg-rose-500/12 text-rose-100",
+    text: "text-rose-100",
+  },
+};
+
+const getStatusTone = (status?: OrderStatus) =>
+  statusToneByStatus[status ?? "PLACED"] ?? statusToneByStatus.PLACED;
+
 const getStoredName = () => {
   if (typeof window === "undefined") return null;
   try {
@@ -434,7 +578,7 @@ export default function TableMenu() {
   ).toLowerCase();
   const languageCode = activeLanguage.startsWith("el") ? "el" : "en";
   const preferGreek = languageCode === "el";
-  const showActiveOrders = false; // Temporarily hide the Active Orders UI
+  const showActiveOrders = false;
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -462,6 +606,11 @@ export default function TableMenu() {
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
+  const [activeOrderOpen, setActiveOrderOpen] = useState(false);
+  const [activeLineEditor, setActiveLineEditor] = useState<{
+    orderId: string;
+    cartIndex: number;
+  } | null>(null);
   const [cartOpenSignal, setCartOpenSignal] = useState(0);
   const [orderPlacedSignal, setOrderPlacedSignal] = useState(0);
   const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
@@ -480,7 +629,7 @@ export default function TableMenu() {
   const [placedOrders, setPlacedOrders] = useState<SubmittedOrderSummary[]>([]);
   const [placedLoading, setPlacedLoading] = useState(false);
   const [placedError, setPlacedError] = useState<string | null>(null);
-  const [activeOrdersOpen, setActiveOrdersOpen] = useState(true);
+  const [activeOrdersOpen, setActiveOrdersOpen] = useState(false);
   const [tableLabel, setTableLabel] = useState<string | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
   const tableLookupCode = tableParam || tableId || null;
@@ -502,6 +651,23 @@ export default function TableMenu() {
   ];
   const canEditLastOrder = lastOrderStatus === "PLACED" && !!lastOrder?.id;
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
+  const activeOrder = lastOrder ?? placedOrders[0] ?? null;
+  const activeOrderStatus = activeOrder?.status ?? "PLACED";
+  const activeOrderTone = getStatusTone(activeOrderStatus);
+  const activeOrderStatusLabel = t(`status.${activeOrderStatus}`, {
+    defaultValue: activeOrderStatus,
+  });
+  const hasActiveOrderBar = Boolean(activeOrder);
+  const canEditActiveOrder =
+    activeOrderStatus === "PLACED" && Boolean(activeOrder?.id);
+  const activeLineCartItem =
+    activeLineEditor !== null ? cartItems[activeLineEditor.cartIndex] : null;
+  const activeOrderPlacedTime = new Date(
+    activeOrder?.createdAt || Date.now()
+  ).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   const setMenuCache = useMenuStore((s) => s.setMenu);
   const clearMenuCache = useMenuStore((s) => s.clear);
@@ -748,9 +914,6 @@ export default function TableMenu() {
         if (cancelled) return;
         const summaries = (res?.orders ?? []).map(toOrderSummary);
         setPlacedOrders(summaries);
-        if (summaries.length > 0) {
-          setActiveOrdersOpen(true);
-        }
         if (summaries[0]) {
           setLastOrder((prev) =>
             prev && prev.id === summaries[0].id
@@ -776,12 +939,6 @@ export default function TableMenu() {
     };
   }, [activeTableId, storeSlug]);
 
-  useEffect(() => {
-    if (lastOrder) {
-      setActiveOrdersOpen(true);
-    }
-  }, [lastOrder?.id]);
-
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
     if (typeof order.total === "number") return order.total;
@@ -792,10 +949,16 @@ export default function TableMenu() {
   const toOrderSummary = (order: any): SubmittedOrderSummary => {
     const items = Array.isArray(order?.items)
       ? order.items.map((item: any) => ({
+          id: item.id,
           itemId: item.itemId ?? item.item?.id,
           title: item.title ?? item.titleSnapshot ?? item.name,
           quantity: item.quantity ?? item.qty,
           modifiers: item.modifiers ?? item.orderItemOptions ?? [],
+          status: item.status,
+          unitPrice: item.unitPrice,
+          unitPriceCents: item.unitPriceCents,
+          acceptedAt: item.acceptedAt,
+          servedAt: item.servedAt,
         }))
       : [];
     return {
@@ -972,8 +1135,8 @@ export default function TableMenu() {
     setCustomizeItem(null);
   };
 
-  const loadOrderIntoCart = (order: SubmittedOrderSummary | null) => {
-    if (!order || !order.id) return;
+  const prepareOrderForEditing = (order: SubmittedOrderSummary | null) => {
+    if (!order || !order.id) return null;
     if (order.status && order.status !== "PLACED") {
       toast({
         title: t("menu.toast_edit_unavailable_title", {
@@ -983,7 +1146,7 @@ export default function TableMenu() {
           defaultValue: "The kitchen has already started preparing your order.",
         }),
       });
-      return;
+      return null;
     }
     if (!menuData) {
       toast({
@@ -992,60 +1155,12 @@ export default function TableMenu() {
           defaultValue: "Menu data is not loaded yet. Please try again.",
         }),
       });
-      return;
+      return null;
     }
 
-    clearCart();
+    const mappedItems = mapOrderToCartItems(order, menuData.items);
 
-    const orderItems = (order.items ?? []) as Array<
-      SubmittedOrderItem & { itemId?: string; modifiers?: any }
-    >;
-    let addedCount = 0;
-
-    for (const orderItem of orderItems) {
-      const rawItemId =
-        (orderItem as any).itemId ?? (orderItem as any).item?.id;
-      if (!rawItemId) continue;
-
-      const menuItem = menuData.items.find((it) => it.id === rawItemId);
-      if (!menuItem) continue;
-
-      const selectedModifiers: Record<string, string | string[]> = {};
-      const modifiers = (orderItem as any).modifiers as any;
-      if (Array.isArray(modifiers)) {
-        for (const mod of modifiers) {
-          const modifierId =
-            (mod && (mod.modifierId || (mod.modifier && mod.modifier.id))) ??
-            undefined;
-          const optionIds =
-            mod && Array.isArray(mod.optionIds)
-              ? mod.optionIds
-              : mod?.modifierOptionId
-              ? [mod.modifierOptionId]
-              : [];
-          if (modifierId && optionIds.length) {
-            selectedModifiers[String(modifierId)] =
-              optionIds.length === 1 ? String(optionIds[0]) : optionIds.map(String);
-          }
-        }
-      }
-
-      const quantity =
-        typeof orderItem.quantity === "number"
-          ? orderItem.quantity
-          : typeof (orderItem as any).qty === "number"
-          ? (orderItem as any).qty
-          : 1;
-
-      addItem({
-        item: menuItem,
-        quantity: Math.max(1, quantity || 1),
-        selectedModifiers,
-      });
-      addedCount += 1;
-    }
-
-    if (!addedCount) {
+    if (!mappedItems.length) {
       toast({
         title: t("menu.toast_edit_unavailable_title", {
           defaultValue: "Order cannot be edited",
@@ -1056,15 +1171,75 @@ export default function TableMenu() {
         }),
       });
       setEditingOrderId(null);
-      return;
+      return null;
     }
 
+    setItems(mergeCartItems(mappedItems));
     setLastOrder(order);
     setEditingOrderId(order.id || null);
-    setActiveOrdersOpen(false);
+    setEditingNote(order.note ?? "");
     setSelectedCategory(selectedCategory || (usesImmediateGuestCheckout ? categories[0]?.id : "all") || "all");
     setCategorySelected(true);
+    return mappedItems;
+  };
+
+  const loadOrderIntoCart = (order: SubmittedOrderSummary | null) => {
+    const mappedItems = prepareOrderForEditing(order);
+    if (!mappedItems) return;
     setCartOpenSignal((s) => s + 1);
+  };
+
+  const handleActiveOrderItemClick = (
+    order: SubmittedOrderSummary | null,
+    orderItem: SubmittedOrderItem,
+    orderItemIndex: number
+  ) => {
+    if (!order?.id) return;
+    const mappedItems = prepareOrderForEditing(order);
+    if (!mappedItems || !menuData) return;
+    const cartIndex = findMappedCartIndexForOrderItem(
+      order,
+      orderItemIndex,
+      mappedItems,
+      menuData.items
+    );
+    if (cartIndex < 0) {
+      setCartOpenSignal((s) => s + 1);
+      return;
+    }
+    setActiveOrderOpen(false);
+    setActiveLineEditor({ orderId: order.id, cartIndex });
+  };
+
+  const handleConfirmActiveLineEdit = (
+    selected: Record<string, string | string[]>,
+    qty: number
+  ) => {
+    if (!activeLineEditor) return;
+    const currentItems = useCartStore.getState().items;
+    const current = currentItems[activeLineEditor.cartIndex];
+    if (!current) {
+      setActiveLineEditor(null);
+      return;
+    }
+    const nextItems = currentItems.map((cartItem, index) =>
+      index === activeLineEditor.cartIndex
+        ? {
+            ...cartItem,
+            quantity: Math.max(1, qty || 1),
+            selectedModifiers: selected,
+          }
+        : cartItem
+    );
+    setItems(mergeCartItems(nextItems));
+    setActiveLineEditor(null);
+    setCartOpenSignal((s) => s + 1);
+    toast({
+      title: t("menu.item_updated_title", { defaultValue: "Item updated" }),
+      description: t("menu.review_updated_order", {
+        defaultValue: "Review your order and submit the update.",
+      }),
+    });
   };
 
   const handleOrderAcceptedDuringEdit = (orderId: string) => {
@@ -1252,7 +1427,6 @@ export default function TableMenu() {
       const summary = toOrderSummary(order);
       setLastOrder(summary);
       upsertPlacedOrder(summary);
-      setActiveOrdersOpen(true);
       clearCart();
       stopEditingLastOrder();
       if (approval) {
@@ -1614,36 +1788,53 @@ export default function TableMenu() {
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
 
-  const lastOrderButton = canEditLastOrder && lastOrder ? (
+  const activeOrderFloatingBar = activeOrder ? (
     <div
       className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] px-4"
     >
-      <Button
+      <button
         type="button"
-        variant="default"
         className={clsx(
-          "pointer-events-auto mx-auto flex min-h-14 w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0",
+          "pointer-events-auto mx-auto flex min-h-16 w-full max-w-lg items-center justify-between gap-3 rounded-3xl border px-4 py-3 text-left shadow-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 bg-gradient-to-r",
+          activeOrderTone.bar,
           highlightLastOrderButton &&
-            "animate-pulse ring-4 ring-primary/35 ring-offset-2 ring-offset-background"
+            "animate-pulse ring-4 ring-white/35 ring-offset-2 ring-offset-background"
         )}
-        onClick={handleEditLastOrder}
+        onClick={() => {
+          setHighlightLastOrderButton(false);
+          setActiveOrderOpen(true);
+        }}
       >
         <span className="min-w-0 text-left">
           <span className="block truncate text-sm font-semibold">
-            {t("menu.last_order_heading", {
-              defaultValue: "Your last order",
+            {t("menu.active_order_heading", {
+              defaultValue: "Your active order",
             })}
           </span>
-          <span className="block text-xs opacity-80">
+          <span className={clsx("block text-xs", activeOrderTone.text)}>
+            {activeOrderStatusLabel} - {(activeOrder.items ?? []).length}{" "}
+            {t("menu.items_short", { defaultValue: "items" })} - EUR{" "}
+            {computeOrderTotal(activeOrder).toFixed(2)}
+            <span className="hidden">
             {t("actions.edit", { defaultValue: "Edit order" })} · EUR{" "}
-            {computeOrderTotal(lastOrder).toFixed(2)}
+            {computeOrderTotal(activeOrder).toFixed(2)}
           </span>
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-sm font-semibold">
-          <Pencil className="h-4 w-4" />
-          {t("actions.edit", { defaultValue: "Edit" })}
         </span>
-      </Button>
+        <span
+          className={clsx(
+            "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold",
+            activeOrderTone.badge
+          )}
+        >
+          <span className={clsx("h-2 w-2 rounded-full", activeOrderTone.dot)} />
+          {canEditActiveOrder ? (
+            <Pencil className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </span>
+      </button>
     </div>
   ) : null;
 
@@ -1763,7 +1954,7 @@ export default function TableMenu() {
         <div
           className={clsx(
             "max-w-6xl mx-auto px-4 py-8 flex-1 w-full",
-            lastOrderButton && (categorySelected ? "pb-44" : "pb-28")
+            hasActiveOrderBar && (categorySelected ? "pb-44" : "pb-28")
           )}
         >
           {!guestOrderingEnabled && (
@@ -1789,7 +1980,6 @@ export default function TableMenu() {
               onSelect={(catId) => {
                 setSelectedCategory(catId);
                 setCategorySelected(true);
-                setActiveOrdersOpen(false);
               }}
             />
           ) : error ? (
@@ -1839,14 +2029,207 @@ export default function TableMenu() {
               callStatus={calling}
               callPrompted={callPrompted}
               onCallClick={handleFloatingCallClick}
-              cartBottomOffset={lastOrderButton ? "raised" : "default"}
+              cartBottomOffset={hasActiveOrderBar ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
               showPaymentButton={!usesImmediateGuestCheckout && !isEditingExisting}
             />
           )}
         </div>
 
-        {lastOrderButton}
+        {activeOrderFloatingBar}
+
+        <Dialog open={activeOrderOpen} onOpenChange={setActiveOrderOpen}>
+          <DialogContent className="w-[95vw] sm:w-auto max-w-lg h-[82dvh] max-h-[calc(100dvh-0.75rem)] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-2xl">
+            <DialogTitle className="sr-only">
+              {t("menu.active_order_heading", {
+                defaultValue: "Your active order",
+              })}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              {t("menu.active_order_description", {
+                defaultValue: "Order status and selected items",
+              })}
+            </DialogDescription>
+            {activeOrder ? (
+              <div className="flex h-full min-h-0 flex-col bg-background">
+                <div
+                  className={clsx(
+                    "relative overflow-hidden bg-gradient-to-r px-5 pb-5 pt-4 text-white",
+                    activeOrderTone.bar
+                  )}
+                >
+                  <div className="sm:hidden flex justify-center pb-3" aria-hidden="true">
+                    <div className="h-1.5 w-12 rounded-full bg-white/35" />
+                  </div>
+                  <button
+                    type="button"
+                    className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/14 text-white hover:bg-white/22"
+                    onClick={() => setActiveOrderOpen(false)}
+                    aria-label={t("actions.close", { defaultValue: "Close" })}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <div className="pr-11">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80">
+                      <span className={clsx("h-2 w-2 rounded-full", activeOrderTone.dot)} />
+                      {activeOrderStatusLabel}
+                    </div>
+                    <h2 className="mt-2 text-2xl font-bold">
+                      {t("menu.active_order_heading", {
+                        defaultValue: "Your active order",
+                      })}
+                    </h2>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/86">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Clock3 className="h-4 w-4" />
+                        {activeOrderPlacedTime}
+                      </span>
+                      <span>#{(activeOrder.id || "").slice(-6).toUpperCase()}</span>
+                      <span>EUR {computeOrderTotal(activeOrder).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="shrink-0 border-b border-border/60 bg-card/70 px-4 py-3">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {statusSteps.map((step) => {
+                      const isActive = step === activeOrder.status;
+                      return (
+                        <span
+                          key={`active-order-step-${step}`}
+                          className={clsx(
+                            "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
+                            isActive
+                              ? activeOrderTone.chip
+                              : "border-border/60 bg-background/60 text-muted-foreground"
+                          )}
+                        >
+                          {t(`status.${step}`, { defaultValue: step })}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                  {placedLoading ? (
+                    <div className="mb-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-xs text-muted-foreground">
+                      {t("status.loading", { defaultValue: "Loading..." })}
+                    </div>
+                  ) : null}
+                  {placedError ? (
+                    <div className="mb-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                      {placedError}
+                    </div>
+                  ) : null}
+
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-foreground">
+                      {t("menu.selected_items", {
+                        defaultValue: "Selected items",
+                      })}
+                    </p>
+                    {canEditActiveOrder ? (
+                      <span className="text-xs text-muted-foreground">
+                        {t("menu.tap_item_to_edit", {
+                          defaultValue: "Tap an item to edit",
+                        })}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        {t("menu.order_locked", { defaultValue: "Locked" })}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {(activeOrder.items ?? []).map((item, index) => {
+                      const fallback = t("menu.last_order_item_fallback", {
+                        index: index + 1,
+                        defaultValue: `Item ${index + 1}`,
+                      });
+                      const name = getSubmittedOrderItemName(item, index, fallback);
+                      const quantity = getSubmittedOrderItemQuantity(item);
+                      const modifierLabels = getSubmittedOrderItemModifierLabels(item);
+                      return (
+                        <button
+                          type="button"
+                          key={`${activeOrder.id}-${item.id ?? item.itemId ?? index}`}
+                          className={clsx(
+                            "w-full rounded-2xl border border-border/60 bg-card/80 p-3 text-left transition-colors",
+                            canEditActiveOrder
+                              ? "hover:border-primary/50 hover:bg-card"
+                              : "cursor-default"
+                          )}
+                          onClick={() =>
+                            handleActiveOrderItemClick(activeOrder, item, index)
+                          }
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
+                                  {quantity}
+                                </span>
+                                <span className="font-semibold text-foreground">
+                                  {name}
+                                </span>
+                              </div>
+                              {modifierLabels.length > 0 ? (
+                                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                  {modifierLabels.map((label, labelIndex) => (
+                                    <div key={`${item.id ?? index}-${labelIndex}`}>
+                                      {label}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {t("menu.no_modifiers", {
+                                    defaultValue: "No modifiers",
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                            <span className="shrink-0 rounded-full border border-border/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                              {canEditActiveOrder
+                                ? t("actions.edit", { defaultValue: "Edit" })
+                                : t("menu.locked", { defaultValue: "Locked" })}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="shrink-0 border-t border-border/60 bg-background/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                  {canEditActiveOrder ? (
+                    <Button
+                      type="button"
+                      className="h-12 w-full rounded-2xl font-semibold"
+                      onClick={() => {
+                        setActiveOrderOpen(false);
+                        loadOrderIntoCart(activeOrder);
+                      }}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      {t("actions.edit", { defaultValue: "Edit order" })}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                      {t("menu.order_locked_desc", {
+                        defaultValue:
+                          "This order has already moved forward, so item changes are closed.",
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
 
         {showActiveOrders && activeOrdersOpen && !categorySelected && (
           <div className="max-w-6xl mx-auto px-4 w-full my-6">
@@ -2027,6 +2410,20 @@ export default function TableMenu() {
               setCustomizeItem(null);
             }}
             onConfirm={handleConfirmModifiers}
+          />
+        </Suspense>
+
+        <Suspense fallback={null}>
+          <ModifierDialog
+            open={Boolean(activeLineEditor && activeLineCartItem)}
+            item={activeLineCartItem?.item ?? null}
+            initialQty={activeLineCartItem?.quantity ?? 1}
+            initialSelected={activeLineCartItem?.selectedModifiers}
+            confirmLabel={t("actions.save_changes", {
+              defaultValue: "Save changes",
+            })}
+            onClose={() => setActiveLineEditor(null)}
+            onConfirm={handleConfirmActiveLineEdit}
           />
         </Suspense>
       </div>

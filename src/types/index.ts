@@ -160,6 +160,7 @@ export interface MenuData {
 }
 
 export interface SubmittedOrderItem {
+  id?: string;
   title?: string;
   name?: string;
   item?: MenuItem;
@@ -174,6 +175,11 @@ export interface SubmittedOrderItem {
   }>;
   quantity?: number;
   qty?: number;
+  status?: OrderItemStatus;
+  unitPrice?: number;
+  unitPriceCents?: number;
+  acceptedAt?: string | null;
+  servedAt?: string | null;
 }
 
 export interface SubmittedOrderSummary {

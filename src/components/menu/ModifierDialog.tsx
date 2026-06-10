@@ -16,6 +16,7 @@ interface Props {
   onConfirm: (selected: SelectionMap, quantity: number) => void;
   initialSelected?: SelectionMap;
   initialQty?: number;
+  confirmLabel?: string;
 }
 
 const getModifierPriceDelta = (option: Modifier['options'][number]) => {
@@ -24,7 +25,15 @@ const getModifierPriceDelta = (option: Modifier['options'][number]) => {
   return 0;
 };
 
-export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected, initialQty = 1 }: Props) => {
+export const ModifierDialog = ({
+  open,
+  item,
+  onClose,
+  onConfirm,
+  initialSelected,
+  initialQty = 1,
+  confirmLabel,
+}: Props) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
   const [qty, setQty] = useState<number>(initialQty || 1);
@@ -206,7 +215,7 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
             {t('actions.cancel', { defaultValue: 'Cancel' })}
           </Button>
           <Button onClick={handleConfirm}>
-            {t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+            {confirmLabel ?? t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
           </Button>
         </DialogFooter>
       </DialogContent>
