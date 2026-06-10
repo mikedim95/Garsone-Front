@@ -381,7 +381,7 @@ const isWaiterCallMessage = (
 
 const isOrderEventMessage = (
   payload: unknown
-): payload is { orderId: string } =>
+): payload is { orderId: string; tableId?: string } =>
   isRecord(payload) && typeof payload.orderId === "string";
 
 const mapOrderItemModifiers = (
@@ -678,6 +678,9 @@ export default function TableMenu() {
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
   const cartChangeRef = useRef(false);
+  const lastOrderRef = useRef<SubmittedOrderSummary | null>(null);
+  const placedOrdersRef = useRef<SubmittedOrderSummary[]>([]);
+  const notifiedOrderStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [localityGateOpen, setLocalityGateOpen] = useState(false);
   const localityGatePromiseRef = useRef<Promise<LocalityApproval | null> | null>(
@@ -897,6 +900,14 @@ export default function TableMenu() {
       setTableLabel(lastOrder.tableLabel);
     }
   }, [lastOrder]);
+
+  useEffect(() => {
+    lastOrderRef.current = lastOrder;
+  }, [lastOrder]);
+
+  useEffect(() => {
+    placedOrdersRef.current = placedOrders;
+  }, [placedOrders]);
 
   useEffect(() => {
     if (!activeTableId) {
@@ -1627,6 +1638,42 @@ export default function TableMenu() {
     return null;
   };
 
+  const notifyOrderStatusChange = (
+    orderId: string,
+    status: OrderStatus,
+    previousStatus?: OrderStatus
+  ) => {
+    if (!previousStatus || previousStatus === status || status === "PLACED") {
+      return;
+    }
+    if (notifiedOrderStatusRef.current.get(orderId) === status) {
+      return;
+    }
+    notifiedOrderStatusRef.current.set(orderId, status);
+
+    const statusLabel = t(`status.${status}`, { defaultValue: status });
+    const shortOrderId = orderId.slice(-6).toUpperCase();
+    const title = t("menu.order_status_notification_title", {
+      defaultValue: "Order update",
+    });
+    const description = t(`menu.order_status_notification_${status}`, {
+      orderId: shortOrderId,
+      status: statusLabel,
+      defaultValue: `Order #${shortOrderId} is now ${statusLabel}.`,
+    });
+
+    toast({ title, description });
+
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      window.Notification.permission === "granted" &&
+      document.visibilityState !== "visible"
+    ) {
+      new window.Notification(title, { body: description });
+    }
+  };
+
   useEffect(() => {
     // subscribe for call acknowledgements for this table
     if (!activeTableId || !storeSlug) return;
@@ -1644,6 +1691,13 @@ export default function TableMenu() {
       await realtimeService.connect();
       const updateStatus = (status: OrderStatus) => (payload: unknown) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
+        if (payload.tableId && payload.tableId !== activeTableId) return;
+        const previousStatus =
+          lastOrderRef.current?.id === payload.orderId
+            ? lastOrderRef.current.status
+            : placedOrdersRef.current.find((order) => order.id === payload.orderId)
+                ?.status;
+        notifyOrderStatusChange(payload.orderId, status, previousStatus);
         setLastOrder((prev) =>
           prev && prev.id === payload.orderId ? { ...prev, status } : prev
         );
