@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import { createPortal } from "react-dom";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
@@ -1790,7 +1791,17 @@ export default function TableMenu() {
 
   const activeOrderFloatingBar = activeOrder ? (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] px-4"
+      className={clsx(
+        themedWrapper,
+        "pointer-events-none px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+      )}
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 45,
+      }}
     >
       <button
         type="button"
@@ -1815,11 +1826,7 @@ export default function TableMenu() {
             {activeOrderStatusLabel} - {(activeOrder.items ?? []).length}{" "}
             {t("menu.items_short", { defaultValue: "items" })} - EUR{" "}
             {computeOrderTotal(activeOrder).toFixed(2)}
-            <span className="hidden">
-            {t("actions.edit", { defaultValue: "Edit order" })} · EUR{" "}
-            {computeOrderTotal(activeOrder).toFixed(2)}
           </span>
-        </span>
         </span>
         <span
           className={clsx(
@@ -1837,6 +1844,10 @@ export default function TableMenu() {
       </button>
     </div>
   ) : null;
+  const activeOrderFloatingPortal =
+    activeOrderFloatingBar && typeof document !== "undefined"
+      ? createPortal(activeOrderFloatingBar, document.body)
+      : null;
 
   return (
     <div
@@ -2035,8 +2046,6 @@ export default function TableMenu() {
             />
           )}
         </div>
-
-        {activeOrderFloatingBar}
 
         <Dialog open={activeOrderOpen} onOpenChange={setActiveOrderOpen}>
           <DialogContent className="w-[95vw] sm:w-auto max-w-lg h-[82dvh] max-h-[calc(100dvh-0.75rem)] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-2xl">
@@ -2427,6 +2436,7 @@ export default function TableMenu() {
           />
         </Suspense>
       </div>
+      {activeOrderFloatingPortal}
     </div>
   );
 }
