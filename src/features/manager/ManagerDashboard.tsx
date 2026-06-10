@@ -2686,8 +2686,18 @@ export default function ManagerDashboard() {
           icon="📊"
           tone="accent"
           burgerActions={
-            <div className="flex flex-wrap items-center justify-end gap-3 text-xs">
-              <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => window.location.reload()}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs">
                 <span className="text-muted-foreground">
                   {t("manager.mode_title", { defaultValue: "MODE" })}:{" "}
                   <span className="font-semibold text-foreground">

@@ -1,8 +1,11 @@
 import { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppBurger } from '@/components/AppBurger';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useTheme } from '@/components/theme-provider-context';
-import { Sun, Moon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/store/authStore';
+import { Home, LogIn, LogOut, Moon, Sun, UserCircle } from 'lucide-react';
 
 interface DashboardHeaderProps {
   title: string;
@@ -23,6 +26,8 @@ export const DashboardHeader = ({
   burgerActions,
   rightContent,
 }: DashboardHeaderProps) => {
+  const navigate = useNavigate();
+  const { user, logout, isAuthenticated } = useAuthStore();
   const gradientClass =
     {
       primary: 'bg-gradient-primary',
@@ -40,6 +45,12 @@ export const DashboardHeader = ({
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches);
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
+  const loggedIn = isAuthenticated();
+  const showProfile = Boolean(user);
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <header className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-40 shadow-sm">
@@ -78,6 +89,51 @@ export const DashboardHeader = ({
           </button>
           <LanguageSwitcher />
           <AppBurger title={title}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => navigate('/')}
+            >
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Button>
+            {showProfile ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => navigate('/profile')}
+              >
+                <UserCircle className="mr-2 h-4 w-4" />
+                Profile
+              </Button>
+            ) : null}
+            {loggedIn ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => navigate('/login')}
+              >
+                <LogIn className="mr-2 h-4 w-4" />
+                Login
+              </Button>
+            )}
             {burgerActions}
           </AppBurger>
         </div>

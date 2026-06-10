@@ -11,7 +11,7 @@ import { api, ApiError } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, LayoutGrid, List, UtensilsCrossed } from 'lucide-react';
+import { Clock, LayoutGrid, List, RefreshCcw, UtensilsCrossed } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
@@ -918,7 +918,18 @@ export default function WaiterDashboard() {
               ) : null}
             </div>
           ) : undefined}
-          burgerActions={null}
+          burgerActions={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          }
         />
 
         <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 flex-1 w-full">

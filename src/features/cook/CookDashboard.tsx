@@ -18,7 +18,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
 import { OrderModifiersDialog } from "@/components/cook/OrderModifiersDialog";
-import { LayoutGrid, List, ListChecks } from "lucide-react";
+import { LayoutGrid, List, ListChecks, RefreshCcw } from "lucide-react";
 import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from "@/lib/storeSlug";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -911,7 +911,18 @@ export default function CookDashboard() {
           }
           icon="👨‍🍳"
           tone="primary"
-          burgerActions={null}
+          burgerActions={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          }
         />
 
         <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">

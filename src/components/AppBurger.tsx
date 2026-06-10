@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Palette } from 'lucide-react';
+import { Palette, SlidersHorizontal } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { DashboardThemeToggle } from '@/components/DashboardThemeToggle';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
@@ -55,13 +55,23 @@ export const AppBurger = ({
           </SheetTitle>
         </SheetHeader>
         <div className="px-4 py-3 space-y-4">
+          {showChildren && children ? (
+            <section className="space-y-2">
+              <h3 className="flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {t('app.options', { defaultValue: 'Options' })}
+              </h3>
+              <div className="flex flex-col gap-2">
+                {children}
+              </div>
+            </section>
+          ) : null}
           <section className="space-y-2">
             <h3 className="flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
               <Palette className="h-3.5 w-3.5" />
               {t('app.theme_only', { defaultValue: 'Theme only' })}
             </h3>
             <div className="flex flex-col gap-2">
-              {showChildren ? children : null}
               <DashboardThemeToggle />
             </div>
           </section>
