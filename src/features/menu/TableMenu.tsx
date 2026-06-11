@@ -485,6 +485,13 @@ const getSubmittedOrderItemName = (
 const getSubmittedOrderItemQuantity = (item?: SubmittedOrderItem | null) =>
   Math.max(1, Number(item?.quantity ?? item?.qty ?? 1));
 
+const computeSubmittedOrderTotal = (order: SubmittedOrderSummary | null) => {
+  if (!order) return 0;
+  if (typeof order.total === "number") return order.total;
+  if (typeof order.totalCents === "number") return order.totalCents / 100;
+  return 0;
+};
+
 const getSubmittedOrderItemModifierLabels = (item?: SubmittedOrderItem | null) =>
   (item?.modifiers ?? [])
     .map((modifier) => modifier?.title?.trim())
@@ -766,29 +773,46 @@ export default function TableMenu() {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const activeOrderItems = activeOrder?.items ?? [];
+  const activeOrderSourceOrders = activeOrder
+    ? visiblePlacedOrders.length > 0
+      ? visiblePlacedOrders
+      : [activeOrder]
+    : [];
+  const activeOrderLineItems = activeOrderSourceOrders.flatMap(
+    (order, orderIndex) =>
+      (order.items ?? []).map((item, itemIndex) => ({
+        item,
+        itemIndex,
+        order,
+        orderIndex,
+      }))
+  );
+  const activeOrderTotal = activeOrderSourceOrders.reduce(
+    (sum, order) => sum + computeSubmittedOrderTotal(order),
+    0
+  );
   const activeOrderItemCountLabel = t("menu.item_count", {
-    count: activeOrderItems.length,
+    count: activeOrderLineItems.length,
     defaultValue:
-      activeOrderItems.length === 1
-        ? `${activeOrderItems.length} item`
-        : `${activeOrderItems.length} items`,
+      activeOrderLineItems.length === 1
+        ? `${activeOrderLineItems.length} item`
+        : `${activeOrderLineItems.length} items`,
   });
   const activeOrderItemSummary =
-    activeOrderItems.length > 0
+    activeOrderLineItems.length > 0
       ? (() => {
-          const visibleItems = activeOrderItems.slice(0, 2).map((item, index) => {
+          const visibleItems = activeOrderLineItems.slice(0, 2).map((line) => {
             const fallback = t("menu.last_order_item_fallback", {
-              index: index + 1,
-              defaultValue: `Item ${index + 1}`,
+              index: line.itemIndex + 1,
+              defaultValue: `Item ${line.itemIndex + 1}`,
             });
-            return `${getSubmittedOrderItemQuantity(item)}x ${getSubmittedOrderItemName(
-              item,
-              index,
+            return `${getSubmittedOrderItemQuantity(line.item)}x ${getSubmittedOrderItemName(
+              line.item,
+              line.itemIndex,
               fallback
             )}`;
           });
-          const remaining = activeOrderItems.length - visibleItems.length;
+          const remaining = activeOrderLineItems.length - visibleItems.length;
           return remaining > 0
             ? `${visibleItems.join(", ")} ${t("menu.more_items", {
                 count: remaining,
@@ -920,6 +944,9 @@ export default function TableMenu() {
     setCategorySelected(false);
     setSelectedCategory(null);
     setActiveOrderOpen(false);
+    if (visiblePlacedOrders.length > 0) {
+      setLastOrderButtonVisible(true);
+    }
   };
 
   const pushCategoryHistoryEntry = () => {
@@ -946,7 +973,6 @@ export default function TableMenu() {
     hideLastOrderButton();
     setActiveOrderOpen(false);
     setLastOrder(null);
-    setPlacedOrders([]);
     clearStoredLastOrder();
     if (editingOrderId) {
       clearCart();
@@ -1254,14 +1280,23 @@ export default function TableMenu() {
         setPlacedError(null);
         const res = await api.getPublicTableOrders(activeTableId, {
           storeSlug: storeSlug || undefined,
+          unpaid: true,
           take: 10,
         });
         if (cancelled) return;
         const dismissedIds = readDismissedOrderIds(dismissedOrderStorageKey);
         const summaries = (res?.orders ?? [])
           .map(toOrderSummary)
+          .filter((order) => order.status !== "PAID")
           .filter((order) => !order.id || !dismissedIds.has(order.id));
         setPlacedOrders(summaries);
+        if (summaries.length === 0) {
+          setLastOrder(null);
+          setLastOrderButtonVisible(false);
+          setActiveOrderOpen(false);
+        } else if (!categorySelectedRef.current) {
+          setLastOrderButtonVisible(true);
+        }
         if ((lastOrderButtonVisible || activeOrderOpen) && summaries[0]) {
           setLastOrder((prev) =>
             prev && prev.id === summaries[0].id
@@ -1288,10 +1323,7 @@ export default function TableMenu() {
   }, [activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
-    if (!order) return 0;
-    if (typeof order.total === "number") return order.total;
-    if (typeof order.totalCents === "number") return order.totalCents / 100;
-    return 0;
+    return computeSubmittedOrderTotal(order);
   };
 
   const toOrderSummary = (order: any): SubmittedOrderSummary => {
@@ -1325,6 +1357,7 @@ export default function TableMenu() {
   };
 
   const upsertPlacedOrder = (order: SubmittedOrderSummary) => {
+    if (order.status === "PAID") return;
     if (isOrderDismissed(order)) return;
     setPlacedOrders((prev) => {
       const next = prev.filter((o) => o.id !== order.id);
@@ -2055,6 +2088,23 @@ export default function TableMenu() {
             : placedOrdersRef.current.find((order) => order.id === payload.orderId)
                 ?.status;
         notifyOrderStatusChange(payload.orderId, status, previousStatus);
+        if (status === "PAID") {
+          setLastOrder((prev) =>
+            prev && prev.id === payload.orderId ? null : prev
+          );
+          setPlacedOrders((prev) => {
+            const next = prev.filter((o) => o.id !== payload.orderId);
+            if (next.length === 0) {
+              setLastOrderButtonVisible(false);
+              setActiveOrderOpen(false);
+            } else if (!categorySelectedRef.current) {
+              setLastOrderButtonVisible(true);
+              setLastOrder((current) => current ?? next[0]);
+            }
+            return next;
+          });
+          return;
+        }
         setLastOrder((prev) =>
           prev && prev.id === payload.orderId ? { ...prev, status } : prev
         );
@@ -2080,7 +2130,10 @@ export default function TableMenu() {
         const summary = toOrderSummary((payload as any).order ?? payload);
         if (isOrderDismissed(summary)) return;
         upsertPlacedOrder(summary);
-        if (lastOrderButtonVisible || activeOrderOpen) {
+        if (!categorySelectedRef.current) {
+          setLastOrderButtonVisible(true);
+        }
+        if (lastOrderButtonVisible || activeOrderOpen || !categorySelectedRef.current) {
           setLastOrder((prev) =>
             prev && prev.id === summary.id ? { ...prev, ...summary } : summary
           );
@@ -2229,7 +2282,7 @@ export default function TableMenu() {
               })}
             </span>
             <span className={clsx("block truncate text-xs", activeOrderTone.text)}>
-              {activeOrderItemSummary} - EUR {computeOrderTotal(activeOrder).toFixed(2)}
+              {activeOrderItemSummary} - EUR {activeOrderTotal.toFixed(2)}
             </span>
           </span>
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/80" />
@@ -2523,7 +2576,7 @@ export default function TableMenu() {
                         {activeOrderItemCountLabel}
                       </span>
                       <span className="whitespace-nowrap">
-                        EUR {computeOrderTotal(activeOrder).toFixed(2)}
+                        EUR {activeOrderTotal.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -2552,20 +2605,21 @@ export default function TableMenu() {
                     </span>
                   </div>
 
-                  {activeOrderItems.length === 0 ? (
+                  {activeOrderLineItems.length === 0 ? (
                     <div className="rounded-2xl border border-border/60 bg-card/70 px-4 py-6 text-center text-sm text-muted-foreground">
                       {t("menu.no_items", { defaultValue: "No items" })}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {activeOrderItems.map((item, index) => {
+                      {activeOrderLineItems.map((line) => {
+                        const { item, itemIndex, order, orderIndex } = line;
                         const fallback = t("menu.last_order_item_fallback", {
-                          index: index + 1,
-                          defaultValue: `Item ${index + 1}`,
+                          index: itemIndex + 1,
+                          defaultValue: `Item ${itemIndex + 1}`,
                         });
                         const name = getSubmittedOrderItemName(
                           item,
-                          index,
+                          itemIndex,
                           fallback
                         );
                         const quantity = getSubmittedOrderItemQuantity(item);
@@ -2573,7 +2627,7 @@ export default function TableMenu() {
                           getSubmittedOrderItemModifierLabels(item);
                         const itemStatus = getSubmittedOrderItemDisplayStatus(
                           item,
-                          activeOrderStatus
+                          order.status ?? activeOrderStatus
                         );
                         const itemStatusLabel = t(
                           `menu.item_status_${itemStatus.toLowerCase()}`,
@@ -2585,7 +2639,7 @@ export default function TableMenu() {
                         );
                         return (
                           <div
-                            key={`${activeOrder.id}-${item.id ?? item.itemId ?? index}`}
+                            key={`${order.id ?? orderIndex}-${item.id ?? item.itemId ?? itemIndex}`}
                             className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left"
                           >
                             <div className="flex min-w-0 items-start justify-between gap-3">
@@ -2625,7 +2679,7 @@ export default function TableMenu() {
                                       {modifierLabels.map(
                                         (label, labelIndex) => (
                                           <div
-                                            key={`${item.id ?? index}-${labelIndex}`}
+                                            key={`${order.id ?? orderIndex}-${item.id ?? itemIndex}-${labelIndex}`}
                                             className="break-words"
                                           >
                                             {label}

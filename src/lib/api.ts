@@ -567,10 +567,16 @@ export const api = {
         ),
   getPublicTableOrders: (
     tableId: string,
-    opts?: { status?: string; take?: number; storeSlug?: string }
+    opts?: {
+      status?: string;
+      unpaid?: boolean;
+      take?: number;
+      storeSlug?: string;
+    }
   ): Promise<OrdersResponse> => {
     const params = new URLSearchParams();
     if (opts?.status) params.set("status", opts.status);
+    if (opts?.unpaid) params.set("unpaid", "1");
     if (opts?.take) params.set("take", String(opts.take));
     const qs = params.toString();
     return fetchApi<OrdersResponse>(
