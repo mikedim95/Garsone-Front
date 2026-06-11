@@ -8,7 +8,7 @@ import {
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { ScrollArea } from '../ui/scroll-area';
@@ -189,7 +189,6 @@ export const SwipeableMenuView = ({
   items,
   selectedCategory,
   onCategoryChange,
-  onBack,
   onAddItem,
   onCheckout,
   onImmediateCheckout,
@@ -199,7 +198,6 @@ export const SwipeableMenuView = ({
   openCartSignal = 0,
   orderPlacedSignal = 0,
   showPaymentButton = true,
-  showBackButton = true,
   showAllCategory = true,
   showCartButton = true,
   cartBottomOffset = 'default',
@@ -608,42 +606,17 @@ export const SwipeableMenuView = ({
 
   return (
     <>
-      {/* Refined Category Navigation */}
+      {/* Category Navigation */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        className="sticky top-0 z-30 mb-5 -mx-4 px-0 pt-3 pb-2 sm:mx-0 sm:px-3"
+        className="sticky top-0 z-30 mb-4 -mx-4 border-b border-border/35 bg-background/95 px-0 py-2 backdrop-blur sm:mx-0 sm:px-3"
       >
-        <div className="relative overflow-hidden rounded-none border-y border-border/55 bg-gradient-to-b from-card/95 via-card/88 to-card/76 p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:rounded-[22px] sm:border">
-          <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-primary/45 to-transparent" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background/10 to-transparent" />
-          <div className="relative flex items-center gap-2 overflow-hidden rounded-none border border-border/30 bg-background/35 px-0 py-2 sm:rounded-[18px] sm:px-2">
-          <div className="pointer-events-none absolute inset-y-2 left-0 z-20 w-10 bg-gradient-to-r from-background/95 via-background/70 to-transparent" />
-          <div className="pointer-events-none absolute inset-y-2 right-0 z-20 w-10 bg-gradient-to-l from-background/95 via-background/70 to-transparent" />
-          {showBackButton && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onBack}
-              aria-label={t('common.back', { defaultValue: 'Back' })}
-              className="relative z-30 ml-2 h-10 w-10 shrink-0 rounded-full border border-border/45 bg-background/70 text-foreground/70 shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground sm:ml-0"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
-
-          <motion.div
-            aria-hidden="true"
-            className="pointer-events-none absolute left-12 top-1/2 z-20 hidden -translate-y-1/2 items-center text-primary/75 sm:flex"
-            animate={{ x: [0, -3, 0], opacity: [0.45, 0.9, 0.45] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </motion.div>
+        <div className="relative flex items-center overflow-hidden">
           <div
             ref={tabsContainerRef}
-            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-2 sm:px-5"
+            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-4 sm:px-0"
           >
             {allCategories.map((cat) => {
               const isActive = selectedCategory === cat.id;
@@ -658,59 +631,36 @@ export const SwipeableMenuView = ({
                   type="button"
                   onClick={() => handleCategorySelect(cat.id)}
                   whileTap={{ scale: 0.97 }}
-                  animate={hasSelectedItems ? { y: [0, -1, 0] } : { y: 0 }}
-                  transition={hasSelectedItems ? { duration: 1.8, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-                  className={`relative h-12 min-w-[96px] shrink-0 overflow-hidden rounded-2xl border px-3.5 text-left shadow-sm transition-all duration-300 ${
+                  className={`relative h-10 min-w-[88px] shrink-0 rounded-full border px-3 text-left transition-colors duration-200 ${
                     isActive
-                      ? 'border-primary/90 text-primary-foreground shadow-[0_12px_28px_rgba(0,0,0,0.20)]'
+                      ? 'border-primary bg-primary text-primary-foreground'
                       : hasSelectedItems
-                        ? 'border-primary/55 bg-primary/10 text-foreground ring-2 ring-primary/30 shadow-primary/10 hover:bg-primary/15'
-                        : 'border-border/35 bg-card/45 text-muted-foreground hover:border-primary/30 hover:bg-muted/65 hover:text-foreground hover:shadow-md'
+                        ? 'border-primary/45 bg-primary/10 text-foreground'
+                        : 'border-border/45 bg-transparent text-muted-foreground hover:border-border hover:text-foreground'
                   }`}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="active-category-pill"
-                      className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 shadow-[0_12px_28px_rgba(0,0,0,0.20)]"
+                      className="absolute inset-0 rounded-full bg-primary"
                       transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.8 }}
                     />
                   )}
-                  {isActive && (
-                    <span className="absolute inset-x-3 top-1 z-10 h-px rounded-full bg-primary-foreground/40" />
-                  )}
                   {hasSelectedItems && !isActive && (
-                    <motion.span
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute right-1.5 top-1.5 z-20 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground shadow"
+                    <span
+                      className="absolute right-1 top-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground"
                     >
                       {selectedCount}
-                    </motion.span>
-                  )}
-                  <span className="relative z-10 flex h-full flex-col justify-center">
-                    <span className="max-w-[140px] truncate text-[13px] font-semibold leading-4 tracking-normal">
-                      {cat.title}
                     </span>
-                    <span
-                      className={`mt-0.5 text-[10px] font-medium leading-3 tabular-nums ${
-                        isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/70'
-                      }`}
-                    >
-                      {cat.count}
+                  )}
+                  <span className="relative z-10 flex h-full items-center">
+                    <span className="max-w-[132px] truncate text-[13px] font-semibold leading-4 tracking-normal">
+                      {cat.title}
                     </span>
                   </span>
                 </motion.button>
               );
             })}
-          </div>
-          <motion.div
-            aria-hidden="true"
-            className="pointer-events-none absolute right-0 top-1/2 z-30 flex -translate-y-1/2 items-center rounded-full bg-background/70 p-1 text-primary/80 shadow-sm ring-1 ring-border/40 sm:right-3"
-            animate={{ x: [0, 4, 0], opacity: [0.55, 1, 0.55] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </motion.div>
           </div>
         </div>
       </motion.div>
@@ -727,9 +677,10 @@ export const SwipeableMenuView = ({
             custom={swipeDirection}
             drag="x"
             dragDirectionLock
-            dragConstraints={{ left: -96, right: 96 }}
-            dragElastic={0.08}
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.14}
             dragMomentum={false}
+            dragSnapToOrigin
             onDragStart={handleContentDragStart}
             onDragEnd={handleContentDragEnd}
             initial={(direction: number) => ({
@@ -857,19 +808,8 @@ export const SwipeableMenuView = ({
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
-          className="pointer-events-auto grid w-full max-w-lg grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 rounded-full border border-border/25 bg-card/80 p-1.5 shadow-xl backdrop-blur-md"
+          className="pointer-events-auto grid w-full max-w-lg grid-cols-[minmax(0,1fr)_3rem] items-center gap-2 rounded-full border border-border/25 bg-card/80 p-1.5 shadow-xl backdrop-blur-md"
         >
-          <motion.button
-            type="button"
-            onClick={onBack}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            aria-label={t('common.back', { defaultValue: 'Back' })}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/55 text-muted-foreground transition-all duration-300 hover:bg-muted hover:text-foreground"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </motion.button>
-
           {/* Order button - dominant center action */}
           {showCartButton ? (
             <motion.button
