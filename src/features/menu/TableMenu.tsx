@@ -2321,7 +2321,7 @@ export default function TableMenu() {
                 : { type: "spring", stiffness: 350, damping: 28, mass: 0.8 },
               whileDrag: { scale: 0.995 },
             }}
-            className="!left-0 !right-0 !bottom-0 !top-auto h-[min(86dvh,100dvh)] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-[82dvh] xl:max-h-[calc(100dvh-0.75rem)] xl:!w-auto xl:!max-w-lg xl:rounded-2xl xl:border xl:![translate:-50%_-50%]"
+            className="!left-0 !right-0 !bottom-0 !top-auto h-[min(86dvh,100dvh)] max-h-[100dvh] !w-auto !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-[82dvh] xl:max-h-[calc(100dvh-0.75rem)] xl:!w-full xl:!max-w-lg xl:rounded-2xl xl:border xl:![translate:-50%_-50%]"
           >
             <DialogTitle className="sr-only">
               {t("menu.active_order_heading", {
@@ -2360,23 +2360,27 @@ export default function TableMenu() {
                   >
                     <X className="h-4 w-4" />
                   </button>
-                  <div className="pr-11">
+                  <div className="min-w-0 pr-12">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80">
                       <span className={clsx("h-2 w-2 rounded-full", activeOrderTone.dot)} />
                       {activeOrderStatusLabel}
                     </div>
-                    <h2 className="mt-2 text-2xl font-bold">
+                    <h2 className="mt-2 max-w-full whitespace-normal break-words text-xl font-bold leading-tight sm:text-2xl">
                       {t("menu.active_order_heading", {
                         defaultValue: "Your active order",
                       })}
                     </h2>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/86">
+                    <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-sm text-white/86">
                       <span className="inline-flex items-center gap-1.5">
                         <Clock3 className="h-4 w-4" />
                         {activeOrderPlacedTime}
                       </span>
-                      <span>#{(activeOrder.id || "").slice(-6).toUpperCase()}</span>
-                      <span>EUR {computeOrderTotal(activeOrder).toFixed(2)}</span>
+                      <span className="break-all">
+                        #{(activeOrder.id || "").slice(-6).toUpperCase()}
+                      </span>
+                      <span className="whitespace-nowrap">
+                        EUR {computeOrderTotal(activeOrder).toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2471,17 +2475,19 @@ export default function TableMenu() {
                 </div>
 
                 <div className="shrink-0 border-t border-border/60 bg-background/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                  <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
-                    {activeOrder.status === "CANCELLED"
-                      ? t("menu.cancelled_order_dismiss_hint", {
-                          defaultValue:
-                            "This order was canceled. Close with X to remove this notice.",
-                        })
-                      : t("menu.order_status_readonly_desc", {
-                          defaultValue:
-                            "This order is shown for status only. Start a category to create a new order.",
-                        })}
+                  <div className="flex items-start gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 whitespace-normal break-words leading-relaxed">
+                      {activeOrder.status === "CANCELLED"
+                        ? t("menu.cancelled_order_dismiss_hint", {
+                            defaultValue:
+                              "This order was canceled. Close with X to remove this notice.",
+                          })
+                        : t("menu.order_status_readonly_desc", {
+                            defaultValue:
+                              "This order is shown for status only. Start a category to create a new order.",
+                          })}
+                    </span>
                   </div>
                 </div>
               </div>
