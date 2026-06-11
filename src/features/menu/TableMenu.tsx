@@ -486,8 +486,33 @@ const getSubmittedOrderItemName = (
 const getSubmittedOrderItemQuantity = (item?: SubmittedOrderItem | null) =>
   Math.max(1, Number(item?.quantity ?? item?.qty ?? 1));
 
+const getSubmittedOrderItemUnitPriceCents = (
+  item?: SubmittedOrderItem | null
+) => {
+  if (typeof item?.unitPriceCents === "number") return item.unitPriceCents;
+  if (typeof item?.unitPrice === "number") return Math.round(item.unitPrice * 100);
+  return null;
+};
+
+const isSubmittedOrderItemCancelled = (
+  item?: SubmittedOrderItem | null
+) => String(item?.status ?? "").toUpperCase() === "CANCELLED";
+
 const computeSubmittedOrderTotal = (order: SubmittedOrderSummary | null) => {
   if (!order) return 0;
+  if (order.status === "CANCELLED") return 0;
+  if (order.items?.length) {
+    const pricedItems = order.items
+      .filter((item) => !isSubmittedOrderItemCancelled(item))
+      .map((item) => {
+        const unitPriceCents = getSubmittedOrderItemUnitPriceCents(item);
+        if (unitPriceCents === null) return null;
+        return unitPriceCents * getSubmittedOrderItemQuantity(item);
+      });
+    if (pricedItems.every((total): total is number => total !== null)) {
+      return pricedItems.reduce((sum, total) => sum + total, 0) / 100;
+    }
+  }
   if (typeof order.total === "number") return order.total;
   if (typeof order.totalCents === "number") return order.totalCents / 100;
   return 0;
