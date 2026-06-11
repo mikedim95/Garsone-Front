@@ -8,7 +8,7 @@ import {
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { ScrollArea } from '../ui/scroll-area';
@@ -189,6 +189,7 @@ export const SwipeableMenuView = ({
   items,
   selectedCategory,
   onCategoryChange,
+  onBack,
   onAddItem,
   onCheckout,
   onImmediateCheckout,
@@ -198,6 +199,7 @@ export const SwipeableMenuView = ({
   openCartSignal = 0,
   orderPlacedSignal = 0,
   showPaymentButton = true,
+  showBackButton = true,
   showAllCategory = true,
   showCartButton = true,
   cartBottomOffset = 'default',
@@ -631,7 +633,7 @@ export const SwipeableMenuView = ({
                   type="button"
                   onClick={() => handleCategorySelect(cat.id)}
                   whileTap={{ scale: 0.97 }}
-                  className={`relative h-10 min-w-[88px] shrink-0 rounded-full border px-3 text-left transition-colors duration-200 ${
+                  className={`relative h-10 min-w-[88px] shrink-0 rounded-full border px-3 text-center transition-colors duration-200 ${
                     isActive
                       ? 'border-primary bg-primary text-primary-foreground'
                       : hasSelectedItems
@@ -653,8 +655,8 @@ export const SwipeableMenuView = ({
                       {selectedCount}
                     </span>
                   )}
-                  <span className="relative z-10 flex h-full items-center">
-                    <span className="max-w-[132px] truncate text-[13px] font-semibold leading-4 tracking-normal">
+                  <span className="relative z-10 flex h-full items-center justify-center">
+                    <span className="max-w-[132px] truncate text-center text-[13px] font-semibold leading-4 tracking-normal">
                       {cat.title}
                     </span>
                   </span>
@@ -808,8 +810,23 @@ export const SwipeableMenuView = ({
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
-          className="pointer-events-auto grid w-full max-w-lg grid-cols-[minmax(0,1fr)_3rem] items-center gap-2 rounded-full border border-border/25 bg-card/80 p-1.5 shadow-xl backdrop-blur-md"
+          className="pointer-events-auto grid w-full max-w-lg grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 rounded-full border border-border/25 bg-card/80 p-1.5 shadow-xl backdrop-blur-md"
         >
+          {showBackButton ? (
+            <motion.button
+              type="button"
+              onClick={onBack}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              aria-label={t('common.back', { defaultValue: 'Back' })}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/55 text-muted-foreground transition-all duration-300 hover:bg-muted hover:text-foreground"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </motion.button>
+          ) : (
+            <div aria-hidden="true" />
+          )}
+
           {/* Order button - dominant center action */}
           {showCartButton ? (
             <motion.button

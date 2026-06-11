@@ -2734,7 +2734,7 @@ export default function ManagerDashboard() {
                 onClick={() => window.location.reload()}
               >
                 <RefreshCcw className="mr-2 h-4 w-4" />
-                Refresh
+                {t("manager.refresh", { defaultValue: "Refresh" })}
               </Button>
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs">
                 <span className="text-muted-foreground">
@@ -2750,7 +2750,9 @@ export default function ManagerDashboard() {
                   onCheckedChange={(checked) =>
                     setManagerMode(checked ? "pro" : "basic")
                   }
-                  aria-label="Toggle manager mode"
+                  aria-label={t("manager.toggle_manager_mode", {
+                    defaultValue: "Toggle manager mode",
+                  })}
                 />
               </div>
             </div>
@@ -3783,10 +3785,14 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">
-                              Activity
+                              {t("manager.activity", {
+                                defaultValue: "Activity",
+                              })}
                             </p>
                             <h3 className="text-lg font-semibold">
-                              Recent orders
+                              {t("manager.recent_orders", {
+                                defaultValue: "Recent orders",
+                              })}
                             </h3>
                           </div>
                         </div>
@@ -3794,10 +3800,18 @@ export default function ManagerDashboard() {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-left text-xs text-muted-foreground border-b">
-                                <th className="py-2">Order</th>
-                                <th className="py-2">Table</th>
-                                <th className="py-2">Status</th>
-                                <th className="py-2">Placed</th>
+                                <th className="py-2">
+                                  {t("manager.order", { defaultValue: "Order" })}
+                                </th>
+                                <th className="py-2">
+                                  {t("manager.table", { defaultValue: "Table" })}
+                                </th>
+                                <th className="py-2">
+                                  {t("manager.status", { defaultValue: "Status" })}
+                                </th>
+                                <th className="py-2">
+                                  {t("manager.placed", { defaultValue: "Placed" })}
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -4093,14 +4107,20 @@ export default function ManagerDashboard() {
                         <TabsContent value="waiter-types" className="mt-0 space-y-4">
                           <div className="flex items-center justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Define waiter roles and their printer routing
+                              {t("manager.waiter_types_description", {
+                                defaultValue:
+                                  "Define waiter roles and their printer routing",
+                              })}
                             </p>
                             <Button
                               onClick={() => setAddWaiterTypeModalOpen(true)}
                               size="sm"
                               className="inline-flex items-center gap-2"
                             >
-                              <Plus className="h-4 w-4" /> Add type
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.add_type", {
+                                defaultValue: "Add type",
+                              })}
                             </Button>
                           </div>
                           {loadingTypes ? (
@@ -4109,7 +4129,10 @@ export default function ManagerDashboard() {
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
                               <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
-                                No waiter types yet. Create types to categorize your waiters.
+                                {t("manager.no_waiter_types", {
+                                  defaultValue:
+                                    "No waiter types yet. Create types to categorize your waiters.",
+                                })}
                               </p>
                             </div>
                           ) : (
@@ -4126,7 +4149,15 @@ export default function ManagerDashboard() {
                                     <div className="min-w-0">
                                       <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
                                       <p className="text-[10px] text-muted-foreground">
-                                        Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                        {t("manager.printer_label", {
+                                          defaultValue: "Printer",
+                                        })}
+                                        :{" "}
+                                        {type.printerTopic && printerTopics.includes(type.printerTopic)
+                                          ? type.printerTopic
+                                          : t("manager.none", {
+                                              defaultValue: "none",
+                                            })}
                                       </p>
                                     </div>
                                   </div>
@@ -4163,14 +4194,20 @@ export default function ManagerDashboard() {
                         <TabsContent value="cook-types" className="mt-0 space-y-4">
                           <div className="flex items-center justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Define cook specializations and printer routing
+                              {t("manager.cook_types_description", {
+                                defaultValue:
+                                  "Define cook specializations and printer routing",
+                              })}
                             </p>
                             <Button
                               onClick={() => setAddCookTypeModalOpen(true)}
                               size="sm"
                               className="inline-flex items-center gap-2"
                             >
-                              <Plus className="h-4 w-4" /> Add type
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.add_type", {
+                                defaultValue: "Add type",
+                              })}
                             </Button>
                           </div>
                           {loadingTypes ? (
@@ -4179,7 +4216,10 @@ export default function ManagerDashboard() {
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
                               <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
-                                No cook types yet. Create types to categorize your kitchen staff.
+                                {t("manager.no_cook_types", {
+                                  defaultValue:
+                                    "No cook types yet. Create types to categorize your kitchen staff.",
+                                })}
                               </p>
                             </div>
                           ) : (
@@ -4196,7 +4236,15 @@ export default function ManagerDashboard() {
                                     <div className="min-w-0">
                                       <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
                                       <p className="text-[10px] text-muted-foreground">
-                                        Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                        {t("manager.printer_label", {
+                                          defaultValue: "Printer",
+                                        })}
+                                        :{" "}
+                                        {type.printerTopic && printerTopics.includes(type.printerTopic)
+                                          ? type.printerTopic
+                                          : t("manager.none", {
+                                              defaultValue: "none",
+                                            })}
                                       </p>
                                     </div>
                                   </div>
@@ -4391,12 +4439,19 @@ export default function ManagerDashboard() {
                   <Card className="p-4 sm:p-6 space-y-4">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                       <div>
-                        <p className="text-sm text-muted-foreground">Floor</p>
+                        <p className="text-sm text-muted-foreground">
+                          {t("manager.floor", { defaultValue: "Floor" })}
+                        </p>
                         <h3 className="text-lg font-semibold">
-                          Tables and QR tiles
+                          {t("manager.tables_qr_tiles", {
+                            defaultValue: "Tables and QR tiles",
+                          })}
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                          Create tables and link each one to a QR tile already assigned from Architect.
+                          {t("manager.tables_qr_tiles_description", {
+                            defaultValue:
+                              "Create tables and link each one to a QR tile already assigned from Architect.",
+                          })}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 self-start">
@@ -4415,7 +4470,7 @@ export default function ManagerDashboard() {
                           ) : (
                             <RefreshCcw className="h-4 w-4" />
                           )}
-                          Refresh
+                          {t("manager.refresh", { defaultValue: "Refresh" })}
                         </Button>
                         <Button
                           onClick={openCreateTable}
@@ -4427,17 +4482,27 @@ export default function ManagerDashboard() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="rounded-xl border border-border/60 bg-card p-4">
-                        <p className="text-xs text-muted-foreground">Tables</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t("manager.tables", { defaultValue: "Tables" })}
+                        </p>
                         <p className="mt-2 text-2xl font-semibold">{tablesOverview.length}</p>
                       </div>
                       <div className="rounded-xl border border-border/60 bg-card p-4">
-                        <p className="text-xs text-muted-foreground">Linked QR tiles</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t("manager.linked_qr_tiles", {
+                            defaultValue: "Linked QR tiles",
+                          })}
+                        </p>
                         <p className="mt-2 text-2xl font-semibold">
                           {Array.from(assignedQrTileByTableId.keys()).length}
                         </p>
                       </div>
                       <div className="rounded-xl border border-border/60 bg-card p-4">
-                        <p className="text-xs text-muted-foreground">Available QR tiles</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t("manager.available_qr_tiles", {
+                            defaultValue: "Available QR tiles",
+                          })}
+                        </p>
                         <p className="mt-2 text-2xl font-semibold">
                           {qrTiles.filter((tile) => !tile.tableId).length}
                         </p>
@@ -4743,9 +4808,21 @@ export default function ManagerDashboard() {
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="text-left text-xs text-muted-foreground border-b">
-                                  <th className="py-2">Category</th>
-                                  <th className="py-2">Rising</th>
-                                  <th className="py-2">Falling</th>
+                                  <th className="py-2">
+                                    {t("manager.category", {
+                                      defaultValue: "Category",
+                                    })}
+                                  </th>
+                                  <th className="py-2">
+                                    {t("manager.rising", {
+                                      defaultValue: "Rising",
+                                    })}
+                                  </th>
+                                  <th className="py-2">
+                                    {t("manager.falling", {
+                                      defaultValue: "Falling",
+                                    })}
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -5034,12 +5111,18 @@ export default function ManagerDashboard() {
         <Dialog open={editCookModalOpen} onOpenChange={closeEditCookModal}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit cook</DialogTitle>
+              <DialogTitle>
+                {t("manager.edit_cook", { defaultValue: "Edit cook" })}
+              </DialogTitle>
             </DialogHeader>
             {activeCook ? (
               <div className="space-y-4">
                 <DialogFormField index={0}>
-                  <Label htmlFor="cook-name">Display name</Label>
+                  <Label htmlFor="cook-name">
+                    {t("manager.display_name", {
+                      defaultValue: "Display name",
+                    })}
+                  </Label>
                   <Input
                     id="cook-name"
                     value={activeCook.displayName}
@@ -5051,7 +5134,7 @@ export default function ManagerDashboard() {
                   />
                 </DialogFormField>
                 <DialogFormField index={1}>
-                  <Label>Type</Label>
+                  <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
                   <Select
                     value={activeCook.cookTypeId ?? "none"}
                     onValueChange={(value) =>
@@ -5066,10 +5149,16 @@ export default function ManagerDashboard() {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
+                      <SelectValue
+                        placeholder={t("manager.select_type", {
+                          defaultValue: "Select type",
+                        })}
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No type</SelectItem>
+                      <SelectItem value="none">
+                        {t("manager.no_type", { defaultValue: "No type" })}
+                      </SelectItem>
                       {cookTypes.map((type) => (
                         <SelectItem key={type.id} value={type.id}>
                           {type.title}
@@ -5116,7 +5205,9 @@ export default function ManagerDashboard() {
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
-                <Label htmlFor="new-waiter-email">Email</Label>
+                <Label htmlFor="new-waiter-email">
+                  {t("auth.email", { defaultValue: "Email" })}
+                </Label>
                 <Input
                   id="new-waiter-email"
                   type="email"
@@ -5172,7 +5263,9 @@ export default function ManagerDashboard() {
                 </Select>
               </DialogFormField>
               <DialogFormField index={3}>
-                <Label htmlFor="new-waiter-password">Password</Label>
+                <Label htmlFor="new-waiter-password">
+                  {t("auth.password", { defaultValue: "Password" })}
+                </Label>
                 <Input
                   id="new-waiter-password"
                   type="password"
@@ -5220,11 +5313,15 @@ export default function ManagerDashboard() {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add cook</DialogTitle>
+              <DialogTitle>
+                {t("manager.add_cook", { defaultValue: "Add cook" })}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
-                <Label htmlFor="new-cook-email">Email</Label>
+                <Label htmlFor="new-cook-email">
+                  {t("auth.email", { defaultValue: "Email" })}
+                </Label>
                 <Input
                   id="new-cook-email"
                   type="email"
@@ -5235,7 +5332,11 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={1}>
-                <Label htmlFor="new-cook-name">Display name</Label>
+                <Label htmlFor="new-cook-name">
+                  {t("manager.display_name", {
+                    defaultValue: "Display name",
+                  })}
+                </Label>
                 <Input
                   id="new-cook-name"
                   value={newCook.displayName}
@@ -5248,7 +5349,7 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={2}>
-                <Label>Type</Label>
+                <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
                 <Select
                   value={newCook.cookTypeId ?? "none"}
                   onValueChange={(value) =>
@@ -5257,12 +5358,18 @@ export default function ManagerDashboard() {
                       cookTypeId: value === "none" ? null : value,
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
+                  >
+                    <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("manager.select_type", {
+                        defaultValue: "Select type",
+                      })}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No type</SelectItem>
+                    <SelectItem value="none">
+                      {t("manager.no_type", { defaultValue: "No type" })}
+                    </SelectItem>
                     {cookTypes.map((type) => (
                       <SelectItem key={type.id} value={type.id}>
                         {type.title}
@@ -5272,7 +5379,9 @@ export default function ManagerDashboard() {
                 </Select>
               </DialogFormField>
               <DialogFormField index={3}>
-                <Label htmlFor="new-cook-password">Password</Label>
+                <Label htmlFor="new-cook-password">
+                  {t("auth.password", { defaultValue: "Password" })}
+                </Label>
                 <Input
                   id="new-cook-password"
                   type="password"
@@ -5296,7 +5405,7 @@ export default function ManagerDashboard() {
                 className="inline-flex items-center gap-2"
               >
                 {addingCook && <Loader2 className="h-4 w-4 animate-spin" />}
-                Create cook
+                {t("manager.create_cook", { defaultValue: "Create cook" })}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -5313,11 +5422,17 @@ export default function ManagerDashboard() {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add cook type</DialogTitle>
+              <DialogTitle>
+                {t("manager.add_cook_type", {
+                  defaultValue: "Add cook type",
+                })}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
-                <Label htmlFor="cook-type-title">Title</Label>
+                <Label htmlFor="cook-type-title">
+                  {t("manager.title", { defaultValue: "Title" })}
+                </Label>
                 <Input
                   id="cook-type-title"
                   value={newCookType.title}
@@ -5330,7 +5445,11 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={1}>
-                <Label>Printer topic</Label>
+                <Label>
+                  {t("manager.printer_topic", {
+                    defaultValue: "Printer topic",
+                  })}
+                </Label>
                 <Select
                   value={newCookType.printerTopic || NO_PRINTER_VALUE}
                   onValueChange={(value) =>
@@ -5339,12 +5458,18 @@ export default function ManagerDashboard() {
                       printerTopic: value === NO_PRINTER_VALUE ? "" : value,
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select printer" />
+                  >
+                    <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("manager.select_printer", {
+                        defaultValue: "Select printer",
+                      })}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                    <SelectItem value={NO_PRINTER_VALUE}>
+                      {t("manager.no_printer", { defaultValue: "No printer" })}
+                    </SelectItem>
                     {printerTopics.map((topic) => (
                       <SelectItem key={topic} value={topic}>
                         {topic}
@@ -5354,7 +5479,10 @@ export default function ManagerDashboard() {
                 </Select>
                 {printerTopics.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No printers configured in Architect settings.
+                    {t("manager.no_printers_configured", {
+                      defaultValue:
+                        "No printers configured in Architect settings.",
+                    })}
                   </p>
                 ) : null}
               </DialogFormField>
@@ -5372,7 +5500,7 @@ export default function ManagerDashboard() {
                 className="inline-flex items-center gap-2"
               >
                 {addingCookType && <Loader2 className="h-4 w-4 animate-spin" />}
-                Create type
+                {t("manager.create_type", { defaultValue: "Create type" })}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -5389,12 +5517,18 @@ export default function ManagerDashboard() {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit cook type</DialogTitle>
+              <DialogTitle>
+                {t("manager.edit_cook_type", {
+                  defaultValue: "Edit cook type",
+                })}
+              </DialogTitle>
             </DialogHeader>
             {activeCookType ? (
               <div className="space-y-4">
                 <DialogFormField index={0}>
-                  <Label htmlFor="edit-cook-type-title">Title</Label>
+                  <Label htmlFor="edit-cook-type-title">
+                    {t("manager.title", { defaultValue: "Title" })}
+                  </Label>
                   <Input
                     id="edit-cook-type-title"
                     value={activeCookType.title}
@@ -5406,7 +5540,11 @@ export default function ManagerDashboard() {
                   />
                 </DialogFormField>
                 <DialogFormField index={1}>
-                  <Label>Printer topic</Label>
+                  <Label>
+                    {t("manager.printer_topic", {
+                      defaultValue: "Printer topic",
+                    })}
+                  </Label>
                   <Select
                     value={resolvePrinterValue(activeCookType.printerTopic, printerTopics)}
                     onValueChange={(value) =>
@@ -5422,10 +5560,18 @@ export default function ManagerDashboard() {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select printer" />
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", {
+                          defaultValue: "No printer",
+                        })}
+                      </SelectItem>
                       {buildPrinterOptions(printerTopics).map((topic) => (
                         <SelectItem key={topic} value={topic}>
                           {topic}
@@ -5435,7 +5581,10 @@ export default function ManagerDashboard() {
                   </Select>
                   {printerTopics.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      No printers configured in Architect settings.
+                      {t("manager.no_printers_configured", {
+                        defaultValue:
+                          "No printers configured in Architect settings.",
+                      })}
                     </p>
                   ) : null}
                 </DialogFormField>
@@ -5473,11 +5622,17 @@ export default function ManagerDashboard() {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add waiter type</DialogTitle>
+              <DialogTitle>
+                {t("manager.add_waiter_type", {
+                  defaultValue: "Add waiter type",
+                })}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
-                <Label htmlFor="waiter-type-title">Title</Label>
+                <Label htmlFor="waiter-type-title">
+                  {t("manager.title", { defaultValue: "Title" })}
+                </Label>
                 <Input
                   id="waiter-type-title"
                   value={newWaiterType.title}
@@ -5490,7 +5645,11 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={1}>
-                <Label htmlFor="waiter-type-topic">Printer topic</Label>
+                <Label htmlFor="waiter-type-topic">
+                  {t("manager.printer_topic", {
+                    defaultValue: "Printer topic",
+                  })}
+                </Label>
                 <Select
                   value={newWaiterType.printerTopic || NO_PRINTER_VALUE}
                   onValueChange={(value) =>
@@ -5499,12 +5658,18 @@ export default function ManagerDashboard() {
                       printerTopic: value === NO_PRINTER_VALUE ? "" : value,
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select printer" />
+                  >
+                    <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("manager.select_printer", {
+                        defaultValue: "Select printer",
+                      })}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                    <SelectItem value={NO_PRINTER_VALUE}>
+                      {t("manager.no_printer", { defaultValue: "No printer" })}
+                    </SelectItem>
                     {printerTopics.map((topic) => (
                       <SelectItem key={topic} value={topic}>
                         {topic}
@@ -5514,7 +5679,10 @@ export default function ManagerDashboard() {
                 </Select>
                 {printerTopics.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No printers configured in Architect settings.
+                    {t("manager.no_printers_configured", {
+                      defaultValue:
+                        "No printers configured in Architect settings.",
+                    })}
                   </p>
                 ) : null}
               </DialogFormField>
@@ -5534,7 +5702,7 @@ export default function ManagerDashboard() {
                 {addingWaiterType && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
-                Create type
+                {t("manager.create_type", { defaultValue: "Create type" })}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -5551,12 +5719,18 @@ export default function ManagerDashboard() {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit waiter type</DialogTitle>
+              <DialogTitle>
+                {t("manager.edit_waiter_type", {
+                  defaultValue: "Edit waiter type",
+                })}
+              </DialogTitle>
             </DialogHeader>
             {activeWaiterType ? (
               <div className="space-y-4">
                 <DialogFormField index={0}>
-                  <Label htmlFor="edit-waiter-type-title">Title</Label>
+                  <Label htmlFor="edit-waiter-type-title">
+                    {t("manager.title", { defaultValue: "Title" })}
+                  </Label>
                   <Input
                     id="edit-waiter-type-title"
                     value={activeWaiterType.title}
@@ -5568,7 +5742,11 @@ export default function ManagerDashboard() {
                   />
                 </DialogFormField>
                 <DialogFormField index={1}>
-                  <Label>Printer topic</Label>
+                  <Label>
+                    {t("manager.printer_topic", {
+                      defaultValue: "Printer topic",
+                    })}
+                  </Label>
                   <Select
                     value={resolvePrinterValue(activeWaiterType.printerTopic, printerTopics)}
                     onValueChange={(value) =>
@@ -5584,10 +5762,18 @@ export default function ManagerDashboard() {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select printer" />
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", {
+                          defaultValue: "No printer",
+                        })}
+                      </SelectItem>
                       {buildPrinterOptions(printerTopics).map((topic) => (
                         <SelectItem key={topic} value={topic}>
                           {topic}
@@ -5597,7 +5783,10 @@ export default function ManagerDashboard() {
                   </Select>
                   {printerTopics.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      No printers configured in Architect settings.
+                      {t("manager.no_printers_configured", {
+                        defaultValue:
+                          "No printers configured in Architect settings.",
+                      })}
                     </p>
                   ) : null}
                 </DialogFormField>
