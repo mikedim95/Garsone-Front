@@ -45,7 +45,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
-  Pencil,
   ShoppingBag,
   X,
 } from "lucide-react";
@@ -581,6 +580,36 @@ const getStoredName = () => {
   }
 };
 
+const readDismissedOrderIds = (storageKey: string | null) => {
+  if (typeof window === "undefined" || !storageKey) return new Set<string>();
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "[]");
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === "string")
+        : []
+    );
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const writeDismissedOrderIds = (storageKey: string | null, ids: Set<string>) => {
+  if (typeof window === "undefined" || !storageKey) return;
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(Array.from(ids)));
+  } catch (error) {
+    console.warn("Failed to persist dismissed order notices", error);
+  }
+};
+
+const clearStoredLastOrder = () => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem("table:last-order");
+  } catch {}
+};
+
 export default function TableMenu() {
   const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
@@ -635,16 +664,18 @@ export default function TableMenu() {
     "idle"
   );
   const [callPrompted, setCallPrompted] = useState(false);
-  const [highlightLastOrderButton, setHighlightLastOrderButton] = useState(
+  const [lastOrderButtonVisible, setLastOrderButtonVisible] = useState(
     () => {
       if (typeof window === "undefined") return false;
       return new URLSearchParams(window.location.search).get("highlightLastOrder") === "1";
     }
   );
-  const [activeOrderBarExpanded, setActiveOrderBarExpanded] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(null);
   const [placedOrders, setPlacedOrders] = useState<SubmittedOrderSummary[]>([]);
+  const [dismissedOrderIds, setDismissedOrderIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [placedLoading, setPlacedLoading] = useState(false);
   const [placedError, setPlacedError] = useState<string | null>(null);
   const [activeOrdersOpen, setActiveOrdersOpen] = useState(false);
@@ -667,18 +698,32 @@ export default function TableMenu() {
     "PAID",
     "CANCELLED",
   ];
-  const canEditLastOrder = lastOrderStatus === "PLACED" && !!lastOrder?.id;
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
-  const activeOrder = lastOrder ?? placedOrders[0] ?? null;
+  const dismissedOrderStorageKey = activeTableId
+    ? `menu:dismissed-orders:${storeSlug || "store"}:${activeTableId}`
+    : null;
+  const isOrderDismissed = (order?: SubmittedOrderSummary | null) =>
+    Boolean(order?.id && dismissedOrderIds.has(order.id));
+  const visiblePlacedOrders = placedOrders.filter(
+    (order) => !isOrderDismissed(order)
+  );
+  const latestVisibleOrder = !isOrderDismissed(lastOrder)
+    ? lastOrder ?? visiblePlacedOrders[0] ?? null
+    : visiblePlacedOrders[0] ?? null;
+  const shouldShowLastOrderButton =
+    lastOrderButtonVisible &&
+    !categorySelected &&
+    !activeOrderOpen &&
+    Boolean(latestVisibleOrder);
+  const activeOrder =
+    activeOrderOpen || shouldShowLastOrderButton ? latestVisibleOrder : null;
   const activeOrderStatus = activeOrder?.status ?? "PLACED";
   const activeOrderTone = getStatusTone(activeOrderStatus);
   const activeOrderStatusLabel = t(`status.${activeOrderStatus}`, {
     defaultValue: activeOrderStatus,
   });
-  const hasActiveOrderBar = Boolean(activeOrder);
-  const hasExpandedActiveOrderBar = hasActiveOrderBar && activeOrderBarExpanded;
-  const canEditActiveOrder =
-    activeOrderStatus === "PLACED" && Boolean(activeOrder?.id);
+  const hasActiveOrderBar = shouldShowLastOrderButton;
+  const hasExpandedActiveOrderBar = false;
   const activeLineCartItem =
     activeLineEditor !== null ? cartItems[activeLineEditor.cartIndex] : null;
   const activeOrderPlacedTime = new Date(
@@ -689,8 +734,7 @@ export default function TableMenu() {
   });
 
   const minimizeActiveOrderSheet = () => {
-    setHighlightLastOrderButton(false);
-    setActiveOrderBarExpanded(false);
+    setLastOrderButtonVisible(false);
 
     if (typeof window === "undefined") {
       setActiveOrderOpen(false);
@@ -736,10 +780,85 @@ export default function TableMenu() {
 
   const handleActiveOrderOpenChange = (open: boolean) => {
     if (!open) {
-      setActiveOrderBarExpanded(false);
-      setActiveOrderSheetMinimizing(false);
+      closeActiveOrderNotice(activeOrder);
+      return;
     }
     setActiveOrderOpen(open);
+  };
+
+  const clearLastOrderUrlFlag = () => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(location.search);
+    if (!params.has("highlightLastOrder")) return;
+    params.delete("highlightLastOrder");
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+      },
+      { replace: true }
+    );
+  };
+
+  const hideLastOrderButton = () => {
+    setLastOrderButtonVisible(false);
+    clearLastOrderUrlFlag();
+  };
+
+  const dismissOrderNotice = (order: SubmittedOrderSummary | null) => {
+    if (!order?.id) {
+      hideLastOrderButton();
+      setActiveOrderOpen(false);
+      return;
+    }
+    const orderId = order.id;
+    setDismissedOrderIds((prev) => {
+      const next = new Set(prev);
+      next.add(orderId);
+      writeDismissedOrderIds(dismissedOrderStorageKey, next);
+      return next;
+    });
+    setPlacedOrders((prev) => prev.filter((entry) => entry.id !== orderId));
+    setLastOrder((prev) => (prev?.id === orderId ? null : prev));
+    if (editingOrderId === orderId) {
+      clearCart();
+      stopEditingLastOrder();
+    }
+    hideLastOrderButton();
+    setActiveOrderOpen(false);
+    setActiveOrderSheetMinimizing(false);
+  };
+
+  const closeActiveOrderNotice = (order: SubmittedOrderSummary | null) => {
+    if (order?.status === "CANCELLED") {
+      dismissOrderNotice(order);
+      return;
+    }
+    hideLastOrderButton();
+    setActiveOrderOpen(false);
+    setActiveOrderSheetMinimizing(false);
+  };
+
+  const handleViewLastOrder = () => {
+    if (!latestVisibleOrder) return;
+    hideLastOrderButton();
+    setLastOrder(latestVisibleOrder);
+    setActiveOrderOpen(true);
+  };
+
+  const startFreshOrderFromCategory = (catId: string) => {
+    hideLastOrderButton();
+    setActiveOrderOpen(false);
+    setLastOrder(null);
+    setPlacedOrders([]);
+    clearStoredLastOrder();
+    if (editingOrderId) {
+      clearCart();
+      stopEditingLastOrder();
+    }
+    setSelectedCategory(catId);
+    setCategorySelected(true);
   };
 
   const setMenuCache = useMenuStore((s) => s.setMenu);
@@ -842,16 +961,14 @@ export default function TableMenu() {
   }, [cartItems]);
 
   useEffect(() => {
-    const shouldHighlight =
+    const shouldShowLastOrder =
       new URLSearchParams(location.search).get("highlightLastOrder") === "1";
-    if (!shouldHighlight) return;
-    setHighlightLastOrderButton(true);
-    const timer = window.setTimeout(
-      () => setHighlightLastOrderButton(false),
-      4500
-    );
-    return () => window.clearTimeout(timer);
+    setLastOrderButtonVisible(shouldShowLastOrder);
   }, [location.search]);
+
+  useEffect(() => {
+    setDismissedOrderIds(readDismissedOrderIds(dismissedOrderStorageKey));
+  }, [dismissedOrderStorageKey]);
 
   useEffect(() => {
     if (!bootstrapError) return;
@@ -990,14 +1107,6 @@ export default function TableMenu() {
   }, []);
 
   useEffect(() => {
-    if (!activeOrder?.id) {
-      setActiveOrderBarExpanded(false);
-      return;
-    }
-    setActiveOrderBarExpanded(true);
-  }, [activeOrder?.id, activeOrder?.status]);
-
-  useEffect(() => {
     if (!activeTableId) {
       setPlacedOrders([]);
       return;
@@ -1012,9 +1121,12 @@ export default function TableMenu() {
           take: 10,
         });
         if (cancelled) return;
-        const summaries = (res?.orders ?? []).map(toOrderSummary);
+        const dismissedIds = readDismissedOrderIds(dismissedOrderStorageKey);
+        const summaries = (res?.orders ?? [])
+          .map(toOrderSummary)
+          .filter((order) => !order.id || !dismissedIds.has(order.id));
         setPlacedOrders(summaries);
-        if (summaries[0]) {
+        if ((lastOrderButtonVisible || activeOrderOpen) && summaries[0]) {
           setLastOrder((prev) =>
             prev && prev.id === summaries[0].id
               ? { ...prev, ...summaries[0] }
@@ -1037,7 +1149,7 @@ export default function TableMenu() {
     return () => {
       cancelled = true;
     };
-  }, [activeTableId, storeSlug]);
+  }, [activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     if (!order) return 0;
@@ -1077,6 +1189,7 @@ export default function TableMenu() {
   };
 
   const upsertPlacedOrder = (order: SubmittedOrderSummary) => {
+    if (isOrderDismissed(order)) return;
     setPlacedOrders((prev) => {
       const next = prev.filter((o) => o.id !== order.id);
       next.unshift(order);
@@ -1369,7 +1482,7 @@ export default function TableMenu() {
 
   const handleEditLastOrder = async () => {
     if (!lastOrder || !lastOrder.id) return;
-    setHighlightLastOrderButton(false);
+    hideLastOrderButton();
     if (activeTableId) {
       try {
         const res = await api.getPublicTableOrders(activeTableId, {
@@ -1780,6 +1893,9 @@ export default function TableMenu() {
       const updateStatus = (status: OrderStatus) => (payload: unknown) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
         if (payload.tableId && payload.tableId !== activeTableId) return;
+        if (readDismissedOrderIds(dismissedOrderStorageKey).has(payload.orderId)) {
+          return;
+        }
         const previousStatus =
           lastOrderRef.current?.id === payload.orderId
             ? lastOrderRef.current.status
@@ -1809,10 +1925,13 @@ export default function TableMenu() {
         )
           return;
         const summary = toOrderSummary((payload as any).order ?? payload);
+        if (isOrderDismissed(summary)) return;
         upsertPlacedOrder(summary);
-        setLastOrder((prev) =>
-          prev && prev.id === summary.id ? { ...prev, ...summary } : summary
-        );
+        if (lastOrderButtonVisible || activeOrderOpen) {
+          setLastOrder((prev) =>
+            prev && prev.id === summary.id ? { ...prev, ...summary } : summary
+          );
+        }
       };
 
       realtimeService.subscribe(callTopic, (payload) => {
@@ -1846,7 +1965,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(servedTopic);
       realtimeService.unsubscribe(placedTopic);
     };
-  }, [storeSlug, activeTableId]);
+  }, [storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible]);
 
   useEffect(() => {
     // Collapse the call CTA while a call is in-flight/accepted
@@ -1931,97 +2050,59 @@ export default function TableMenu() {
       ? t("menu.call_waiter_prompt", { defaultValue: "Call waiter?" })
       : null;
 
-  const activeOrderFloatingBar = activeOrder ? (
+  const activeOrderFloatingBar = shouldShowLastOrderButton && activeOrder ? (
     <div
       className={clsx(
         themedWrapper,
-        "pointer-events-none px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        "pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pb-[env(safe-area-inset-bottom)]"
       )}
-      style={{
-        position: "fixed",
-        left: 0,
-        right: 0,
-        bottom: activeOrderBarExpanded ? 0 : 64,
-        zIndex: 45,
-      }}
     >
-      {activeOrderBarExpanded ? (
-        <div
-          className={clsx(
-            "pointer-events-auto mx-auto flex min-h-16 w-full max-w-lg items-center gap-2 rounded-3xl border px-4 py-3 text-left shadow-2xl transition-all duration-300 bg-gradient-to-r",
-            activeOrderTone.bar,
-            highlightLastOrderButton &&
-              "animate-pulse ring-4 ring-white/35 ring-offset-2 ring-offset-background"
-          )}
+      <div
+        className={clsx(
+          "pointer-events-auto flex min-h-12 w-full max-w-sm items-center gap-2 rounded-full border px-3 py-2 text-left shadow-xl bg-gradient-to-r",
+          activeOrderTone.bar
+        )}
+      >
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={handleViewLastOrder}
         >
-          <button
-            type="button"
-            className="min-w-0 flex-1 text-left"
-            onClick={() => {
-              setHighlightLastOrderButton(false);
-              setActiveOrderOpen(true);
-            }}
-          >
-            <span className="block truncate text-sm font-semibold">
-              {t("menu.active_order_heading", {
-                defaultValue: "Your active order",
+          <ShoppingBag className="h-4 w-4 shrink-0 text-white/90" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-white">
+              {t("menu.last_order_heading", {
+                defaultValue: "Last order",
               })}
             </span>
-            <span className={clsx("block text-xs", activeOrderTone.text)}>
+            <span className={clsx("block truncate text-xs", activeOrderTone.text)}>
               {activeOrderStatusLabel} - {(activeOrder.items ?? []).length}{" "}
               {t("menu.items_short", { defaultValue: "items" })} - EUR{" "}
               {computeOrderTotal(activeOrder).toFixed(2)}
             </span>
-          </button>
-          <button
-            type="button"
-            className={clsx(
-              "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold",
-              activeOrderTone.badge
-            )}
-            onClick={() => {
-              setHighlightLastOrderButton(false);
-              setActiveOrderOpen(true);
-            }}
-            aria-label={t("menu.view_active_orders", {
-              defaultValue: "View order",
-            })}
-          >
-            <span className={clsx("h-2 w-2 rounded-full", activeOrderTone.dot)} />
-            {canEditActiveOrder ? (
-              <Pencil className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-          </button>
-          <button
-            type="button"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/80 hover:bg-white/20 hover:text-white"
-            onClick={() => setActiveOrderBarExpanded(false)}
-            aria-label={t("actions.close", { defaultValue: "Close" })}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className={clsx(
-            "pointer-events-auto ml-auto flex min-h-11 max-w-[72vw] items-center gap-2 rounded-full border px-3 py-2 text-left shadow-xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 bg-gradient-to-r",
-            activeOrderTone.bar
-          )}
-          onClick={() => {
-            setHighlightLastOrderButton(false);
-            setActiveOrderOpen(true);
-          }}
-        >
-          <span className={clsx("h-2 w-2 shrink-0 rounded-full", activeOrderTone.dot)} />
-          <span className="min-w-0 truncate text-xs font-semibold text-white">
-            {activeOrderStatusLabel}
           </span>
+          <span className={clsx("h-2 w-2 shrink-0 rounded-full", activeOrderTone.dot)} />
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/80" />
         </button>
-      )}
+        <button
+          type="button"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/80 hover:bg-white/20 hover:text-white"
+          onClick={() =>
+            activeOrder.status === "CANCELLED"
+              ? dismissOrderNotice(activeOrder)
+              : hideLastOrderButton()
+          }
+          aria-label={
+            activeOrder.status === "CANCELLED"
+              ? t("menu.dismiss_cancelled_order", {
+                  defaultValue: "Dismiss canceled order",
+                })
+              : t("actions.close", { defaultValue: "Close" })
+          }
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   ) : null;
   const activeOrderFloatingPortal =
@@ -2121,20 +2202,6 @@ export default function TableMenu() {
                       <span>{t("menu.total")}</span>
                       <span>€{computeOrderTotal(lastOrder).toFixed(2)}</span>
                     </div>
-                    {canEditLastOrder && (
-                      <div className="pt-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-center"
-                          onClick={handleEditLastOrder}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          {t("actions.edit", { defaultValue: "Edit order" })}
-                        </Button>
-                      </div>
-                    )}
                   </div>
                 ) : null}
               </AppBurger>
@@ -2173,8 +2240,7 @@ export default function TableMenu() {
               loading={loading}
               variant={usesImmediateGuestCheckout ? "noor" : "default"}
               onSelect={(catId) => {
-                setSelectedCategory(catId);
-                setCategorySelected(true);
+                startFreshOrderFromCategory(catId);
               }}
             />
           ) : error ? (
@@ -2283,8 +2349,14 @@ export default function TableMenu() {
                     type="button"
                     className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/14 text-white hover:bg-white/22"
                     onPointerDown={(event) => event.stopPropagation()}
-                    onClick={minimizeActiveOrderSheet}
-                    aria-label={t("actions.close", { defaultValue: "Close" })}
+                    onClick={() => closeActiveOrderNotice(activeOrder)}
+                    aria-label={
+                      activeOrder.status === "CANCELLED"
+                        ? t("menu.dismiss_cancelled_order", {
+                            defaultValue: "Dismiss canceled order",
+                          })
+                        : t("actions.close", { defaultValue: "Close" })
+                    }
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -2348,17 +2420,9 @@ export default function TableMenu() {
                         defaultValue: "Selected items",
                       })}
                     </p>
-                    {canEditActiveOrder ? (
-                      <span className="shrink-0 text-right text-xs text-muted-foreground">
-                        {t("menu.tap_item_to_edit", {
-                          defaultValue: "Tap an item to edit",
-                        })}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {t("menu.order_locked", { defaultValue: "Locked" })}
-                      </span>
-                    )}
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {activeOrderStatusLabel}
+                    </span>
                   </div>
 
                   <div className="space-y-2">
@@ -2371,79 +2435,54 @@ export default function TableMenu() {
                       const quantity = getSubmittedOrderItemQuantity(item);
                       const modifierLabels = getSubmittedOrderItemModifierLabels(item);
                       return (
-                        <button
-                          type="button"
+                        <div
                           key={`${activeOrder.id}-${item.id ?? item.itemId ?? index}`}
-                          className={clsx(
-                            "w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left transition-colors",
-                            canEditActiveOrder
-                              ? "hover:border-primary/50 hover:bg-card"
-                              : "cursor-default"
-                          )}
-                          onClick={() =>
-                            handleActiveOrderItemClick(activeOrder, item, index)
-                          }
+                          className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left"
                         >
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                            <div className="min-w-0">
-                              <div className="flex min-w-0 items-start gap-2">
-                                <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
-                                  {quantity}
-                                </span>
-                                <span className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
-                                  {name}
-                                </span>
-                              </div>
-                              {modifierLabels.length > 0 ? (
-                                <div className="mt-2 space-y-1 break-words pl-8 text-xs text-muted-foreground">
-                                  {modifierLabels.map((label, labelIndex) => (
-                                    <div key={`${item.id ?? index}-${labelIndex}`}>
-                                      {label}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                  {t("menu.no_modifiers", {
-                                    defaultValue: "No modifiers",
-                                  })}
-                                </p>
-                              )}
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 items-start gap-2">
+                              <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
+                                {quantity}
+                              </span>
+                              <span className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
+                                {name}
+                              </span>
                             </div>
-                            <span className="max-w-[32vw] shrink-0 truncate rounded-full border border-border/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground sm:max-w-none">
-                              {canEditActiveOrder
-                                ? t("actions.edit", { defaultValue: "Edit" })
-                                : t("menu.locked", { defaultValue: "Locked" })}
-                            </span>
+                            {modifierLabels.length > 0 ? (
+                              <div className="mt-2 space-y-1 break-words pl-8 text-xs text-muted-foreground">
+                                {modifierLabels.map((label, labelIndex) => (
+                                  <div key={`${item.id ?? index}-${labelIndex}`}>
+                                    {label}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                {t("menu.no_modifiers", {
+                                  defaultValue: "No modifiers",
+                                })}
+                              </p>
+                            )}
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
 
                 <div className="shrink-0 border-t border-border/60 bg-background/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                  {canEditActiveOrder ? (
-                    <Button
-                      type="button"
-                      className="h-12 w-full rounded-2xl font-semibold"
-                      onClick={() => {
-                        setActiveOrderOpen(false);
-                        loadOrderIntoCart(activeOrder);
-                      }}
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      {t("menu.edit_order", { defaultValue: "Edit order" })}
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                      {t("menu.order_locked_desc", {
-                        defaultValue:
-                          "This order has already moved forward, so item changes are closed.",
-                      })}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    {activeOrder.status === "CANCELLED"
+                      ? t("menu.cancelled_order_dismiss_hint", {
+                          defaultValue:
+                            "This order was canceled. Close with X to remove this notice.",
+                        })
+                      : t("menu.order_status_readonly_desc", {
+                          defaultValue:
+                            "This order is shown for status only. Start a category to create a new order.",
+                        })}
+                  </div>
                 </div>
               </div>
             ) : null}
