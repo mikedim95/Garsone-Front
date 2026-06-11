@@ -299,6 +299,69 @@ const lifecycleCopy: Record<
   live: { label: "Table assigned", variant: "success" },
 };
 
+type BadgeVariant = "outline" | "warning" | "info" | "success" | "destructive";
+
+const remoteNodeStatusCopy: Record<
+  RemoteNode["status"],
+  { label: string; variant: BadgeVariant; description: string }
+> = {
+  PENDING: {
+    label: "Waiting for heartbeat",
+    variant: "warning",
+    description: "The printer topic can work while the node agent is still pending.",
+  },
+  ONLINE: {
+    label: "Online",
+    variant: "success",
+    description: "The node agent is reporting normally.",
+  },
+  APPLYING: {
+    label: "Applying config",
+    variant: "info",
+    description: "The node agent is applying the latest configuration.",
+  },
+  DEGRADED: {
+    label: "Degraded",
+    variant: "warning",
+    description: "The node agent is reachable but reported a problem.",
+  },
+  ERROR: {
+    label: "Error",
+    variant: "destructive",
+    description: "The node agent reported an error.",
+  },
+  OFFLINE: {
+    label: "Offline",
+    variant: "outline",
+    description: "The node agent has not reported recently.",
+  },
+};
+
+function getRemoteNodeSummary(node: RemoteNode | null, printerCount: number) {
+  if (!node) {
+    return {
+      label: printerCount > 0 ? "Print routing ready" : "Not connected",
+      badgeLabel: printerCount > 0 ? "No agent" : "Node agent",
+      variant: printerCount > 0 ? "info" : "outline",
+      description:
+        printerCount > 0
+          ? `${printerCount} printer topic${printerCount === 1 ? "" : "s"} configured; no node agent heartbeat yet.`
+          : "No remote node has been configured for this venue.",
+    } satisfies { label: string; badgeLabel: string; variant: BadgeVariant; description: string };
+  }
+
+  const status = remoteNodeStatusCopy[node.status] ?? remoteNodeStatusCopy.PENDING;
+  if (node.status === "PENDING" && printerCount > 0) {
+    return {
+      ...status,
+      label: "Print routing ready",
+      badgeLabel: "Agent pending",
+      description: `${printerCount} printer topic${printerCount === 1 ? "" : "s"} configured; waiting for the node agent heartbeat.`,
+    };
+  }
+  return { ...status, badgeLabel: "Node agent" };
+}
+
 function TileLifecycleBadge({ tile }: { tile: QRTile }) {
   const lifecycle = getTileLifecycle(tile);
   const meta = lifecycleCopy[lifecycle];
@@ -462,6 +525,13 @@ export default function ArchitectQrTiles() {
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
     [selectedStoreId, stores]
   );
+  const remoteNodeSummary = useMemo(
+    () => getRemoteNodeSummary(remoteNode, printers.length),
+    [printers.length, remoteNode]
+  );
+  const remoteNodeAgentStatus = remoteNode
+    ? remoteNodeStatusCopy[remoteNode.status] ?? remoteNodeStatusCopy.PENDING
+    : null;
   const historyConfirmationPhrase = selectedStore
     ? `DELETE HISTORY ${selectedStore.slug}`
     : "";
@@ -2213,7 +2283,15 @@ export default function ArchitectQrTiles() {
                       </div>
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                         <p className="text-sm text-muted-foreground">Remote node</p>
-                        <p className="mt-2 font-medium">{remoteNode?.status ?? "Not connected"}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{remoteNodeSummary.label}</p>
+                          <Badge variant={remoteNodeSummary.variant} size="sm">
+                            {remoteNodeSummary.badgeLabel}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {remoteNodeSummary.description}
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
@@ -2454,8 +2532,8 @@ export default function ArchitectQrTiles() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {remoteNode ? (
-                          <Badge variant={remoteNode.status === "ONLINE" ? "success" : "outline"}>
-                            {remoteNode.status}
+                          <Badge variant={remoteNodeAgentStatus?.variant ?? "outline"}>
+                            {remoteNodeAgentStatus?.label ?? "Node agent"}
                           </Badge>
                         ) : null}
                         <Button
