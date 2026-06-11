@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useCartStore } from "@/store/cartStore";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
+import { registerCustomerPushForOrder } from "@/lib/customerPush";
 
 type PendingOrder = {
   tableId: string;
@@ -84,6 +85,12 @@ export default function PaymentCompleteRedirect() {
         if (!order?.id) {
           throw new Error("Order was not created");
         }
+        void registerCustomerPushForOrder({
+          tableId,
+          orderId: order.id,
+          storeSlug: pendingOrder.storeSlug || undefined,
+          requestPermission: false,
+        });
 
         try {
           const summary = {

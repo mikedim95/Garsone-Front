@@ -25,6 +25,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
 import { useCartStore } from "@/store/cartStore";
 import { api, ApiError, API_BASE } from "@/lib/api";
+import { registerCustomerPushForOrder } from "@/lib/customerPush";
 import { realtimeService } from "@/lib/realtime";
 import { useMenuStore } from "@/store/menuStore";
 import type {
@@ -1700,6 +1701,12 @@ export default function TableMenu() {
         approval?.method || "direct_submit"
       );
       setCheckoutBusy(true);
+      await registerCustomerPushForOrder({
+        tableId: activeTableId,
+        orderId: editingOrderId || undefined,
+        storeSlug: storeSlug || undefined,
+        requestPermission: true,
+      });
       const wasEditing = Boolean(editingOrderId);
       const response = editingOrderId
         ? await api.editOrder(editingOrderId, payload)
@@ -1711,6 +1718,12 @@ export default function TableMenu() {
       const summary = toOrderSummary(order);
       setLastOrder(summary);
       upsertPlacedOrder(summary);
+      void registerCustomerPushForOrder({
+        tableId: activeTableId,
+        orderId: summary.id || order.id,
+        storeSlug: storeSlug || undefined,
+        requestPermission: false,
+      });
       clearCart();
       stopEditingLastOrder();
       if (approval) {
@@ -1841,6 +1854,11 @@ export default function TableMenu() {
       }, 0);
 
       const totalAmount = totalCents / 100;
+      await registerCustomerPushForOrder({
+        tableId: activeTableId,
+        storeSlug: storeSlug || undefined,
+        requestPermission: true,
+      });
 
       // Step 1: Get Viva payment checkout URL
       const paymentResponse = await api.getVivaCheckoutUrl(
