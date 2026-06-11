@@ -5,7 +5,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
+import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -69,6 +69,9 @@ const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33v
 const SWIPE_DISTANCE_PX = 44;
 const SWIPE_VELOCITY_PX = 420;
 const SWIPE_INTENT_DEADZONE_PX = 18;
+const CART_MINIMIZE_DISTANCE_PX = 86;
+const CART_MINIMIZE_VELOCITY_PX = 650;
+const CART_MINIMIZE_ANIMATION_MS = 180;
 const MENU_SWIPE_TRANSITION = {
   duration: 0.22,
   ease: [0.22, 1, 0.36, 1] as const,
@@ -209,6 +212,7 @@ export const SwipeableMenuView = ({
   const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
   
   const [cartOpen, setCartOpen] = useState(false);
+  const [cartSheetMinimizing, setCartSheetMinimizing] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isRinging, setIsRinging] = useState(false);
@@ -219,6 +223,8 @@ export const SwipeableMenuView = ({
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const suppressClickAfterSwipeRef = useRef(false);
+  const cartDragControls = useDragControls();
+  const cartMinimizeTimerRef = useRef<number | null>(null);
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
@@ -438,19 +444,67 @@ export const SwipeableMenuView = ({
     onAddItem(item);
   };
 
+  const minimizeCartSheet = () => {
+    if (typeof window === 'undefined') {
+      setCartOpen(false);
+      return;
+    }
+
+    if (cartMinimizeTimerRef.current !== null) {
+      window.clearTimeout(cartMinimizeTimerRef.current);
+    }
+
+    setCartSheetMinimizing(true);
+    cartMinimizeTimerRef.current = window.setTimeout(() => {
+      setCartOpen(false);
+      setCartSheetMinimizing(false);
+      cartMinimizeTimerRef.current = null;
+    }, CART_MINIMIZE_ANIMATION_MS);
+  };
+
+  const handleCartOpenChange = (open: boolean) => {
+    if (open) {
+      setCartSheetMinimizing(false);
+      setCartOpen(true);
+      return;
+    }
+    minimizeCartSheet();
+  };
+
+  const handleCartSheetDragEnd = (
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    const draggedDown = info.offset.y >= CART_MINIMIZE_DISTANCE_PX;
+    const flungDown = info.velocity.y >= CART_MINIMIZE_VELOCITY_PX;
+    if (draggedDown || flungDown) {
+      minimizeCartSheet();
+    }
+  };
+
   useEffect(() => {
     if (openCartSignal > 0) {
+      setCartSheetMinimizing(false);
       setCartOpen(true);
     }
   }, [openCartSignal]);
 
   useEffect(() => {
     if (orderPlacedSignal > 0) {
+      setCartSheetMinimizing(false);
       setCartOpen(false);
       setOrderNote('');
       setEditingItemIndex(null);
     }
   }, [orderPlacedSignal]);
+
+  useEffect(() => {
+    return () => {
+      if (cartMinimizeTimerRef.current !== null) {
+        window.clearTimeout(cartMinimizeTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleBellClick = () => {
     setBellDialogOpen(true);
@@ -890,8 +944,31 @@ export const SwipeableMenuView = ({
 
       {/* Cart Modal */}
       {showCartButton && (
-      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="!left-0 !right-0 !bottom-0 !top-auto h-[85dvh] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-auto xl:max-h-[90dvh] xl:!w-auto xl:!max-w-2xl xl:rounded-lg xl:border xl:![translate:-50%_-50%]">
+      <Dialog open={cartOpen} onOpenChange={handleCartOpenChange}>
+        <DialogContent
+          motionProps={{
+            animate: cartSheetMinimizing
+              ? { opacity: 0.96, scale: 0.98, y: '104%' }
+              : { opacity: 1, scale: 1, y: 0 },
+            drag: 'y',
+            dragControls: cartDragControls,
+            dragDirectionLock: true,
+            dragConstraints: { top: 0, bottom: 0 },
+            dragElastic: { top: 0, bottom: 0.36 },
+            dragListener: true,
+            dragMomentum: false,
+            dragTransition: { bounceStiffness: 420, bounceDamping: 36 },
+            onDragEnd: handleCartSheetDragEnd,
+            transition: cartSheetMinimizing
+              ? {
+                  duration: CART_MINIMIZE_ANIMATION_MS / 1000,
+                  ease: [0.32, 0.72, 0, 1],
+                }
+              : { type: 'spring', stiffness: 350, damping: 28, mass: 0.8 },
+            whileDrag: { scale: 0.995 },
+          }}
+          className="!left-0 !right-0 !bottom-0 !top-auto h-[85dvh] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-auto xl:max-h-[90dvh] xl:!w-auto xl:!max-w-2xl xl:rounded-lg xl:border xl:![translate:-50%_-50%]"
+        >
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
@@ -899,8 +976,8 @@ export const SwipeableMenuView = ({
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
           <Card className="h-full min-h-0 min-w-0 overflow-hidden border-0 shadow-none flex flex-col">
-            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
-              <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
+            <div className="cursor-grab touch-none bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40 active:cursor-grabbing">
+              <div className="flex justify-center pt-1 pb-2" aria-hidden="true">
                 <div className="h-1.5 w-12 rounded-full bg-muted" />
               </div>
               <div className="flex items-center gap-3">
