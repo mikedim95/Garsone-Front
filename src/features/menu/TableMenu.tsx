@@ -20,6 +20,11 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AppBurger } from "@/components/AppBurger";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
@@ -43,9 +48,9 @@ import type {
   OrderingMode,
 } from "@/types";
 import {
-  CheckCircle2,
   ChevronRight,
   Clock3,
+  Info,
   ShoppingBag,
   X,
 } from "lucide-react";
@@ -485,6 +490,37 @@ const getSubmittedOrderItemModifierLabels = (item?: SubmittedOrderItem | null) =
     .map((modifier) => modifier?.title?.trim())
     .filter((label): label is string => Boolean(label));
 
+const getSubmittedOrderItemDisplayStatus = (
+  item: SubmittedOrderItem | null | undefined,
+  orderStatus: OrderStatus
+): OrderStatus => {
+  if (
+    orderStatus === "CANCELLED" ||
+    orderStatus === "PAID" ||
+    orderStatus === "SERVED" ||
+    orderStatus === "READY"
+  ) {
+    return orderStatus;
+  }
+  if (item?.status === "SERVED") return "READY";
+  if (item?.status === "ACCEPTED" || orderStatus === "PREPARING") {
+    return "PREPARING";
+  }
+  return "PLACED";
+};
+
+const itemStatusToneByStatus: Record<OrderStatus, string> = {
+  PLACED: "border-slate-500/25 bg-slate-500/10 text-slate-600 dark:text-slate-300",
+  PREPARING:
+    "border-amber-500/30 bg-amber-500/12 text-amber-700 dark:text-amber-300",
+  READY:
+    "border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+  SERVED: "border-sky-500/30 bg-sky-500/12 text-sky-700 dark:text-sky-300",
+  PAID: "border-blue-500/30 bg-blue-500/12 text-blue-700 dark:text-blue-300",
+  CANCELLED:
+    "border-rose-500/30 bg-rose-500/12 text-rose-700 dark:text-rose-300",
+};
+
 const findMappedCartIndexForOrderItem = (
   order: SubmittedOrderSummary,
   orderItemIndex: number,
@@ -720,9 +756,6 @@ export default function TableMenu() {
     activeOrderOpen || shouldShowLastOrderButton ? latestVisibleOrder : null;
   const activeOrderStatus = activeOrder?.status ?? "PLACED";
   const activeOrderTone = getStatusTone(activeOrderStatus);
-  const activeOrderStatusLabel = t(`status.${activeOrderStatus}`, {
-    defaultValue: activeOrderStatus,
-  });
   const hasActiveOrderBar = shouldShowLastOrderButton;
   const hasExpandedActiveOrderBar = false;
   const activeLineCartItem =
@@ -733,6 +766,37 @@ export default function TableMenu() {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const activeOrderItems = activeOrder?.items ?? [];
+  const activeOrderItemCountLabel = t("menu.item_count", {
+    count: activeOrderItems.length,
+    defaultValue:
+      activeOrderItems.length === 1
+        ? `${activeOrderItems.length} item`
+        : `${activeOrderItems.length} items`,
+  });
+  const activeOrderItemSummary =
+    activeOrderItems.length > 0
+      ? (() => {
+          const visibleItems = activeOrderItems.slice(0, 2).map((item, index) => {
+            const fallback = t("menu.last_order_item_fallback", {
+              index: index + 1,
+              defaultValue: `Item ${index + 1}`,
+            });
+            return `${getSubmittedOrderItemQuantity(item)}x ${getSubmittedOrderItemName(
+              item,
+              index,
+              fallback
+            )}`;
+          });
+          const remaining = activeOrderItems.length - visibleItems.length;
+          return remaining > 0
+            ? `${visibleItems.join(", ")} ${t("menu.more_items", {
+                count: remaining,
+                defaultValue: `+${remaining} more`,
+              })}`
+            : visibleItems.join(", ");
+        })()
+      : t("menu.no_items", { defaultValue: "No items" });
 
   const minimizeActiveOrderSheet = () => {
     if (!categorySelected && activeOrder?.id) {
@@ -2165,12 +2229,9 @@ export default function TableMenu() {
               })}
             </span>
             <span className={clsx("block truncate text-xs", activeOrderTone.text)}>
-              {activeOrderStatusLabel} - {(activeOrder.items ?? []).length}{" "}
-              {t("menu.items_short", { defaultValue: "items" })} - EUR{" "}
-              {computeOrderTotal(activeOrder).toFixed(2)}
+              {activeOrderItemSummary} - EUR {computeOrderTotal(activeOrder).toFixed(2)}
             </span>
           </span>
-          <span className={clsx("h-2 w-2 shrink-0 rounded-full", activeOrderTone.dot)} />
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/80" />
         </button>
         {activeOrder.status === "CANCELLED" ? (
@@ -2445,11 +2506,7 @@ export default function TableMenu() {
                     <X className="h-4 w-4" />
                   </button>
                   <div className="min-w-0 pr-12">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80">
-                      <span className={clsx("h-2 w-2 rounded-full", activeOrderTone.dot)} />
-                      {activeOrderStatusLabel}
-                    </div>
-                    <h2 className="mt-2 max-w-full whitespace-normal break-words text-2xl font-bold leading-tight sm:text-3xl">
+                    <h2 className="mt-1 max-w-full whitespace-normal break-words text-2xl font-bold leading-tight sm:text-3xl">
                       {t("menu.active_order_heading", {
                         defaultValue: "Your active order",
                       })}
@@ -2463,34 +2520,16 @@ export default function TableMenu() {
                         #{(activeOrder.id || "").slice(-6).toUpperCase()}
                       </span>
                       <span className="whitespace-nowrap">
+                        {activeOrderItemCountLabel}
+                      </span>
+                      <span className="whitespace-nowrap">
                         EUR {computeOrderTotal(activeOrder).toFixed(2)}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="shrink-0 border-b border-border/60 bg-card/70 px-4 py-3 sm:px-5">
-                  <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
-                    {statusSteps.map((step) => {
-                      const isActive = step === activeOrder.status;
-                      return (
-                        <span
-                          key={`active-order-step-${step}`}
-                          className={clsx(
-                            "shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                            isActive
-                              ? activeOrderTone.chip
-                              : "border-border/60 bg-background/60 text-muted-foreground"
-                          )}
-                        >
-                          {t(`status.${step}`, { defaultValue: step })}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5">
                   {placedLoading ? (
                     <div className="mb-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-xs text-muted-foreground">
                       {t("status.loading", { defaultValue: "Loading..." })}
@@ -2504,75 +2543,115 @@ export default function TableMenu() {
 
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <p className="min-w-0 text-sm font-semibold text-foreground">
-                      {t("menu.selected_items", {
-                        defaultValue: "Selected items",
+                      {t("menu.items_heading", {
+                        defaultValue: "Items",
                       })}
                     </p>
                     <span className="shrink-0 text-xs text-muted-foreground">
-                      {activeOrderStatusLabel}
+                      {activeOrderItemCountLabel}
                     </span>
                   </div>
 
-                  <div className="space-y-2">
-                    {(activeOrder.items ?? []).map((item, index) => {
-                      const fallback = t("menu.last_order_item_fallback", {
-                        index: index + 1,
-                        defaultValue: `Item ${index + 1}`,
-                      });
-                      const name = getSubmittedOrderItemName(item, index, fallback);
-                      const quantity = getSubmittedOrderItemQuantity(item);
-                      const modifierLabels = getSubmittedOrderItemModifierLabels(item);
-                      return (
-                        <div
-                          key={`${activeOrder.id}-${item.id ?? item.itemId ?? index}`}
-                          className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 items-start gap-2">
-                              <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
-                                {quantity}
-                              </span>
-                              <span className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
-                                {name}
+                  {activeOrderItems.length === 0 ? (
+                    <div className="rounded-2xl border border-border/60 bg-card/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                      {t("menu.no_items", { defaultValue: "No items" })}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {activeOrderItems.map((item, index) => {
+                        const fallback = t("menu.last_order_item_fallback", {
+                          index: index + 1,
+                          defaultValue: `Item ${index + 1}`,
+                        });
+                        const name = getSubmittedOrderItemName(
+                          item,
+                          index,
+                          fallback
+                        );
+                        const quantity = getSubmittedOrderItemQuantity(item);
+                        const modifierLabels =
+                          getSubmittedOrderItemModifierLabels(item);
+                        const itemStatus = getSubmittedOrderItemDisplayStatus(
+                          item,
+                          activeOrderStatus
+                        );
+                        const itemStatusLabel = t(
+                          `menu.item_status_${itemStatus.toLowerCase()}`,
+                          {
+                            defaultValue: t(`status.${itemStatus}`, {
+                              defaultValue: itemStatus,
+                            }),
+                          }
+                        );
+                        return (
+                          <div
+                            key={`${activeOrder.id}-${item.id ?? item.itemId ?? index}`}
+                            className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left"
+                          >
+                            <div className="flex min-w-0 items-start justify-between gap-3">
+                              <div className="flex min-w-0 flex-1 items-start gap-3">
+                                <span className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
+                                  x{quantity}
+                                </span>
+                                <span className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
+                                  {name}
+                                </span>
+                              </div>
+                              {modifierLabels.length > 0 ? (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/80 text-muted-foreground hover:text-foreground"
+                                      aria-label={t("menu.item_options", {
+                                        item: name,
+                                        defaultValue: `Options for ${name}`,
+                                      })}
+                                    >
+                                      <Info className="h-4 w-4" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    side="top"
+                                    align="end"
+                                    className="w-64 rounded-2xl p-3"
+                                  >
+                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      {t("menu.options", {
+                                        defaultValue: "Options",
+                                      })}
+                                    </p>
+                                    <div className="space-y-1 text-sm text-foreground">
+                                      {modifierLabels.map(
+                                        (label, labelIndex) => (
+                                          <div
+                                            key={`${item.id ?? index}-${labelIndex}`}
+                                            className="break-words"
+                                          >
+                                            {label}
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              ) : null}
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                              <span
+                                className={clsx(
+                                  "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                                  itemStatusToneByStatus[itemStatus]
+                                )}
+                              >
+                                {itemStatusLabel}
                               </span>
                             </div>
-                            {modifierLabels.length > 0 ? (
-                              <div className="mt-2 space-y-1 break-words pl-8 text-xs text-muted-foreground">
-                                {modifierLabels.map((label, labelIndex) => (
-                                  <div key={`${item.id ?? index}-${labelIndex}`}>
-                                    {label}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="mt-2 text-xs text-muted-foreground">
-                                {t("menu.no_modifiers", {
-                                  defaultValue: "No modifiers",
-                                })}
-                              </p>
-                            )}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="shrink-0 border-t border-border/60 bg-background/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5">
-                  <div className="flex items-start gap-2 rounded-2xl border border-border/60 bg-card/70 px-3 py-3 text-sm text-muted-foreground">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <span className="min-w-0 flex-1 whitespace-normal break-words leading-relaxed">
-                      {activeOrder.status === "CANCELLED"
-                        ? t("menu.cancelled_order_dismiss_hint", {
-                            defaultValue:
-                              "This order was canceled. Close with X to remove this notice.",
-                          })
-                        : t("menu.order_status_readonly_desc", {
-                            defaultValue:
-                              "This order is shown for status only. Start a category to create a new order.",
-                          })}
-                    </span>
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
