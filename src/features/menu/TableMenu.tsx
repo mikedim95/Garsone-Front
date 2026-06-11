@@ -1,6 +1,7 @@
 import {
   Suspense,
   lazy,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -613,6 +614,7 @@ const getStatusTone = (status?: OrderStatus) =>
 const ACTIVE_ORDER_MINIMIZE_DISTANCE_PX = 86;
 const ACTIVE_ORDER_MINIMIZE_VELOCITY_PX = 650;
 const ACTIVE_ORDER_MINIMIZE_ANIMATION_MS = 180;
+const CANCELLED_ORDER_VISIBLE_MS = 4500;
 
 const getStoredName = () => {
   if (typeof window === "undefined") return null;
@@ -897,6 +899,38 @@ export default function TableMenu() {
     clearLastOrderUrlFlag();
   };
 
+  const markOrderNoticeDismissed = useCallback(
+    (orderId: string) => {
+      setDismissedOrderIds((prev) => {
+        if (prev.has(orderId)) return prev;
+        const next = new Set(prev);
+        next.add(orderId);
+        writeDismissedOrderIds(dismissedOrderStorageKey, next);
+        return next;
+      });
+      setPlacedOrders((prev) => prev.filter((entry) => entry.id !== orderId));
+      setLastOrder((prev) => (prev?.id === orderId ? null : prev));
+    },
+    [dismissedOrderStorageKey]
+  );
+
+  const dismissCancelledOrderAfterDisplay = useCallback(
+    (orderId: string) => {
+      markOrderNoticeDismissed(orderId);
+      const hasRemainingVisibleOrder = placedOrdersRef.current.some(
+        (order) => order.id !== orderId && !dismissedOrderIds.has(order.id)
+      );
+      if (!hasRemainingVisibleOrder) {
+        hideLastOrderButton();
+      }
+      if (lastOrderRef.current?.id === orderId) {
+        setActiveOrderOpen(false);
+        setActiveOrderSheetMinimizing(false);
+      }
+    },
+    [dismissedOrderIds, markOrderNoticeDismissed]
+  );
+
   const dismissOrderNotice = (order: SubmittedOrderSummary | null) => {
     if (!order?.id) {
       hideLastOrderButton();
@@ -904,14 +938,7 @@ export default function TableMenu() {
       return;
     }
     const orderId = order.id;
-    setDismissedOrderIds((prev) => {
-      const next = new Set(prev);
-      next.add(orderId);
-      writeDismissedOrderIds(dismissedOrderStorageKey, next);
-      return next;
-    });
-    setPlacedOrders((prev) => prev.filter((entry) => entry.id !== orderId));
-    setLastOrder((prev) => (prev?.id === orderId ? null : prev));
+    markOrderNoticeDismissed(orderId);
     if (editingOrderId === orderId) {
       clearCart();
       stopEditingLastOrder();
@@ -932,6 +959,31 @@ export default function TableMenu() {
     setActiveOrderOpen(false);
     setActiveOrderSheetMinimizing(false);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const visibleCancelledOrderIds = new Set(
+      visiblePlacedOrders
+        .filter((order) => order.id && order.status === "CANCELLED")
+        .map((order) => order.id)
+    );
+
+    cancelledOrderDismissTimersRef.current.forEach((timer, orderId) => {
+      if (visibleCancelledOrderIds.has(orderId)) return;
+      window.clearTimeout(timer);
+      cancelledOrderDismissTimersRef.current.delete(orderId);
+    });
+
+    visibleCancelledOrderIds.forEach((orderId) => {
+      if (cancelledOrderDismissTimersRef.current.has(orderId)) return;
+      const timer = window.setTimeout(() => {
+        cancelledOrderDismissTimersRef.current.delete(orderId);
+        dismissCancelledOrderAfterDisplay(orderId);
+      }, CANCELLED_ORDER_VISIBLE_MS);
+      cancelledOrderDismissTimersRef.current.set(orderId, timer);
+    });
+  }, [dismissCancelledOrderAfterDisplay, visiblePlacedOrders]);
 
   const handleViewLastOrder = () => {
     if (!latestVisibleOrder) return;
@@ -996,6 +1048,7 @@ export default function TableMenu() {
   const categorySelectedRef = useRef(false);
   const categoryHistoryEntryRef = useRef(false);
   const notifiedOrderStatusRef = useRef<Map<string, OrderStatus>>(new Map());
+  const cancelledOrderDismissTimersRef = useRef<Map<string, number>>(new Map());
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [localityGateOpen, setLocalityGateOpen] = useState(false);
   const localityGatePromiseRef = useRef<Promise<LocalityApproval | null> | null>(
@@ -1265,8 +1318,21 @@ export default function TableMenu() {
       if (activeOrderMinimizeTimerRef.current !== null) {
         window.clearTimeout(activeOrderMinimizeTimerRef.current);
       }
+      cancelledOrderDismissTimersRef.current.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      cancelledOrderDismissTimersRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      cancelledOrderDismissTimersRef.current.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      cancelledOrderDismissTimersRef.current.clear();
+    };
+  }, [dismissedOrderStorageKey]);
 
   useEffect(() => {
     if (!activeTableId) {
