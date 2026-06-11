@@ -1921,9 +1921,6 @@ export default function TableMenu() {
         "order_submit_succeeded",
         approval?.method || "direct_submit"
       );
-      setCategorySelected(false);
-      setSelectedCategory(null);
-      setOrderPlacedSignal((s) => s + 1);
       const successParams = new URLSearchParams({ tableId: activeTableId });
       if (storeSlug) {
         successParams.set("storeSlug", storeSlug);
