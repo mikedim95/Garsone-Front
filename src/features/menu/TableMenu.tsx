@@ -440,6 +440,24 @@ const mapOrderItemModifiers = (
   return selections;
 };
 
+const getCartItemKey = (cartItem: Pick<CartItem, "item" | "selectedModifiers">) =>
+  `${cartItem.item.id}|${JSON.stringify(cartItem.selectedModifiers || {})}`;
+
+const mapSubmittedOrderItemToCartItem = (
+  orderItem: SubmittedOrderItem,
+  menuItems: MenuItem[]
+): CartItem | null => {
+  const itemId = getSubmittedOrderItemId(orderItem);
+  if (!itemId || isSubmittedOrderItemCancelled(orderItem)) return null;
+  const menuItem = menuItems.find((mi) => mi.id === itemId);
+  if (!menuItem) return null;
+  return {
+    item: menuItem,
+    quantity: getSubmittedOrderItemQuantity(orderItem),
+    selectedModifiers: mapOrderItemModifiers(orderItem, menuItem),
+  };
+};
+
 const mapOrderToCartItems = (
   order: SubmittedOrderSummary,
   menuItems: MenuItem[]
@@ -447,13 +465,8 @@ const mapOrderToCartItems = (
   if (!order.items?.length) return [];
   const mapped: CartItem[] = [];
   for (const oi of order.items) {
-    const itemId = oi?.itemId || oi?.item?.id;
-    if (!itemId) continue;
-    const menuItem = menuItems.find((mi) => mi.id === itemId);
-    if (!menuItem) continue;
-    const quantity = Math.max(1, Number(oi?.quantity ?? oi?.qty ?? 1));
-    const selectedModifiers = mapOrderItemModifiers(oi, menuItem);
-    mapped.push({ item: menuItem, quantity, selectedModifiers });
+    const cartItem = mapSubmittedOrderItemToCartItem(oi, menuItems);
+    if (cartItem) mapped.push(cartItem);
   }
   return mapped;
 };
@@ -461,9 +474,7 @@ const mapOrderToCartItems = (
 const mergeCartItems = (items: CartItem[]): CartItem[] => {
   const merged = new Map<string, CartItem>();
   for (const cartItem of items) {
-    const key = `${cartItem.item.id}|${JSON.stringify(
-      cartItem.selectedModifiers || {}
-    )}`;
+    const key = getCartItemKey(cartItem);
     const existing = merged.get(key);
     if (existing) {
       existing.quantity += cartItem.quantity;
@@ -552,31 +563,6 @@ const itemStatusToneByStatus: Record<OrderStatus, string> = {
   PAID: "border-blue-500/30 bg-blue-500/12 text-blue-700 dark:text-blue-300",
   CANCELLED:
     "border-rose-500/30 bg-rose-500/12 text-rose-700 dark:text-rose-300",
-};
-
-const findMappedCartIndexForOrderItem = (
-  order: SubmittedOrderSummary,
-  orderItemIndex: number,
-  mappedItems: CartItem[],
-  menuItems: MenuItem[]
-) => {
-  const sourceItems = order.items ?? [];
-  const sourceItem = sourceItems[orderItemIndex];
-  const itemId = getSubmittedOrderItemId(sourceItem);
-  if (!itemId) return -1;
-  let targetOccurrence = 0;
-  for (let index = 0; index <= orderItemIndex; index += 1) {
-    const candidateId = getSubmittedOrderItemId(sourceItems[index]);
-    if (candidateId === itemId && menuItems.some((item) => item.id === candidateId)) {
-      targetOccurrence += 1;
-    }
-  }
-  let seen = 0;
-  return mappedItems.findIndex((cartItem) => {
-    if (cartItem.item.id !== itemId) return false;
-    seen += 1;
-    return seen === targetOccurrence;
-  });
 };
 
 const statusToneByStatus: Record<
@@ -742,6 +728,7 @@ export default function TableMenu() {
     }
   );
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editingOrderIds, setEditingOrderIds] = useState<string[]>([]);
   const [lastOrder, setLastOrder] = useState<SubmittedOrderSummary | null>(null);
   const [placedOrders, setPlacedOrders] = useState<SubmittedOrderSummary[]>([]);
   const [dismissedOrderIds, setDismissedOrderIds] = useState<Set<string>>(
@@ -756,7 +743,8 @@ export default function TableMenu() {
   const activeTableId = tableId;
   const guestOrderingEnabled = orderingMode !== "waiter";
   const usesImmediateGuestCheckout = storeSlug?.trim().toLowerCase() === "noor";
-  const isEditingExisting = Boolean(editingOrderId);
+  const isEditingExisting = editingOrderIds.length > 0 || Boolean(editingOrderId);
+  const isEditingPendingBatch = editingOrderIds.length > 1;
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
   const lastOrderStatusLabel = t(`status.${lastOrderStatus}`, {
     defaultValue: (lastOrderStatus || "PLACED").toString(),
@@ -805,6 +793,19 @@ export default function TableMenu() {
       ? visiblePlacedOrders
       : [activeOrder]
     : [];
+  const editablePendingOrders = activeOrderSourceOrders.filter(
+    (order) => order.id && order.status === "PLACED"
+  );
+  const editablePendingOrderIds = editablePendingOrders
+    .map((order) => order.id)
+    .filter((id): id is string => Boolean(id));
+  const editablePendingLineCount = editablePendingOrders.reduce(
+    (count, order) =>
+      count +
+      (order.items ?? []).filter((item) => !isSubmittedOrderItemCancelled(item))
+        .length,
+    0
+  );
   const activeOrderLineItems = activeOrderSourceOrders.flatMap(
     (order, orderIndex) =>
       (order.items ?? []).map((item, itemIndex) => ({
@@ -964,7 +965,7 @@ export default function TableMenu() {
     }
     const orderId = order.id;
     markOrderNoticeDismissed(orderId);
-    if (editingOrderId === orderId) {
+    if (editingOrderId === orderId || editingOrderIds.includes(orderId)) {
       clearCart();
       stopEditingLastOrder();
     }
@@ -1464,6 +1465,7 @@ export default function TableMenu() {
 
   const stopEditingLastOrder = () => {
     setEditingOrderId(null);
+    setEditingOrderIds([]);
     setEditingNote(undefined);
   };
 
@@ -1522,6 +1524,7 @@ export default function TableMenu() {
     );
     setItems(mappedItems);
     setEditingOrderId(lastOrder.id);
+    setEditingOrderIds([lastOrder.id]);
     setEditingNote(lastOrder.note ?? "");
     setCartOpenSignal((s) => s + 1);
     if (missingCount > 0) {
@@ -1650,10 +1653,110 @@ export default function TableMenu() {
     setItems(mergeCartItems(mappedItems));
     setLastOrder(order);
     setEditingOrderId(order.id || null);
+    setEditingOrderIds(order.id ? [order.id] : []);
     setEditingNote(order.note ?? "");
     setSelectedCategory(selectedCategory || (usesImmediateGuestCheckout ? categories[0]?.id : "all") || "all");
     setCategorySelected(true);
     return mappedItems;
+  };
+
+  const preparePendingOrdersForEditing = (
+    orders: SubmittedOrderSummary[],
+    options?: { openCart?: boolean }
+  ) => {
+    const editableOrders = orders
+      .filter((order) => order.id && order.status === "PLACED")
+      .sort((a, b) => {
+        const aTime = new Date(a.createdAt || 0).getTime();
+        const bTime = new Date(b.createdAt || 0).getTime();
+        return aTime - bTime;
+      });
+
+    if (!editableOrders.length) {
+      toast({
+        title: t("menu.edit_order_locked_title", {
+          defaultValue: "Kitchen already accepted",
+        }),
+        description: t("menu.edit_order_locked_desc", {
+          defaultValue: "Edits are disabled once the kitchen starts preparing.",
+        }),
+      });
+      stopEditingLastOrder();
+      return null;
+    }
+
+    if (!menuData?.items?.length) {
+      toast({
+        title: t("menu.load_error_title", {
+          defaultValue: "Menu still loading",
+        }),
+        description: t("menu.load_error_description", {
+          defaultValue: "Please try again in a moment.",
+        }),
+      });
+      return null;
+    }
+
+    const rawMappedItems = editableOrders.flatMap((order) =>
+      mapOrderToCartItems(order, menuData.items)
+    );
+    const mappedItems = mergeCartItems(rawMappedItems);
+    if (!mappedItems.length) {
+      toast({
+        title: t("menu.toast_edit_unavailable_title", {
+          defaultValue: "Order cannot be edited",
+        }),
+        description: t("menu.toast_edit_items_missing_desc", {
+          defaultValue:
+            "We could not load your previous items. Please create a new order.",
+        }),
+      });
+      stopEditingLastOrder();
+      return null;
+    }
+
+    const sourceItemCount = editableOrders.reduce(
+      (count, order) =>
+        count +
+        (order.items ?? []).filter((item) => !isSubmittedOrderItemCancelled(item))
+          .length,
+      0
+    );
+    const missingCount = Math.max(0, sourceItemCount - rawMappedItems.length);
+    const orderIds = editableOrders
+      .map((order) => order.id)
+      .filter((id): id is string => Boolean(id));
+
+    setItems(mappedItems);
+    setLastOrder(editableOrders[0]);
+    setEditingOrderId(orderIds[0] ?? null);
+    setEditingOrderIds(orderIds);
+    setEditingNote(editableOrders.find((order) => order.note)?.note ?? "");
+    setSelectedCategory(
+      selectedCategory ||
+        (usesImmediateGuestCheckout ? categories[0]?.id : "all") ||
+        "all"
+    );
+    setCategorySelected(true);
+    setActiveOrderOpen(false);
+    hideLastOrderButton();
+    if (options?.openCart !== false) {
+      setCartOpenSignal((s) => s + 1);
+    }
+
+    if (missingCount > 0) {
+      toast({
+        title: t("menu.edit_order_partial_title", {
+          defaultValue: "Some items were skipped",
+        }),
+        description: t("menu.edit_order_partial_desc", {
+          count: missingCount,
+          defaultValue: `${missingCount} item(s) are unavailable and were removed.`,
+        }),
+      });
+    }
+
+    return { mappedItems, editableOrders };
   };
 
   const loadOrderIntoCart = (order: SubmittedOrderSummary | null) => {
@@ -1662,26 +1765,72 @@ export default function TableMenu() {
     setCartOpenSignal((s) => s + 1);
   };
 
+  const handleEditPendingOrders = async () => {
+    const fallbackOrders = editablePendingOrders;
+    if (!activeTableId) {
+      preparePendingOrdersForEditing(fallbackOrders);
+      return;
+    }
+
+    try {
+      const res = await api.getPublicTableOrders(activeTableId, {
+        storeSlug: storeSlug || undefined,
+        unpaid: true,
+        take: 20,
+      });
+      const dismissedIds = readDismissedOrderIds(dismissedOrderStorageKey);
+      const freshOrders = (res?.orders ?? [])
+        .map(toOrderSummary)
+        .filter((order) => order.status !== "PAID")
+        .filter((order) => !order.id || !dismissedIds.has(order.id));
+      setPlacedOrders(freshOrders);
+      const freshPendingOrders = freshOrders.filter(
+        (order) => order.id && order.status === "PLACED"
+      );
+      preparePendingOrdersForEditing(
+        freshPendingOrders.length ? freshPendingOrders : fallbackOrders
+      );
+    } catch (error) {
+      console.warn("Failed to refresh pending orders before edit", error);
+      preparePendingOrdersForEditing(fallbackOrders);
+    }
+  };
+
   const handleActiveOrderItemClick = (
     order: SubmittedOrderSummary | null,
-    orderItem: SubmittedOrderItem,
-    orderItemIndex: number
+    orderItem: SubmittedOrderItem
   ) => {
     if (!order?.id) return;
-    const mappedItems = prepareOrderForEditing(order);
-    if (!mappedItems || !menuData) return;
-    const cartIndex = findMappedCartIndexForOrderItem(
-      order,
-      orderItemIndex,
-      mappedItems,
+    if (order.status !== "PLACED") return;
+    if (!menuData?.items?.length) return;
+    const pendingOrders = editablePendingOrders.length
+      ? editablePendingOrders
+      : [order];
+    const prepared = preparePendingOrdersForEditing(pendingOrders, {
+      openCart: false,
+    });
+    if (!prepared) return;
+    const targetCartItem = mapSubmittedOrderItemToCartItem(
+      orderItem,
       menuData.items
+    );
+    if (!targetCartItem) {
+      setCartOpenSignal((s) => s + 1);
+      return;
+    }
+    const targetKey = getCartItemKey(targetCartItem);
+    const cartIndex = prepared.mappedItems.findIndex(
+      (cartItem) => getCartItemKey(cartItem) === targetKey
     );
     if (cartIndex < 0) {
       setCartOpenSignal((s) => s + 1);
       return;
     }
     setActiveOrderOpen(false);
-    setActiveLineEditor({ orderId: order.id, cartIndex });
+    setActiveLineEditor({
+      orderId: prepared.editableOrders[0]?.id ?? order.id,
+      cartIndex,
+    });
   };
 
   const handleConfirmActiveLineEdit = (
@@ -1715,13 +1864,18 @@ export default function TableMenu() {
     });
   };
 
-  const handleOrderAcceptedDuringEdit = (orderId: string) => {
+  const handleOrdersAcceptedDuringEdit = (orderIds: string[]) => {
+    const orderIdSet = new Set(orderIds.filter(Boolean));
     setLastOrder((prev) =>
-      prev && prev.id === orderId ? { ...prev, status: "PREPARING" } : prev
+      prev && prev.id && orderIdSet.has(prev.id)
+        ? { ...prev, status: "PREPARING" }
+        : prev
     );
     setPlacedOrders((prev) =>
       prev.map((order) =>
-        order.id === orderId ? { ...order, status: "PREPARING" } : order
+        order.id && orderIdSet.has(order.id)
+          ? { ...order, status: "PREPARING" }
+          : order
       )
     );
     clearCart();
@@ -1738,6 +1892,10 @@ export default function TableMenu() {
           "The kitchen accepted this order while you were editing. Your changes were not applied.",
       }),
     });
+  };
+
+  const handleOrderAcceptedDuringEdit = (orderId: string) => {
+    handleOrdersAcceptedDuringEdit([orderId]);
   };
 
   const handleEditLastOrder = async () => {
@@ -1896,7 +2054,15 @@ export default function TableMenu() {
         requestPermission: true,
       });
       const wasEditing = Boolean(editingOrderId);
-      const response = editingOrderId
+      const response = isEditingPendingBatch
+        ? await api.editPendingTableOrders(activeTableId, {
+            items: payload.items,
+            note: payload.note,
+            localityApprovalToken: payload.localityApprovalToken,
+            localitySessionId: payload.localitySessionId,
+            orderIds: editingOrderIds,
+          })
+        : editingOrderId
         ? await api.editOrder(editingOrderId, payload)
         : await api.createOrder(payload);
       const order = (response as any)?.order;
@@ -1904,6 +2070,20 @@ export default function TableMenu() {
         throw new Error("Order was not created");
       }
       const summary = toOrderSummary(order);
+      const supersededOrderIds = Array.isArray((response as any)?.supersededOrderIds)
+        ? ((response as any).supersededOrderIds as string[])
+        : [];
+      if (supersededOrderIds.length > 0) {
+        setDismissedOrderIds((prev) => {
+          const next = new Set(prev);
+          supersededOrderIds.forEach((orderId) => next.add(orderId));
+          writeDismissedOrderIds(dismissedOrderStorageKey, next);
+          return next;
+        });
+        setPlacedOrders((prev) =>
+          prev.filter((entry) => !entry.id || !supersededOrderIds.includes(entry.id))
+        );
+      }
       setLastOrder(summary);
       upsertPlacedOrder(summary);
       void registerCustomerPushForOrder({
@@ -1939,8 +2119,8 @@ export default function TableMenu() {
         payload,
       });
       const message = error instanceof Error ? error.message : String(error ?? "");
-      if (editingOrderId && error instanceof ApiError && error.status === 409) {
-        handleOrderAcceptedDuringEdit(editingOrderId);
+      if (isEditingExisting && error instanceof ApiError && error.status === 409) {
+        handleOrdersAcceptedDuringEdit(editingOrderIds.length ? editingOrderIds : editingOrderId ? [editingOrderId] : []);
         return null;
       }
       if (
@@ -2717,6 +2897,9 @@ export default function TableMenu() {
                           item,
                           order.status ?? activeOrderStatus
                         );
+                        const canEditLine =
+                          order.status === "PLACED" &&
+                          !isSubmittedOrderItemCancelled(item);
                         const itemStatusLabel = t(
                           `menu.item_status_${itemStatus.toLowerCase()}`,
                           {
@@ -2727,8 +2910,26 @@ export default function TableMenu() {
                         );
                         return (
                           <div
+                            role={canEditLine ? "button" : undefined}
+                            tabIndex={canEditLine ? 0 : undefined}
                             key={`${order.id ?? orderIndex}-${item.id ?? item.itemId ?? itemIndex}`}
-                            className="w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left"
+                            className={clsx(
+                              "w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left transition-colors",
+                              canEditLine
+                                ? "hover:border-primary/50 hover:bg-primary/5"
+                                : "cursor-default"
+                            )}
+                            onClick={() =>
+                              canEditLine
+                                ? handleActiveOrderItemClick(order, item)
+                                : undefined
+                            }
+                            onKeyDown={(event) => {
+                              if (!canEditLine) return;
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              handleActiveOrderItemClick(order, item);
+                            }}
                           >
                             <div className="flex min-w-0 items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -2744,6 +2945,7 @@ export default function TableMenu() {
                                   <PopoverTrigger asChild>
                                     <button
                                       type="button"
+                                      onClick={(event) => event.stopPropagation()}
                                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/80 text-muted-foreground hover:text-foreground"
                                       aria-label={t("menu.item_options", {
                                         item: name,
@@ -2795,6 +2997,29 @@ export default function TableMenu() {
                     </div>
                   )}
                 </div>
+                {editablePendingOrderIds.length > 0 ? (
+                  <div className="shrink-0 border-t border-border/50 bg-card/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                    <Button
+                      className="h-12 w-full rounded-full text-base font-semibold"
+                      onClick={() => void handleEditPendingOrders()}
+                      disabled={checkoutBusy || !editablePendingLineCount}
+                    >
+                      {t("menu.edit_pending_orders", {
+                        count: editablePendingLineCount,
+                        defaultValue:
+                          editablePendingLineCount === 1
+                            ? "Edit pending item"
+                            : "Edit pending items",
+                      })}
+                    </Button>
+                    <p className="mt-2 text-center text-xs text-muted-foreground">
+                      {t("menu.edit_pending_orders_hint", {
+                        defaultValue:
+                          "Loads all pending items into the cart so you can update or remove variations.",
+                      })}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </DialogContent>

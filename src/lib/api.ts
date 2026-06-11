@@ -253,6 +253,9 @@ type StaffTypePayload = {
 type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
 type ModifierUpdatePayload = Partial<Modifier>;
 type EditOrderPayload = CreateOrderPayload;
+type EditPendingTableOrdersPayload = Omit<CreateOrderPayload, "tableId"> & {
+  orderIds?: string[];
+};
 type QRTileUpdatePayload = {
   storeId?: string | null;
   tableId?: string | null;
@@ -532,6 +535,24 @@ export const api = {
           body: JSON.stringify(withVisit(data)),
           ...(visitHeaders ? { headers: visitHeaders } : {}),
         });
+  },
+  editPendingTableOrders: (
+    tableId: string,
+    data: EditPendingTableOrdersPayload
+  ): Promise<OrderResponse & { supersededOrderIds?: string[] }> => {
+    const visitHeaders = (data as any)?.visit
+      ? { "x-table-visit": (data as any).visit }
+      : undefined;
+    return isOffline()
+      ? devMocks.createOrder({ ...data, tableId } as CreateOrderPayload)
+      : fetchApi<OrderResponse & { supersededOrderIds?: string[] }>(
+          `/public/table/${tableId}/orders/pending`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(withVisit(data as CreateOrderPayload)),
+            ...(visitHeaders ? { headers: visitHeaders } : {}),
+          }
+        );
   },
   printOrder: (orderId: string) =>
     fetchApi(`/orders/${orderId}/print`, { method: "POST" }),

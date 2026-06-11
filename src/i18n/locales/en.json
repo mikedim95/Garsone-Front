@@ -81,6 +81,8 @@
                  "toast_edit_unavailable_desc":  "The kitchen has already started preparing your order.",
                  "toast_edit_items_missing_desc":  "We could not load your previous items. Please create a new order.",
                  "update_order":  "Update order",
+                  "edit_pending_orders": "Edit pending items",
+                  "edit_pending_orders_hint": "Loads all pending items into the cart so you can update or remove variations.",
                   "submit_order_return_menu": "Submit and return to menu",
                   "item_updated_title": "Item updated",
                   "review_updated_order": "Review your order and submit the update.",

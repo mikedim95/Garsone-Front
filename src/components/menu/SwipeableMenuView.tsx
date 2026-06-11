@@ -207,9 +207,9 @@ export const SwipeableMenuView = ({
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
-  const removeItem = useCartStore((state) => state.removeItem);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
-  const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
+  const removeItemAt = useCartStore((state) => state.removeItemAt);
+  const updateQuantityAt = useCartStore((state) => state.updateQuantityAt);
+  const updateItemAt = useCartStore((state) => state.updateItemAt);
   
   const [cartOpen, setCartOpen] = useState(false);
   const [cartSheetMinimizing, setCartSheetMinimizing] = useState(false);
@@ -431,10 +431,10 @@ export const SwipeableMenuView = ({
 
   const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
     if (editingItemIndex !== null) {
-      updateItemModifiers(editingItemIndex, selectedModifiers);
-      if (qty !== cartItems[editingItemIndex].quantity) {
-        updateQuantity(cartItems[editingItemIndex].item.id, qty);
-      }
+      updateItemAt(editingItemIndex, {
+        quantity: Math.max(1, qty || 1),
+        selectedModifiers,
+      });
     }
     setEditingItemIndex(null);
   };
@@ -980,7 +980,7 @@ export const SwipeableMenuView = ({
                       >
                         <button
                           aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
-                          onClick={() => removeItem(cartItem.item.id)}
+                          onClick={() => removeItemAt(idx)}
                           className="absolute right-2 top-2 z-10 rounded-full bg-destructive p-1.5 text-destructive-foreground shadow-lg hover:scale-110"
                         >
                           <X className="h-3 w-3" />
@@ -1004,14 +1004,14 @@ export const SwipeableMenuView = ({
                             <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))}
+                                  onClick={() => updateQuantityAt(idx, Math.max(1, cartItem.quantity - 1))}
                                   className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-primary/20 transition-colors"
                                 >
                                   -
                                 </button>
                                 <span className="text-sm font-medium w-4 text-center">{cartItem.quantity}</span>
                                 <button
-                                  onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
+                                  onClick={() => updateQuantityAt(idx, cartItem.quantity + 1)}
                                   className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-primary/20 transition-colors"
                                 >
                                   +

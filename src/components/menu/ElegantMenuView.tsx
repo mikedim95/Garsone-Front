@@ -62,9 +62,9 @@ export const ElegantMenuView = ({
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
-  const removeItem = useCartStore((state) => state.removeItem);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
-  const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
+  const removeItemAt = useCartStore((state) => state.removeItemAt);
+  const updateQuantityAt = useCartStore((state) => state.updateQuantityAt);
+  const updateItemAt = useCartStore((state) => state.updateItemAt);
   const [cartOpen, setCartOpen] = useState(false);
   const [expandedBubble, setExpandedBubble] = useState<'none' | 'cart' | 'call'>('none');
   const [orderNote, setOrderNote] = useState('');
@@ -223,10 +223,10 @@ export const ElegantMenuView = ({
 
   const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
     if (editingItemIndex !== null) {
-      updateItemModifiers(editingItemIndex, selectedModifiers);
-      if (qty !== cartItems[editingItemIndex].quantity) {
-        updateQuantity(cartItems[editingItemIndex].item.id, qty);
-      }
+      updateItemAt(editingItemIndex, {
+        quantity: Math.max(1, qty || 1),
+        selectedModifiers,
+      });
     }
     setEditingItemIndex(null);
   };
@@ -514,7 +514,7 @@ export const ElegantMenuView = ({
                     >
                       <button
                         aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
-                        onClick={() => removeItem(cartItem.item.id)}
+                        onClick={() => removeItemAt(idx)}
                         className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110 z-10"
                       >
                         <X className="h-3 w-3" />
@@ -575,7 +575,7 @@ export const ElegantMenuView = ({
                             <div className="flex items-center gap-2 bg-background/50 rounded-full px-2 py-1">
                               <button
                                 onClick={() =>
-                                  updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))
+                                  updateQuantityAt(idx, Math.max(1, cartItem.quantity - 1))
                                 }
                                 aria-label={t('menu.decrease_quantity', { defaultValue: 'Decrease quantity' })}
                                 className="text-muted-foreground hover:text-foreground transition-colors w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full hover:bg-muted text-base"
@@ -586,7 +586,7 @@ export const ElegantMenuView = ({
                                 {cartItem.quantity}
                               </span>
                               <button
-                                onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
+                                onClick={() => updateQuantityAt(idx, cartItem.quantity + 1)}
                                 aria-label={t('menu.increase_quantity', { defaultValue: 'Increase quantity' })}
                                 className="text-muted-foreground hover:text-foreground transition-colors w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full hover:bg-muted text-base"
                               >
