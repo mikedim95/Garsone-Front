@@ -791,7 +791,7 @@ export const SwipeableMenuView = ({
         </div>
       </div>
 
-      {/* Delicate Floating Action Bar */}
+      {/* Bottom menu controls */}
       <div
         className={`fixed left-4 right-4 z-50 flex justify-center pointer-events-none transition-[bottom] duration-300 ${
           cartBottomOffset === 'raised'
@@ -803,16 +803,57 @@ export const SwipeableMenuView = ({
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
-          className="pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full border border-border/20 shadow-lg bg-card/70 backdrop-blur-md"
+          className="pointer-events-auto grid w-full max-w-lg grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 rounded-full border border-border/25 bg-card/80 p-1.5 shadow-xl backdrop-blur-md"
         >
-          {/* Call Waiter Button - Minimal */}
+          <motion.button
+            type="button"
+            onClick={onBack}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            aria-label={t('common.back', { defaultValue: 'Back' })}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/55 text-muted-foreground transition-all duration-300 hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </motion.button>
+
+          {/* Order button - dominant center action */}
+          {showCartButton ? (
+            <motion.button
+              onClick={() => setCartOpen(true)}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative flex h-12 min-w-0 items-center justify-center gap-2 rounded-full bg-primary px-4 text-primary-foreground shadow-sm transition-all duration-300 hover:shadow-md"
+            >
+              <div className="relative shrink-0">
+                <ShoppingCart className="h-5 w-5" />
+                {cartItems.length > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground ring-1 ring-primary"
+                  >
+                    {cartItems.length}
+                  </motion.span>
+                )}
+              </div>
+              <span className="min-w-0 truncate text-sm font-semibold tracking-tight">
+                {cartItems.length > 0
+                  ? `${formatPrice(cartTotal)} · ${primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}`
+                  : t('menu.cart', { defaultValue: 'Cart' })}
+              </span>
+            </motion.button>
+          ) : (
+            <div aria-hidden="true" />
+          )}
+
+          {/* Call Waiter Button */}
           <motion.button
             type="button"
             onClick={handleBellClick}
             disabled={callStatus === 'pending'}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className={`relative flex items-center justify-center h-10 w-10 rounded-full transition-all duration-300 ${
+            className={`relative flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 ${
               callStatus === 'pending' 
                 ? 'bg-primary/15 text-primary cursor-wait' 
                 : 'bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground'
@@ -821,36 +862,8 @@ export const SwipeableMenuView = ({
             {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
               <span className="absolute inset-0 rounded-full bg-primary/15 animate-ping" />
             )}
-            <Bell className={`h-4 w-4 relative ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
+            <Bell className={`relative h-5 w-5 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
           </motion.button>
-
-          {/* Cart Button - Compact */}
-          {showCartButton && (
-            <motion.button
-              onClick={() => setCartOpen(true)}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="relative flex items-center gap-2 h-10 pl-3 pr-4 rounded-full bg-primary text-primary-foreground font-medium transition-all duration-300 shadow-sm hover:shadow-md"
-            >
-              <div className="relative">
-                <ShoppingCart className="h-4 w-4" />
-                {cartItems.length > 0 && (
-                  <motion.span 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center ring-1 ring-primary"
-                  >
-                    {cartItems.length}
-                  </motion.span>
-                )}
-              </div>
-              {cartItems.length > 0 ? (
-                <span className="text-sm font-semibold tracking-tight">{formatPrice(cartTotal)}</span>
-              ) : (
-                <span className="text-sm font-medium">{t('menu.cart', { defaultValue: 'Cart' })}</span>
-              )}
-            </motion.button>
-          )}
         </motion.div>
       </div>
 

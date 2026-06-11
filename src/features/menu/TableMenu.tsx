@@ -734,6 +734,10 @@ export default function TableMenu() {
   });
 
   const minimizeActiveOrderSheet = () => {
+    if (!categorySelected && activeOrder?.id) {
+      setLastOrderButtonVisible(true);
+    }
+
     if (typeof window === "undefined") {
       setActiveOrderOpen(false);
       return;
@@ -833,7 +837,9 @@ export default function TableMenu() {
       dismissOrderNotice(order);
       return;
     }
-    hideLastOrderButton();
+    if (!categorySelected && order?.id) {
+      setLastOrderButtonVisible(true);
+    }
     setActiveOrderOpen(false);
     setActiveOrderSheetMinimizing(false);
   };
@@ -843,6 +849,32 @@ export default function TableMenu() {
     hideLastOrderButton();
     setLastOrder(latestVisibleOrder);
     setActiveOrderOpen(true);
+  };
+
+  const showMenuLanding = () => {
+    setCategorySelected(false);
+    setSelectedCategory(null);
+    setActiveOrderOpen(false);
+  };
+
+  const pushCategoryHistoryEntry = () => {
+    if (typeof window === "undefined" || categoryHistoryEntryRef.current) {
+      return;
+    }
+    window.history.pushState(
+      { ...(window.history.state ?? {}), garsoneMenuCategory: true },
+      "",
+      window.location.href
+    );
+    categoryHistoryEntryRef.current = true;
+  };
+
+  const returnToMenuLanding = () => {
+    if (typeof window !== "undefined" && categoryHistoryEntryRef.current) {
+      window.history.back();
+      return;
+    }
+    showMenuLanding();
   };
 
   const startFreshOrderFromCategory = (catId: string) => {
@@ -855,6 +887,7 @@ export default function TableMenu() {
       clearCart();
       stopEditingLastOrder();
     }
+    pushCategoryHistoryEntry();
     setSelectedCategory(catId);
     setCategorySelected(true);
   };
@@ -869,6 +902,8 @@ export default function TableMenu() {
   const cartChangeRef = useRef(false);
   const lastOrderRef = useRef<SubmittedOrderSummary | null>(null);
   const placedOrdersRef = useRef<SubmittedOrderSummary[]>([]);
+  const categorySelectedRef = useRef(false);
+  const categoryHistoryEntryRef = useRef(false);
   const notifiedOrderStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [localityGateOpen, setLocalityGateOpen] = useState(false);
@@ -1095,6 +1130,44 @@ export default function TableMenu() {
   useEffect(() => {
     placedOrdersRef.current = placedOrders;
   }, [placedOrders]);
+
+  useEffect(() => {
+    categorySelectedRef.current = categorySelected;
+  }, [categorySelected]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleMenuBack = () => {
+      if (!categorySelectedRef.current) {
+        categoryHistoryEntryRef.current = false;
+        return;
+      }
+      categoryHistoryEntryRef.current = false;
+      showMenuLanding();
+    };
+
+    const handleBackspace = (event: KeyboardEvent) => {
+      if (event.key !== "Backspace" || !categorySelectedRef.current) return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping =
+        Boolean(target?.isContentEditable) ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select";
+      if (isTyping) return;
+      event.preventDefault();
+      returnToMenuLanding();
+    };
+
+    window.addEventListener("popstate", handleMenuBack);
+    window.addEventListener("keydown", handleBackspace);
+    return () => {
+      window.removeEventListener("popstate", handleMenuBack);
+      window.removeEventListener("keydown", handleBackspace);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -2082,24 +2155,18 @@ export default function TableMenu() {
           <span className={clsx("h-2 w-2 shrink-0 rounded-full", activeOrderTone.dot)} />
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/80" />
         </button>
-        <button
-          type="button"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/80 hover:bg-white/20 hover:text-white"
-          onClick={() =>
-            activeOrder.status === "CANCELLED"
-              ? dismissOrderNotice(activeOrder)
-              : hideLastOrderButton()
-          }
-          aria-label={
-            activeOrder.status === "CANCELLED"
-              ? t("menu.dismiss_cancelled_order", {
-                  defaultValue: "Dismiss canceled order",
-                })
-              : t("actions.close", { defaultValue: "Close" })
-          }
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {activeOrder.status === "CANCELLED" ? (
+          <button
+            type="button"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/80 hover:bg-white/20 hover:text-white"
+            onClick={() => dismissOrderNotice(activeOrder)}
+            aria-label={t("menu.dismiss_cancelled_order", {
+              defaultValue: "Dismiss canceled order",
+            })}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
     </div>
   ) : null;
@@ -2254,10 +2321,7 @@ export default function TableMenu() {
               items={menuData?.items ?? []}
               selectedCategory={selectedCategory || "all"}
               onCategoryChange={(catId) => setSelectedCategory(catId)}
-              onBack={() => {
-                setCategorySelected(false);
-                setSelectedCategory(null);
-              }}
+              onBack={returnToMenuLanding}
               onAddItem={handleAddItem}
               onCheckout={
                 usesImmediateGuestCheckout || isEditingExisting
@@ -2271,7 +2335,7 @@ export default function TableMenu() {
               }
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
-              showBackButton={!usesImmediateGuestCheckout}
+              showBackButton
               showAllCategory={!usesImmediateGuestCheckout}
               primaryCtaLabel={
                 isEditingExisting
