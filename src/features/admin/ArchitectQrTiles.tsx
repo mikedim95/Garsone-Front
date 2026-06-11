@@ -66,7 +66,6 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import type {
   ArchitectStoreUser,
-  ManagerTableSummary,
   OrderingMode,
   PendingNodeAgent,
   QRTile,
@@ -98,7 +97,6 @@ type StoreUserForm = {
 
 const MAX_GENERATE_COUNT = 500;
 const UNBOUND_STORE_VALUE = "__unbound__";
-const UNASSIGNED_TABLE_VALUE = "__unassigned__";
 const ADD_STORE_VALUE = "__add_store__";
 
 const defaultStoreOnboardForm = (): StoreOnboardForm => ({
@@ -298,7 +296,7 @@ const lifecycleCopy: Record<
   inactive: { label: "Inactive", variant: "outline" },
   unbound: { label: "QR only", variant: "warning" },
   venue: { label: "Venue linked", variant: "info" },
-  live: { label: "Live on table", variant: "success" },
+  live: { label: "Table assigned", variant: "success" },
 };
 
 function TileLifecycleBadge({ tile }: { tile: QRTile }) {
@@ -407,9 +405,6 @@ export default function ArchitectQrTiles() {
   const [poolTiles, setPoolTiles] = useState<QRTile[]>([]);
   const [storeTiles, setStoreTiles] = useState<QRTile[]>([]);
   const [overview, setOverview] = useState<StoreOverview[]>([]);
-  const [tablesByStoreId, setTablesByStoreId] = useState<
-    Record<string, ManagerTableSummary[]>
-  >({});
   const [recentTiles, setRecentTiles] = useState<QRTile[]>([]);
   const [recentScope, setRecentScope] = useState<GenerateScope | null>(null);
   const [loadingStores, setLoadingStores] = useState(false);
@@ -470,11 +465,6 @@ export default function ArchitectQrTiles() {
   const historyConfirmationPhrase = selectedStore
     ? `DELETE HISTORY ${selectedStore.slug}`
     : "";
-  const selectedStoreTables = useMemo(
-    () => tablesByStoreId[selectedStoreId] ?? [],
-    [selectedStoreId, tablesByStoreId]
-  );
-
   const canGenerate =
     Number.isFinite(generateCount) &&
     Math.trunc(generateCount) >= 1 &&
@@ -673,26 +663,6 @@ export default function ArchitectQrTiles() {
     []
   );
 
-  const loadTablesForStores = useCallback(async (storeList: StoreOption[]) => {
-    if (!storeList.length) return;
-    const results = await Promise.allSettled(
-      storeList.map(async (store) => ({
-        storeId: store.id,
-        tables: (await api.adminListStoreTables(store.id)).tables ?? [],
-      }))
-    );
-
-    setTablesByStoreId((current) => {
-      const next = { ...current };
-      results.forEach((result) => {
-        if (result.status === "fulfilled") {
-          next[result.value.storeId] = result.value.tables;
-        }
-      });
-      return next;
-    });
-  }, []);
-
   const refreshPoolTiles = useCallback(
     async (showSpinner = false) => {
       if (showSpinner) setRefreshing(true);
@@ -732,16 +702,9 @@ export default function ArchitectQrTiles() {
       if (showSpinner) setRefreshing(true);
       setLoadingStoreTiles(true);
       try {
-        const [tilesRes, tablesRes] = await Promise.all([
-          api.adminListQrTiles(storeId),
-          api.adminListStoreTables(storeId),
-        ]);
+        const tilesRes = await api.adminListQrTiles(storeId);
         const tiles = tilesRes.tiles ?? [];
         setStoreTiles(tiles);
-        setTablesByStoreId((current) => ({
-          ...current,
-          [storeId]: tablesRes.tables ?? [],
-        }));
         setLabelDrafts((current) => {
           const next = { ...current };
           tiles.forEach((tile) => {
@@ -946,9 +909,8 @@ export default function ArchitectQrTiles() {
     setCreatingStore(true);
     try {
       const res = await api.adminCreateStore(payload);
-      const storeList = await loadStores();
+      await loadStores();
       setSelectedStoreId(res.store.id);
-      await loadTablesForStores(storeList);
       setStoreDialogOpen(false);
       setStoreOnboardForm(defaultStoreOnboardForm());
       setActiveTab("settings");
@@ -968,7 +930,7 @@ export default function ArchitectQrTiles() {
     } finally {
       setCreatingStore(false);
     }
-  }, [loadOverview, loadStores, loadTablesForStores, storeOnboardForm, toast]);
+  }, [loadOverview, loadStores, storeOnboardForm, toast]);
 
   useEffect(() => {
     const baseEnv = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
@@ -987,16 +949,16 @@ export default function ArchitectQrTiles() {
     let cancelled = false;
 
     const bootstrap = async () => {
-      const storeList = await loadStores();
+      await loadStores();
       if (cancelled) return;
-      await Promise.all([loadTablesForStores(storeList), refreshPoolTiles()]);
+      await refreshPoolTiles();
     };
 
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [loadStores, loadTablesForStores, refreshPoolTiles]);
+  }, [loadStores, refreshPoolTiles]);
 
   useEffect(() => {
     if (!selectedStore) return;
@@ -1700,7 +1662,6 @@ export default function ArchitectQrTiles() {
         tile.label,
         tile.storeName,
         tile.storeSlug,
-        tile.tableLabel,
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
@@ -1734,7 +1695,7 @@ export default function ArchitectQrTiles() {
     activeTab === "overview"
       ? "Cross-venue usage, staffing and QR footprint."
     : activeTab === "pool"
-      ? "Generate QR codes centrally, then bind them to venues and tables."
+      ? "Generate QR codes centrally, then bind them to venues."
     : selectedStore
       ? `Managing ${selectedStore.name}`
       : "Select a store to continue.";
@@ -1862,17 +1823,17 @@ export default function ArchitectQrTiles() {
               <MetricCard
                 title="Unbound"
                 value={poolStats.unbound}
-                description="No store attached yet."
+                description="No venue attached yet."
               />
               <MetricCard
-                title="Store Linked"
+                title="Venue Linked"
                 value={poolStats.venue}
-                description="Ready for table binding."
+                description="Ready for per-venue setup."
               />
               <MetricCard
-                title="Live on Table"
+                title="Table Assigned"
                 value={poolStats.live}
-                description="Fully bound and active."
+                description="Assigned from venue settings."
               />
             </div>
 
@@ -1880,9 +1841,8 @@ export default function ArchitectQrTiles() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Binding flow</CardTitle>
                 <CardDescription>
-                  QR codes now live in a central pool. Generate once, bind to a store
-                  later, and only attach a table when the physical placement is
-                  known.
+                  QR codes now live in a central pool. Generate once, bind to a venue
+                  later, then assign tables from the venue's table settings.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-3">
@@ -1893,15 +1853,15 @@ export default function ArchitectQrTiles() {
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                  <Badge variant="info">2. Store linked</Badge>
+                  <Badge variant="info">2. Venue linked</Badge>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Attach the code to a store when inventory is allocated.
+                    Attach the code to a venue when inventory is allocated.
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                  <Badge variant="success">3. Live on table</Badge>
+                  <Badge variant="success">3. Assign in venue</Badge>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Bind the final table when the QR is physically placed.
+                    Create tables and link QR codes from the venue's table editor.
                   </p>
                 </div>
               </CardContent>
@@ -1912,7 +1872,7 @@ export default function ArchitectQrTiles() {
                 <div className="relative flex-1 sm:max-w-sm">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Search code, alias, store or table..."
+                    placeholder="Search code, alias or store..."
                     value={poolSearch}
                     onChange={(event) => setPoolSearch(event.target.value)}
                     className="pl-9"
@@ -1930,8 +1890,8 @@ export default function ArchitectQrTiles() {
                   <SelectContent>
                     <SelectItem value="all">All statuses</SelectItem>
                     <SelectItem value="unbound">QR only</SelectItem>
-                    <SelectItem value="venue">Store linked</SelectItem>
-                    <SelectItem value="live">Live on table</SelectItem>
+                    <SelectItem value="venue">Venue linked</SelectItem>
+                    <SelectItem value="live">Table assigned</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1981,7 +1941,6 @@ export default function ArchitectQrTiles() {
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
                         <TableHead>Code / Alias</TableHead>
                         <TableHead>Venue</TableHead>
-                        <TableHead>Table</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="hidden md:table-cell">QR</TableHead>
                         <TableHead className="text-center">Active</TableHead>
@@ -1993,9 +1952,6 @@ export default function ArchitectQrTiles() {
                     </TableHeader>
                     <TableBody>
                       {filteredPoolTiles.map((tile) => {
-                        const venueTables = tile.storeId
-                          ? tablesByStoreId[tile.storeId] ?? []
-                          : [];
                         const isBusy =
                           updatingTileId === tile.id || deletingTileId === tile.id;
 
@@ -2081,44 +2037,6 @@ export default function ArchitectQrTiles() {
                                 {tile.storeSlug ? `${tile.storeSlug}.garsone` : "No venue yet"}
                               </p>
                             </TableCell>
-                            <TableCell className="min-w-[13rem]">
-                              <Select
-                                value={tile.tableId ?? UNASSIGNED_TABLE_VALUE}
-                                onValueChange={(value) =>
-                                  void handleUpdateTile(tile.id, {
-                                    tableId:
-                                      value === UNASSIGNED_TABLE_VALUE
-                                        ? null
-                                        : value,
-                                  })
-                                }
-                                disabled={!tile.storeId || isBusy}
-                              >
-                                <SelectTrigger className="h-8">
-                                  <SelectValue
-                                    placeholder={
-                                      tile.storeId
-                                        ? "Select table"
-                                        : "Pick venue first"
-                                    }
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value={UNASSIGNED_TABLE_VALUE}>
-                                    Unassigned
-                                  </SelectItem>
-                                  {venueTables.map((table) => (
-                                    <SelectItem key={table.id} value={table.id}>
-                                      {table.label}
-                                      {table.isActive ? "" : " (inactive)"}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <p className="mt-2 text-xs text-muted-foreground">
-                                {tile.tableLabel ?? "Not placed on a table yet"}
-                              </p>
-                            </TableCell>
                             <TableCell>
                               <div className="space-y-2">
                                 <TileLifecycleBadge tile={tile} />
@@ -2126,9 +2044,9 @@ export default function ArchitectQrTiles() {
                                   {getTileLifecycle(tile) === "unbound"
                                     ? "Waiting for venue inventory."
                                     : getTileLifecycle(tile) === "venue"
-                                    ? "Ready to bind to a table."
+                                    ? "Assign tables from per-venue options."
                                     : getTileLifecycle(tile) === "live"
-                                    ? "Customer-facing and ready."
+                                    ? "Assigned from venue settings."
                                     : "Kept out of circulation."}
                                 </p>
                               </div>

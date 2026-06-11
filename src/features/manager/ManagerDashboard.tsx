@@ -29,7 +29,7 @@ import type {
   WaiterType,
 } from "@/types";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import {
   LogOut,
@@ -112,6 +112,7 @@ import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/ui/page-transition";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
+import { useToast } from "@/components/ui/use-toast";
 
 type ManagerMode = "basic" | "pro";
 type ManagerTab = "economics" | "orders" | "personnel" | "menu";
@@ -373,6 +374,7 @@ const LS_ORDERS_TS_KEY = "MANAGER_ORDERS_CACHE_TS";
 export default function ManagerDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
   const isMobile = useIsMobile();
@@ -2268,6 +2270,18 @@ export default function ManagerDashboard() {
       });
     } catch (error) {
       console.error("Failed to save table", error);
+      toast({
+        variant: "destructive",
+        title: t("manager.table_save_failed", {
+          defaultValue: "Table save failed",
+        }),
+        description:
+          error instanceof ApiError
+            ? error.message
+            : t("manager.table_save_failed_description", {
+                defaultValue: "Please try again.",
+              }),
+      });
     } finally {
       setSavingTable(false);
     }
@@ -5857,11 +5871,15 @@ export default function ManagerDashboard() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select QR tile" />
+                    <SelectValue
+                      placeholder={t("manager.select_qr_tile", {
+                        defaultValue: "Select QR tile",
+                      })}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">
-                      No QR tile
+                      {t("manager.no_qr_tile", { defaultValue: "No QR tile" })}
                     </SelectItem>
                     {tableQrTileOptions.map((tile) => (
                       <SelectItem key={tile.id} value={tile.id}>
@@ -5871,7 +5889,10 @@ export default function ManagerDashboard() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Pick from the QR tiles assigned to this store in Architect.
+                  {t("manager.qr_tile_picker_hint", {
+                    defaultValue:
+                      "Pick from the QR tiles assigned to this store in Architect.",
+                  })}
                 </p>
               </div>
               <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3 py-2">
