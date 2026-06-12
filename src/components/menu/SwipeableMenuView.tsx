@@ -5,6 +5,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
@@ -312,7 +313,9 @@ export const SwipeableMenuView = ({
 
     const nextIndex = allCategories.findIndex((category) => category.id === categoryId);
     if (nextIndex >= 0 && nextIndex !== safeSelectedIndex) {
-      setSwipeDirection(nextIndex > safeSelectedIndex ? 1 : -1);
+      flushSync(() => {
+        setSwipeDirection(nextIndex > safeSelectedIndex ? 1 : -1);
+      });
     }
     onCategoryChange(categoryId);
   };
@@ -321,7 +324,9 @@ export const SwipeableMenuView = ({
     const nextCategory = allCategories[safeSelectedIndex + offset];
     if (!nextCategory) return false;
 
-    setSwipeDirection(offset);
+    flushSync(() => {
+      setSwipeDirection(offset);
+    });
     onCategoryChange(nextCategory.id);
     return true;
   };
