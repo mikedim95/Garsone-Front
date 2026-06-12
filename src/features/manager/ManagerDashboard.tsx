@@ -127,6 +127,19 @@ type ActiveCook = CookSummary & {
   originalDisplayName?: string;
   originalCookTypeId?: string | null;
 };
+type StaffRosterMember = {
+  id: string;
+  email: string;
+  displayName: string;
+  isHybrid: boolean;
+  waiterDetail?: {
+    waiter: WaiterSummary;
+    assignedTables: WaiterAssignedTable[];
+    shiftOn: boolean;
+    ordersHandled: number;
+  };
+  cook?: CookSummary;
+};
 type TableSummary = {
   id: string;
   label: string;
@@ -1874,6 +1887,46 @@ export default function ManagerDashboard() {
     });
   }, [sortedWaiters, waiterAssignmentsMap, tablesById, ordersByTable]);
 
+  const staffRoster = useMemo<StaffRosterMember[]>(() => {
+    const members = new Map<string, StaffRosterMember>();
+    waiterDetails.forEach((detail) => {
+      const role = String(detail.waiter.role || "").toLowerCase();
+      members.set(detail.waiter.id, {
+        id: detail.waiter.id,
+        email: detail.waiter.email,
+        displayName: detail.waiter.displayName || detail.waiter.email,
+        isHybrid: role === "hybrid",
+        waiterDetail: detail,
+      });
+    });
+    cooks.forEach((cook) => {
+      const existing = members.get(cook.id);
+      const role = String(cook.role || "").toLowerCase();
+      if (existing) {
+        existing.cook = cook;
+        existing.isHybrid = existing.isHybrid || role === "hybrid";
+        return;
+      }
+      members.set(cook.id, {
+        id: cook.id,
+        email: cook.email,
+        displayName: cook.displayName || cook.email,
+        isHybrid: role === "hybrid",
+        cook,
+      });
+    });
+    return Array.from(members.values()).sort((a, b) =>
+      (a.displayName || a.email).toLowerCase().localeCompare(
+        (b.displayName || b.email).toLowerCase()
+      )
+    );
+  }, [waiterDetails, cooks]);
+
+  const hybridPersonnelCount = useMemo(
+    () => staffRoster.filter((member) => member.isHybrid).length,
+    [staffRoster]
+  );
+
   // Personnel: Pro analytics (depends on waiterDetails)
   const topAndAttentionWaiters = useMemo(() => {
     const withP90 = waiterDetails
@@ -2301,7 +2354,7 @@ export default function ManagerDashboard() {
     try {
       await api.managerDeleteTable(tableId);
       await loadManagerTables();
-      await loadWaiterData();
+      await Promise.all([loadWaiterData(), loadCookData()]);
     } catch (error) {
       console.error("Failed to delete table", error);
     } finally {
@@ -2382,11 +2435,20 @@ export default function ManagerDashboard() {
   };
 
   const handleDeleteWaiter = async (waiterId: string) => {
-    if (!window.confirm("Delete this waiter account?")) return;
+    const waiter = waiters.find((item) => item.id === waiterId);
+    const isHybrid = String(waiter?.role || "").toLowerCase() === "hybrid";
+    if (
+      !window.confirm(
+        isHybrid
+          ? "Remove waiter access from this hybrid person? The cook account will remain."
+          : "Delete this waiter account?"
+      )
+    )
+      return;
     setDeletingWaiterId(waiterId);
     try {
       await api.deleteWaiter(waiterId);
-      await loadWaiterData();
+      await Promise.all([loadWaiterData(), isHybrid ? loadCookData() : Promise.resolve()]);
     } catch (error) {
       console.error("Failed to delete waiter", error);
     } finally {
@@ -2440,7 +2502,7 @@ export default function ManagerDashboard() {
       if (Object.keys(updatePayload).length > 0) {
         await api.updateCook(activeCook.id, updatePayload);
       }
-      await loadCookData();
+      await Promise.all([loadCookData(), loadWaiterData()]);
       setEditCookModalOpen(false);
       setActiveCook(null);
     } catch (error) {
@@ -2451,11 +2513,20 @@ export default function ManagerDashboard() {
   };
 
   const handleDeleteCook = async (cookId: string) => {
-    if (!window.confirm("Delete this cook account?")) return;
+    const cook = cooks.find((item) => item.id === cookId);
+    const isHybrid = String(cook?.role || "").toLowerCase() === "hybrid";
+    if (
+      !window.confirm(
+        isHybrid
+          ? "Remove cook access from this hybrid person? The waiter account will remain."
+          : "Delete this cook account?"
+      )
+    )
+      return;
     setDeletingCookId(cookId);
     try {
       await api.deleteCook(cookId);
-      await loadCookData();
+      await Promise.all([loadCookData(), isHybrid ? loadWaiterData() : Promise.resolve()]);
     } catch (error) {
       console.error("Failed to delete cook", error);
     } finally {
@@ -3908,7 +3979,7 @@ export default function ManagerDashboard() {
 
                   {/* Unified Staff Management Card */}
                   <Card className="p-0 overflow-hidden">
-                    <Tabs defaultValue="waiters" className="w-full">
+                    <Tabs defaultValue="personnel-roster" className="w-full">
                       {/* Horizontal category navigation */}
                       <div className="border-b border-border/60 bg-muted/30">
                         <div className="px-4 sm:px-6 pt-4 pb-0">
@@ -3921,31 +3992,21 @@ export default function ManagerDashboard() {
                             <div className="text-xs text-muted-foreground">
                               {t("manager.staff_summary", {
                                 defaultValue: "{{members}} members · {{types}} types",
-                                members: waiterDetails.length + cooks.length,
+                                members: staffRoster.length,
                                 types: cookTypes.length + waiterTypes.length,
                               })}
                             </div>
                           </div>
                           <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto p-0 bg-transparent rounded-none">
                             <TabsTrigger 
-                              value="waiters" 
+                              value="personnel-roster" 
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <Users className="h-4 w-4 mr-1.5" />
-                              {t("manager.waiters", {
-                                defaultValue: "Waiters",
+                              {t("manager.personnel", {
+                                defaultValue: "Personnel",
                               })}
-                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{waiterDetails.length}</Badge>
-                            </TabsTrigger>
-                            <TabsTrigger 
-                              value="cooks" 
-                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                            >
-                              <ChefHat className="h-4 w-4 mr-1.5" />
-                              {t("manager.cooks", {
-                                defaultValue: "Cooks",
-                              })}
-                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{cooks.length}</Badge>
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{staffRoster.length}</Badge>
                             </TabsTrigger>
                             <div className="h-6 w-px bg-border mx-2 self-center" />
                             <TabsTrigger 
@@ -3972,189 +4033,215 @@ export default function ManagerDashboard() {
 
                       {/* Content area */}
                       <div className="p-4 sm:p-6">
-                        {/* Waiters Tab */}
-                        <TabsContent value="waiters" className="mt-0 space-y-4">
+                        <TabsContent value="personnel-roster" className="mt-0 space-y-4">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              {t("manager.waiters_description", {
+                              {t("manager.personnel_description", {
                                 defaultValue:
-                                  "Manage your front-of-house team and table assignments",
+                                  "Manage each person once, with waiter, cook, or hybrid capabilities shown together.",
                               })}
                             </p>
-                            <Button
-                              onClick={() => setAddModalOpen(true)}
-                              size="sm"
-                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
-                            >
-                              <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
-                            </Button>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button
+                                onClick={() => setAddModalOpen(true)}
+                                size="sm"
+                                className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                              >
+                                <Plus className="h-4 w-4" />{" "}
+                                {t("manager.add_personnel", {
+                                  defaultValue: "Add personnel",
+                                })}
+                              </Button>
+                              <Button
+                                onClick={() => setAddCookModalOpen(true)}
+                                size="sm"
+                                variant="outline"
+                                className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                              >
+                                <ChefHat className="h-4 w-4" />{" "}
+                                {t("manager.add_cook", {
+                                  defaultValue: "Add cook",
+                                })}
+                              </Button>
+                            </div>
                           </div>
-                          {loadingWaiters ? (
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                              <p className="text-xs text-muted-foreground">
+                                {t("manager.waiters", { defaultValue: "Waiters" })}
+                              </p>
+                              <p className="text-2xl font-semibold">{waiterDetails.length}</p>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                              <p className="text-xs text-muted-foreground">
+                                {t("manager.cooks", { defaultValue: "Cooks" })}
+                              </p>
+                              <p className="text-2xl font-semibold">{cooks.length}</p>
+                            </div>
+                            <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
+                              <p className="text-xs text-muted-foreground">
+                                {t("manager.hybrid_personnel", {
+                                  defaultValue: "Hybrid waiter + cook",
+                                })}
+                              </p>
+                              <p className="text-2xl font-semibold">{hybridPersonnelCount}</p>
+                            </div>
+                          </div>
+                          {loadingWaiters || loadingCooks ? (
                             <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
-                          ) : waiterDetails.length === 0 ? (
+                          ) : staffRoster.length === 0 ? (
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
                               <Users className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
-                                {t("manager.no_waiters", {
-                                  defaultValue: "No waiters yet. Add your first waiter to get started.",
+                                {t("manager.no_personnel", {
+                                  defaultValue: "No personnel yet. Add a waiter, cook, or hybrid person to get started.",
                                 })}
                               </p>
                             </div>
                           ) : (
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {waiterDetails.map((detail) => (
+                              {staffRoster.map((member) => (
                                 <div
-                                  key={detail.waiter.id}
+                                  key={member.id}
                                   className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
                                 >
                                   <div className="flex items-start gap-3">
                                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                       <span className="text-sm font-semibold text-primary">
-                                        {(detail.waiter.displayName || detail.waiter.email || "?")[0].toUpperCase()}
+                                        {(member.displayName || member.email || "?")[0].toUpperCase()}
                                       </span>
                                     </div>
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-2">
                                         <p className="font-medium text-foreground truncate">
-                                          {detail.waiter.displayName || detail.waiter.email}
+                                          {member.displayName || member.email}
                                         </p>
-                                        <span className={cn(
-                                          "h-2 w-2 rounded-full shrink-0",
-                                          detail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
-                                        )} title={detail.shiftOn ? "On shift" : "Off shift"} />
+                                        {member.waiterDetail && (
+                                          <span className={cn(
+                                            "h-2 w-2 rounded-full shrink-0",
+                                            member.waiterDetail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
+                                          )} title={member.waiterDetail.shiftOn ? "On shift" : "Off shift"} />
+                                        )}
                                       </div>
                                       <p className="text-xs text-muted-foreground truncate">
-                                        {detail.waiter.email}
+                                        {member.email}
                                       </p>
                                       <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                        <Badge variant="outline" className="text-[10px] h-5">
-                                          {detail.assignedTables.length} tables
-                                        </Badge>
-                                        {String(detail.waiter.role || "").toLowerCase() === "hybrid" && (
+                                        {member.isHybrid ? (
                                           <Badge variant="success" className="text-[10px] h-5">
-                                            {t("manager.hybrid", { defaultValue: "Hybrid" })}
+                                            {t("manager.hybrid_personnel", {
+                                              defaultValue: "Hybrid waiter + cook",
+                                            })}
+                                          </Badge>
+                                        ) : member.waiterDetail ? (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {t("manager.waiter", { defaultValue: "Waiter" })}
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {t("manager.cook", { defaultValue: "Cook" })}
                                           </Badge>
                                         )}
-                                        {detail.waiter.waiterType?.title && (
+                                        {member.waiterDetail && (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {member.waiterDetail.assignedTables.length}{" "}
+                                            {t("manager.tables", { defaultValue: "tables" })}
+                                          </Badge>
+                                        )}
+                                        {member.waiterDetail?.waiter.waiterType?.title && (
                                           <Badge variant="secondary" className="text-[10px] h-5">
-                                            {detail.waiter.waiterType.title}
+                                            {member.waiterDetail.waiter.waiterType.title}
+                                          </Badge>
+                                        )}
+                                        {member.cook?.cookType?.title && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {member.cook.cookType.title}
                                           </Badge>
                                         )}
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="flex-1 h-8 text-xs"
-                                      onClick={() => openEditWaiter(detail.waiter)}
-                                    >
-                                      <Pencil className="h-3 w-3 mr-1" /> Edit
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteWaiter(detail.waiter.id)}
-                                      disabled={deletingWaiterId === detail.waiter.id}
-                                    >
-                                      {deletingWaiterId === detail.waiter.id ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3 w-3" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </TabsContent>
-
-                        {/* Cooks Tab */}
-                        <TabsContent value="cooks" className="mt-0 space-y-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              {t("manager.cooks_description", {
-                                defaultValue:
-                                  "Manage your kitchen staff and specializations",
-                              })}
-                            </p>
-                            <Button
-                              onClick={() => setAddCookModalOpen(true)}
-                              size="sm"
-                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
-                            >
-                              <Plus className="h-4 w-4" />{" "}
-                              {t("manager.add_cook", {
-                                defaultValue: "Add cook",
-                              })}
-                            </Button>
-                          </div>
-                          {loadingCooks ? (
-                            <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
-                          ) : cooks.length === 0 ? (
-                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
-                              <ChefHat className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                              <p className="text-sm text-muted-foreground">
-                                No cooks yet. Add your first cook to get started.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {cooks.map((cook) => (
-                                <div
-                                  key={cook.id}
-                                  className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
-                                      <ChefHat className="h-5 w-5 text-orange-600" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="font-medium text-foreground truncate">
-                                        {cook.displayName || cook.email}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground truncate">
-                                        {cook.email}
-                                      </p>
-                                      <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {String(cook.role || "").toLowerCase() === "hybrid" && (
-                                          <Badge variant="success" className="text-[10px] h-5">
-                                            {t("manager.hybrid", { defaultValue: "Hybrid" })}
-                                          </Badge>
+                                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/40">
+                                    {member.waiterDetail && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditWaiter(member.waiterDetail!.waiter)}
+                                      >
+                                        <Users className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.waiter", { defaultValue: "Waiter" })}
+                                      </Button>
+                                    )}
+                                    {member.cook && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditCook(member.cook!)}
+                                      >
+                                        <ChefHat className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.cook", { defaultValue: "Cook" })}
+                                      </Button>
+                                    )}
+                                    {member.isHybrid ? (
+                                      <>
+                                        {member.waiterDetail && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 flex-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteWaiter(member.id)}
+                                            disabled={deletingWaiterId === member.id}
+                                          >
+                                            {deletingWaiterId === member.id ? (
+                                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-3 w-3 mr-1" />
+                                            )}
+                                            {t("manager.remove_waiter_role", {
+                                              defaultValue: "Remove waiter",
+                                            })}
+                                          </Button>
                                         )}
-                                        {cook.cookType?.title && (
-                                          <Badge variant="secondary" className="text-[10px] h-5">
-                                            {cook.cookType.title}
-                                          </Badge>
+                                        {member.cook && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 flex-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteCook(member.id)}
+                                            disabled={deletingCookId === member.id}
+                                          >
+                                            {deletingCookId === member.id ? (
+                                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-3 w-3 mr-1" />
+                                            )}
+                                            {t("manager.remove_cook_role", {
+                                              defaultValue: "Remove cook",
+                                            })}
+                                          </Button>
                                         )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="flex-1 h-8 text-xs"
-                                      onClick={() => openEditCook(cook)}
-                                    >
-                                      <Pencil className="h-3 w-3 mr-1" /> Edit
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteCook(cook.id)}
-                                      disabled={deletingCookId === cook.id}
-                                    >
-                                      {deletingCookId === cook.id ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3 w-3" />
-                                      )}
-                                    </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() =>
+                                          member.waiterDetail
+                                            ? handleDeleteWaiter(member.id)
+                                            : handleDeleteCook(member.id)
+                                        }
+                                        disabled={deletingWaiterId === member.id || deletingCookId === member.id}
+                                      >
+                                        {deletingWaiterId === member.id || deletingCookId === member.id ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-3 w-3" />
+                                        )}
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
                               ))}
