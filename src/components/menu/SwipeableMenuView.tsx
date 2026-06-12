@@ -66,19 +66,17 @@ interface ItemGridProps {
 }
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
-const SWIPE_DISTANCE_PX = 72;
-const SWIPE_VELOCITY_PX = 760;
-const SWIPE_INTENT_DEADZONE_PX = 30;
+const SWIPE_DISTANCE_PX = 68;
+const SWIPE_VELOCITY_PX = 900;
+const SWIPE_INTENT_DEADZONE_PX = 28;
+const SWIPE_REVERSAL_GUARD_PX = 8;
 const CART_MINIMIZE_DISTANCE_PX = 86;
 const CART_MINIMIZE_VELOCITY_PX = 650;
 const CART_MINIMIZE_ANIMATION_MS = 180;
+const MENU_SWIPE_SETTLE_MS = 460;
 const MENU_SWIPE_TRANSITION = {
-  type: 'spring',
-  stiffness: 230,
-  damping: 32,
-  mass: 0.92,
-  restDelta: 0.5,
-  restSpeed: 8,
+  duration: MENU_SWIPE_SETTLE_MS / 1000,
+  ease: [0.32, 0.72, 0, 1] as const,
 };
 
 const getCategorySwipeOffset = (info: PanInfo): -1 | 0 | 1 => {
@@ -89,12 +87,18 @@ const getCategorySwipeOffset = (info: PanInfo): -1 | 0 | 1 => {
     return offsetX < 0 ? 1 : -1;
   }
 
+  if (Math.abs(offsetX) >= SWIPE_INTENT_DEADZONE_PX) {
+    return 0;
+  }
+
   if (Math.abs(velocityX) < SWIPE_VELOCITY_PX) {
     return 0;
   }
 
-  const hasClearOffsetIntent = Math.abs(offsetX) >= SWIPE_INTENT_DEADZONE_PX;
-  if (hasClearOffsetIntent && Math.sign(offsetX) !== Math.sign(velocityX)) {
+  if (
+    Math.abs(offsetX) >= SWIPE_REVERSAL_GUARD_PX &&
+    Math.sign(offsetX) !== Math.sign(velocityX)
+  ) {
     return 0;
   }
 
@@ -333,7 +337,7 @@ export const SwipeableMenuView = ({
 
     window.setTimeout(() => {
       suppressClickAfterSwipeRef.current = false;
-    }, changedCategory ? 220 : 0);
+    }, changedCategory ? MENU_SWIPE_SETTLE_MS : 0);
   };
 
   const handleContentClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
