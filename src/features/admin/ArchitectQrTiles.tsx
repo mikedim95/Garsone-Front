@@ -87,7 +87,7 @@ type GenerateScope = "pool" | "store";
 type TileLifecycle = "inactive" | "unbound" | "venue" | "live";
 type PoolStatusFilter = "all" | TileLifecycle;
 type StoreOnboardForm = StoreOnboardPayload;
-type StoreUserRoleInput = "MANAGER" | "WAITER" | "COOK";
+type StoreUserRoleInput = "MANAGER" | "WAITER" | "COOK" | "HYBRID";
 type StoreUserForm = {
   email: string;
   password: string;
@@ -3401,6 +3401,7 @@ export default function ArchitectQrTiles() {
                 <SelectContent>
                   <SelectItem value="MANAGER">Manager</SelectItem>
                   <SelectItem value="WAITER">Waiter</SelectItem>
+                  <SelectItem value="HYBRID">Hybrid waiter + cook</SelectItem>
                   <SelectItem value="COOK">Cook</SelectItem>
                 </SelectContent>
               </Select>

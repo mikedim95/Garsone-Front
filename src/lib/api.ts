@@ -700,7 +700,8 @@ export const api = {
     email: string,
     password: string,
     displayName: string,
-    waiterTypeId?: string | null
+    waiterTypeId?: string | null,
+    hybrid?: boolean
   ): Promise<{ waiter: WaiterSummary }> =>
     isOffline()
       ? devMocks.createWaiter(email, password, displayName, waiterTypeId)
@@ -711,6 +712,7 @@ export const api = {
             password,
             displayName,
             ...(waiterTypeId !== undefined ? { waiterTypeId } : {}),
+            ...(hybrid ? { hybrid: true } : {}),
           }),
         }),
   updateWaiter: (
@@ -1032,7 +1034,7 @@ export const api = {
       email: string;
       password: string;
       displayName: string;
-      role: "MANAGER" | "WAITER" | "COOK";
+      role: "MANAGER" | "WAITER" | "COOK" | "HYBRID";
     }
   ): Promise<{ user: ArchitectStoreUser }> =>
     isOffline()
@@ -1056,7 +1058,7 @@ export const api = {
       email: string;
       password: string;
       displayName: string;
-      role: "MANAGER" | "WAITER" | "COOK";
+      role: "MANAGER" | "WAITER" | "COOK" | "HYBRID";
     }>
   ): Promise<{ user: ArchitectStoreUser }> =>
     isOffline()

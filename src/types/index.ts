@@ -1,6 +1,6 @@
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED';
 export type OrderItemStatus = 'PLACED' | 'ACCEPTED' | 'SERVED';
-export type UserRole = 'waiter' | 'manager' | 'cook' | 'architect';
+export type UserRole = 'waiter' | 'manager' | 'cook' | 'architect' | 'hybrid';
 export type OrderingMode = 'qr' | 'waiter' | 'hybrid';
 
 export interface MenuItem {
@@ -359,6 +359,7 @@ export interface WaiterSummary {
   id: string;
   email: string;
   displayName: string;
+  role?: UserRole | Uppercase<UserRole>;
   waiterTypeId?: string | null;
   waiterType?: StaffType | null;
 }
@@ -367,6 +368,7 @@ export interface CookSummary {
   id: string;
   email: string;
   displayName: string;
+  role?: UserRole | Uppercase<UserRole>;
   cookTypeId?: string | null;
   cookType?: StaffType | null;
 }

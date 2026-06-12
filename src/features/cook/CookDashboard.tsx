@@ -341,7 +341,7 @@ export default function CookDashboard() {
   useEffect(() => {
     if (
       !isAuthenticated() ||
-      (user?.role !== "cook" && user?.role !== "manager")
+      (user?.role !== "cook" && user?.role !== "manager" && user?.role !== "hybrid")
     ) {
       navigate("/login");
     }

@@ -415,7 +415,7 @@ export default function WaiterDashboard() {
   );
 
   useEffect(() => {
-    if (!isAuthenticated() || user?.role !== 'waiter') {
+    if (!isAuthenticated() || (user?.role !== 'waiter' && user?.role !== 'hybrid')) {
       navigate('/login');
     }
   }, [isAuthenticated, user, navigate]);

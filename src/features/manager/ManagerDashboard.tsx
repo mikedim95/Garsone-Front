@@ -141,6 +141,7 @@ interface WaiterForm {
   displayName: string;
   password: string;
   waiterTypeId?: string | null;
+  hybrid?: boolean;
 }
 interface CookForm {
   email: string;
@@ -454,6 +455,7 @@ export default function ManagerDashboard() {
     displayName: "",
     password: "",
     waiterTypeId: null,
+    hybrid: false,
   });
   const [addingWaiter, setAddingWaiter] = useState(false);
   const [deletingWaiterId, setDeletingWaiterId] = useState<string | null>(null);
@@ -2401,16 +2403,18 @@ export default function ManagerDashboard() {
         newWaiter.email,
         newWaiter.password,
         displayName,
-        newWaiter.waiterTypeId
+        newWaiter.waiterTypeId,
+        Boolean(newWaiter.hybrid)
       );
       setNewWaiter({
         email: "",
         displayName: "",
         password: "",
         waiterTypeId: null,
+        hybrid: false,
       });
       setAddModalOpen(false);
-      await loadWaiterData();
+      await Promise.all([loadWaiterData(), newWaiter.hybrid ? loadCookData() : Promise.resolve()]);
     } catch (error) {
       console.error("Failed to create waiter", error);
     } finally {
@@ -4026,6 +4030,11 @@ export default function ManagerDashboard() {
                                         <Badge variant="outline" className="text-[10px] h-5">
                                           {detail.assignedTables.length} tables
                                         </Badge>
+                                        {String(detail.waiter.role || "").toLowerCase() === "hybrid" && (
+                                          <Badge variant="success" className="text-[10px] h-5">
+                                            {t("manager.hybrid", { defaultValue: "Hybrid" })}
+                                          </Badge>
+                                        )}
                                         {detail.waiter.waiterType?.title && (
                                           <Badge variant="secondary" className="text-[10px] h-5">
                                             {detail.waiter.waiterType.title}
@@ -4110,11 +4119,18 @@ export default function ManagerDashboard() {
                                       <p className="text-xs text-muted-foreground truncate">
                                         {cook.email}
                                       </p>
-                                      {cook.cookType?.title && (
-                                        <Badge variant="secondary" className="text-[10px] h-5 mt-2">
-                                          {cook.cookType.title}
-                                        </Badge>
-                                      )}
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {String(cook.role || "").toLowerCase() === "hybrid" && (
+                                          <Badge variant="success" className="text-[10px] h-5">
+                                            {t("manager.hybrid", { defaultValue: "Hybrid" })}
+                                          </Badge>
+                                        )}
+                                        {cook.cookType?.title && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {cook.cookType.title}
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
@@ -5238,6 +5254,7 @@ export default function ManagerDashboard() {
                 displayName: "",
                 password: "",
                 waiterTypeId: null,
+                hybrid: false,
               });
             }
           }}
@@ -5276,6 +5293,32 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={2}>
+                <Label>{t("manager.personnel_role", { defaultValue: "Personnel role" })}</Label>
+                <Select
+                  value={newWaiter.hybrid ? "hybrid" : "waiter"}
+                  onValueChange={(value) =>
+                    setNewWaiter((prev) => ({
+                      ...prev,
+                      hybrid: value === "hybrid",
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="waiter">
+                      {t("actions.add_waiter", { defaultValue: "Waiter" })}
+                    </SelectItem>
+                    <SelectItem value="hybrid">
+                      {t("manager.hybrid_personnel", {
+                        defaultValue: "Hybrid waiter + cook",
+                      })}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </DialogFormField>
+              <DialogFormField index={3}>
                 <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
                 <Select
                   value={newWaiter.waiterTypeId ?? "none"}
@@ -5305,7 +5348,7 @@ export default function ManagerDashboard() {
                   </SelectContent>
                 </Select>
               </DialogFormField>
-              <DialogFormField index={3}>
+              <DialogFormField index={4}>
                 <Label htmlFor="new-waiter-password">
                   {t("auth.password", { defaultValue: "Password" })}
                 </Label>
@@ -5334,7 +5377,11 @@ export default function ManagerDashboard() {
                 className="inline-flex items-center gap-2"
               >
                 {addingWaiter && <Loader2 className="h-4 w-4 animate-spin" />}
-                {t("actions.create_waiter")}
+                {newWaiter.hybrid
+                  ? t("manager.create_hybrid_personnel", {
+                      defaultValue: "Create hybrid",
+                    })
+                  : t("actions.create_waiter")}
               </Button>
             </DialogFooter>
           </DialogContent>
