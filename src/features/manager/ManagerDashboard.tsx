@@ -40,6 +40,7 @@ import {
   FileText,
   Download,
   BarChart2,
+  PanelLeftOpen,
   ListChecks,
   Users,
   UtensilsCrossed,
@@ -2774,6 +2775,34 @@ export default function ManagerDashboard() {
         />
 
         <div className="flex-1 flex min-h-0 relative">
+          {sidebarCollapsed && (
+            <div className="fixed left-4 top-24 z-50">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-full border-border/60 bg-card/95 shadow-lg backdrop-blur-sm"
+                onClick={() => {
+                  if (window.matchMedia("(min-width: 640px)").matches) {
+                    setSidebarCollapsed(false);
+                  } else {
+                    setMobileNavOpen(true);
+                  }
+                }}
+                aria-label={t("manager.expand_navigation", {
+                  defaultValue: "Expand navigation",
+                })}
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {t("manager.navigator", { defaultValue: "Navigator" })}
+                </span>
+                <span className="sm:hidden">
+                  {t("app.navigation", { defaultValue: "Menu" })}
+                </span>
+              </Button>
+            </div>
+          )}
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
