@@ -66,15 +66,19 @@ interface ItemGridProps {
 }
 
 const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
-const SWIPE_DISTANCE_PX = 44;
-const SWIPE_VELOCITY_PX = 420;
-const SWIPE_INTENT_DEADZONE_PX = 18;
+const SWIPE_DISTANCE_PX = 72;
+const SWIPE_VELOCITY_PX = 760;
+const SWIPE_INTENT_DEADZONE_PX = 30;
 const CART_MINIMIZE_DISTANCE_PX = 86;
 const CART_MINIMIZE_VELOCITY_PX = 650;
 const CART_MINIMIZE_ANIMATION_MS = 180;
 const MENU_SWIPE_TRANSITION = {
-  duration: 0.22,
-  ease: [0.22, 1, 0.36, 1] as const,
+  type: 'spring',
+  stiffness: 230,
+  damping: 32,
+  mass: 0.92,
+  restDelta: 0.5,
+  restSpeed: 8,
 };
 
 const getCategorySwipeOffset = (info: PanInfo): -1 | 0 | 1 => {
@@ -680,7 +684,7 @@ export const SwipeableMenuView = ({
             drag="x"
             dragDirectionLock
             dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.14}
+            dragElastic={0.2}
             dragMomentum={false}
             dragSnapToOrigin
             onDragStart={handleContentDragStart}
