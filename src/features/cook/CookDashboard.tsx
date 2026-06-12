@@ -296,7 +296,8 @@ export default function CookDashboard() {
   const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
-  const cookPrinterTopic = user?.cookType?.printerTopic ?? null;
+  const cookPrinterTopic =
+    user?.printerTopic ?? user?.cookType?.printerTopic ?? null;
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);

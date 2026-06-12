@@ -255,8 +255,7 @@ export default function WaiterDashboard() {
       return '';
     }
   });
-  const waiterPrinterTopic =
-    user?.waiterType?.printerTopic ?? null;
+  const waiterPrinterTopic = null;
   const [storeOrderingMode, setStoreOrderingMode] = useState<OrderingMode>('qr');
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
   

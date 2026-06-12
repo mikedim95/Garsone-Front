@@ -14,7 +14,6 @@ import { useOrdersStore } from "@/store/ordersStore";
 import type {
   CartItem,
   CookSummary,
-  CookType,
   ManagerItemSummary,
   ManagerTableSummary,
   MenuCategory,
@@ -26,7 +25,6 @@ import type {
   Table,
   WaiterSummary,
   WaiterTableAssignment,
-  WaiterType,
 } from "@/types";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
@@ -45,7 +43,6 @@ import {
   UtensilsCrossed,
   RefreshCcw,
   ChefHat,
-  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveStoreDisplayName } from "@/lib/storeSlug";
@@ -119,11 +116,10 @@ type EconRange = "today" | "last24h" | "week" | "month" | "custom";
 type MenuCategoryMode = "units" | "share";
 type ActiveWaiter = WaiterSummary & {
   originalDisplayName?: string;
-  originalWaiterTypeId?: string | null;
 };
 type ActiveCook = CookSummary & {
   originalDisplayName?: string;
-  originalCookTypeId?: string | null;
+  originalPrinterTopic?: string | null;
 };
 type StaffRosterMember = {
   id: string;
@@ -151,24 +147,15 @@ interface WaiterForm {
   email: string;
   displayName: string;
   password: string;
-  waiterTypeId?: string | null;
+  printerTopic?: string | null;
   hybrid?: boolean;
 }
 interface CookForm {
   email: string;
   displayName: string;
   password: string;
-  cookTypeId?: string | null;
+  printerTopic?: string | null;
 }
-interface StaffTypeForm {
-  title: string;
-  printerTopic: string;
-}
-type EditableStaffType = {
-  id: string;
-  title: string;
-  printerTopic: string;
-};
 type WaiterAssignedTable = { id: string; label: string; active: boolean };
 
 const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
@@ -427,12 +414,9 @@ export default function ManagerDashboard() {
   const [assignments, setAssignments] = useState<WaiterTableAssignment[]>([]);
   const [waiters, setWaiters] = useState<WaiterSummary[]>([]);
   const [cooks, setCooks] = useState<CookSummary[]>([]);
-  const [cookTypes, setCookTypes] = useState<CookType[]>([]);
-  const [waiterTypes, setWaiterTypes] = useState<WaiterType[]>([]);
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loadingWaiters, setLoadingWaiters] = useState(true);
   const [loadingCooks, setLoadingCooks] = useState(true);
-  const [loadingTypes, setLoadingTypes] = useState(true);
   const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -465,7 +449,7 @@ export default function ManagerDashboard() {
     email: "",
     displayName: "",
     password: "",
-    waiterTypeId: null,
+    printerTopic: null,
     hybrid: false,
   });
   const [addingWaiter, setAddingWaiter] = useState(false);
@@ -475,37 +459,10 @@ export default function ManagerDashboard() {
     email: "",
     displayName: "",
     password: "",
-    cookTypeId: null,
+    printerTopic: null,
   });
   const [addingCook, setAddingCook] = useState(false);
   const [deletingCookId, setDeletingCookId] = useState<string | null>(null);
-  const [addCookTypeModalOpen, setAddCookTypeModalOpen] = useState(false);
-  const [newCookType, setNewCookType] = useState<StaffTypeForm>({
-    title: "",
-    printerTopic: "",
-  });
-  const [addingCookType, setAddingCookType] = useState(false);
-  const [deletingCookTypeId, setDeletingCookTypeId] = useState<string | null>(
-    null
-  );
-  const [editCookTypeModalOpen, setEditCookTypeModalOpen] = useState(false);
-  const [activeCookType, setActiveCookType] = useState<EditableStaffType | null>(
-    null
-  );
-  const [savingCookType, setSavingCookType] = useState(false);
-  const [addWaiterTypeModalOpen, setAddWaiterTypeModalOpen] = useState(false);
-  const [newWaiterType, setNewWaiterType] = useState<StaffTypeForm>({
-    title: "",
-    printerTopic: "",
-  });
-  const [addingWaiterType, setAddingWaiterType] = useState(false);
-  const [deletingWaiterTypeId, setDeletingWaiterTypeId] = useState<
-    string | null
-  >(null);
-  const [editWaiterTypeModalOpen, setEditWaiterTypeModalOpen] = useState(false);
-  const [activeWaiterType, setActiveWaiterType] =
-    useState<EditableStaffType | null>(null);
-  const [savingWaiterType, setSavingWaiterType] = useState(false);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [tableForm, setTableForm] = useState<{
     id?: string;
@@ -720,22 +677,6 @@ export default function ManagerDashboard() {
     }
   };
 
-  const loadStaffTypes = async () => {
-    setLoadingTypes(true);
-    try {
-      const [cookRes, waiterRes] = await Promise.all([
-        api.listCookTypes(),
-        api.listWaiterTypes(),
-      ]);
-      setCookTypes(cookRes.types ?? []);
-      setWaiterTypes(waiterRes.types ?? []);
-    } catch (error) {
-      console.error("Failed to load staff types", error);
-    } finally {
-      setLoadingTypes(false);
-    }
-  };
-
   const loadManagerTables = async () => {
     setLoadingTables(true);
     try {
@@ -808,7 +749,6 @@ export default function ManagerDashboard() {
     if (isAuthenticated() && isManagerRole) {
       loadWaiterData();
       loadCookData();
-      loadStaffTypes();
       loadManagerTables();
     }
   }, [isAuthenticated, isManagerRole]);
@@ -911,7 +851,6 @@ export default function ManagerDashboard() {
     setActiveWaiter({
       ...waiter,
       originalDisplayName: waiter.displayName,
-      originalWaiterTypeId: waiter.waiterTypeId ?? null,
     });
     setTableSelection(new Set(assignedIds));
     setInitialTableSelection(new Set(assignedIds));
@@ -922,7 +861,7 @@ export default function ManagerDashboard() {
     setActiveCook({
       ...cook,
       originalDisplayName: cook.displayName,
-      originalCookTypeId: cook.cookTypeId ?? null,
+      originalPrinterTopic: cook.printerTopic ?? null,
     });
     setEditCookModalOpen(true);
   };
@@ -2409,14 +2348,9 @@ export default function ManagerDashboard() {
       const ops: Array<Promise<unknown>> = [];
       const trimmedName = (activeWaiter.displayName || "").trim();
       const originalName = activeWaiter.originalDisplayName || "";
-      const selectedTypeId = activeWaiter.waiterTypeId ?? null;
-      const originalTypeId = activeWaiter.originalWaiterTypeId ?? null;
       const updatePayload: Record<string, unknown> = {};
       if (trimmedName && trimmedName !== originalName) {
         updatePayload.displayName = trimmedName;
-      }
-      if (selectedTypeId !== originalTypeId) {
-        updatePayload.waiterTypeId = selectedTypeId;
       }
       if (Object.keys(updatePayload).length > 0) {
         ops.push(api.updateWaiter(activeWaiter.id, updatePayload));
@@ -2471,14 +2405,14 @@ export default function ManagerDashboard() {
         newWaiter.email,
         newWaiter.password,
         displayName,
-        newWaiter.waiterTypeId,
-        Boolean(newWaiter.hybrid)
+        Boolean(newWaiter.hybrid),
+        newWaiter.hybrid ? newWaiter.printerTopic : undefined
       );
       setNewWaiter({
         email: "",
         displayName: "",
         password: "",
-        waiterTypeId: null,
+        printerTopic: null,
         hybrid: false,
       });
       setAddModalOpen(false);
@@ -2496,14 +2430,14 @@ export default function ManagerDashboard() {
     try {
       const trimmedName = (activeCook.displayName || "").trim();
       const originalName = activeCook.originalDisplayName || "";
-      const selectedTypeId = activeCook.cookTypeId ?? null;
-      const originalTypeId = activeCook.originalCookTypeId ?? null;
+      const selectedPrinterTopic = activeCook.printerTopic ?? null;
+      const originalPrinterTopic = activeCook.originalPrinterTopic ?? null;
       const updatePayload: Record<string, unknown> = {};
       if (trimmedName && trimmedName !== originalName) {
         updatePayload.displayName = trimmedName;
       }
-      if (selectedTypeId !== originalTypeId) {
-        updatePayload.cookTypeId = selectedTypeId;
+      if (selectedPrinterTopic !== originalPrinterTopic) {
+        updatePayload.printerTopic = selectedPrinterTopic;
       }
       if (Object.keys(updatePayload).length > 0) {
         await api.updateCook(activeCook.id, updatePayload);
@@ -2549,13 +2483,13 @@ export default function ManagerDashboard() {
         newCook.email,
         newCook.password,
         displayName,
-        newCook.cookTypeId
+        newCook.printerTopic
       );
       setNewCook({
         email: "",
         displayName: "",
         password: "",
-        cookTypeId: null,
+        printerTopic: null,
       });
       setAddCookModalOpen(false);
       await loadCookData();
@@ -2563,143 +2497,6 @@ export default function ManagerDashboard() {
       console.error("Failed to create cook", error);
     } finally {
       setAddingCook(false);
-    }
-  };
-
-  const handleCreateCookType = async () => {
-    if (!newCookType.title.trim()) return;
-    setAddingCookType(true);
-    try {
-      const printerTopic = newCookType.printerTopic.trim();
-      await api.createCookType({
-        title: newCookType.title.trim(),
-        ...(printerTopic.length > 0 ? { printerTopic } : {}),
-      });
-      setNewCookType({ title: "", printerTopic: "" });
-      setAddCookTypeModalOpen(false);
-      await loadStaffTypes();
-    } catch (error) {
-      console.error("Failed to create cook type", error);
-    } finally {
-      setAddingCookType(false);
-    }
-  };
-
-  const openEditCookType = (type: CookType) => {
-    const printerTopic =
-      type.printerTopic && printerTopics.includes(type.printerTopic)
-        ? type.printerTopic
-        : "";
-    setActiveCookType({
-      id: type.id,
-      title: type.title,
-      printerTopic,
-    });
-    setEditCookTypeModalOpen(true);
-  };
-
-  const handleUpdateCookType = async () => {
-    if (!activeCookType) return;
-    const title = activeCookType.title.trim();
-    if (!title) return;
-    setSavingCookType(true);
-    try {
-      const printerTopic = activeCookType.printerTopic.trim();
-      await api.updateCookType(activeCookType.id, {
-        title,
-        printerTopic: printerTopic.length > 0 ? printerTopic : null,
-      });
-      setEditCookTypeModalOpen(false);
-      setActiveCookType(null);
-      await loadStaffTypes();
-      await loadCookData();
-    } catch (error) {
-      console.error("Failed to update cook type", error);
-    } finally {
-      setSavingCookType(false);
-    }
-  };
-
-  const handleDeleteCookType = async (typeId: string) => {
-    if (!window.confirm("Delete this cook type?")) return;
-    setDeletingCookTypeId(typeId);
-    try {
-      await api.deleteCookType(typeId);
-      await loadStaffTypes();
-      await loadCookData();
-    } catch (error) {
-      console.error("Failed to delete cook type", error);
-    } finally {
-      setDeletingCookTypeId(null);
-    }
-  };
-
-  const handleCreateWaiterType = async () => {
-    if (!newWaiterType.title.trim()) return;
-    setAddingWaiterType(true);
-    try {
-      await api.createWaiterType({
-        title: newWaiterType.title.trim(),
-        ...(newWaiterType.printerTopic.trim().length > 0
-          ? { printerTopic: newWaiterType.printerTopic.trim() }
-          : {}),
-      });
-      setNewWaiterType({ title: "", printerTopic: "" });
-      setAddWaiterTypeModalOpen(false);
-      await loadStaffTypes();
-    } catch (error) {
-      console.error("Failed to create waiter type", error);
-    } finally {
-      setAddingWaiterType(false);
-    }
-  };
-
-  const openEditWaiterType = (type: WaiterType) => {
-    const printerTopic =
-      type.printerTopic && printerTopics.includes(type.printerTopic)
-        ? type.printerTopic
-        : "";
-    setActiveWaiterType({
-      id: type.id,
-      title: type.title,
-      printerTopic,
-    });
-    setEditWaiterTypeModalOpen(true);
-  };
-
-  const handleUpdateWaiterType = async () => {
-    if (!activeWaiterType) return;
-    const title = activeWaiterType.title.trim();
-    if (!title) return;
-    setSavingWaiterType(true);
-    try {
-      const printerTopic = activeWaiterType.printerTopic.trim();
-      await api.updateWaiterType(activeWaiterType.id, {
-        title,
-        printerTopic: printerTopic.length > 0 ? printerTopic : null,
-      });
-      setEditWaiterTypeModalOpen(false);
-      setActiveWaiterType(null);
-      await loadStaffTypes();
-      await loadWaiterData();
-    } catch (error) {
-      console.error("Failed to update waiter type", error);
-    } finally {
-      setSavingWaiterType(false);
-    }
-  };
-
-  const handleDeleteWaiterType = async (typeId: string) => {
-    if (!window.confirm("Delete this waiter type?")) return;
-    setDeletingWaiterTypeId(typeId);
-    try {
-      await api.deleteWaiterType(typeId);
-      await loadStaffTypes();
-      await loadWaiterData();
-    } catch (error) {
-      console.error("Failed to delete waiter type", error);
-    } finally {
-      setDeletingWaiterTypeId(null);
     }
   };
 
@@ -4084,14 +3881,9 @@ export default function ManagerDashboard() {
                                             {t("manager.tables", { defaultValue: "tables" })}
                                           </Badge>
                                         )}
-                                        {member.waiterDetail?.waiter.waiterType?.title && (
+                                        {member.cook?.printerTopic && (
                                           <Badge variant="secondary" className="text-[10px] h-5">
-                                            {member.waiterDetail.waiter.waiterType.title}
-                                          </Badge>
-                                        )}
-                                        {member.cook?.cookType?.title && (
-                                          <Badge variant="secondary" className="text-[10px] h-5">
-                                            {member.cook.cookType.title}
+                                            {member.cook.printerTopic}
                                           </Badge>
                                         )}
                                       </div>
@@ -4237,9 +4029,9 @@ export default function ManagerDashboard() {
                                         <Badge variant="outline" className="text-[10px] h-5">
                                           {t("manager.cook", { defaultValue: "Cook" })}
                                         </Badge>
-                                        {member.cook?.cookType?.title && (
+                                        {member.cook?.printerTopic && (
                                           <Badge variant="secondary" className="text-[10px] h-5">
-                                            {member.cook.cookType.title}
+                                            {member.cook.printerTopic}
                                           </Badge>
                                         )}
                                       </div>
@@ -4352,14 +4144,9 @@ export default function ManagerDashboard() {
                                             {t("manager.tables", { defaultValue: "tables" })}
                                           </Badge>
                                         )}
-                                        {member.waiterDetail?.waiter.waiterType?.title && (
+                                        {member.cook?.printerTopic && (
                                           <Badge variant="secondary" className="text-[10px] h-5">
-                                            {member.waiterDetail.waiter.waiterType.title}
-                                          </Badge>
-                                        )}
-                                        {member.cook?.cookType?.title && (
-                                          <Badge variant="secondary" className="text-[10px] h-5">
-                                            {member.cook.cookType.title}
+                                            {member.cook.printerTopic}
                                           </Badge>
                                         )}
                                       </div>
@@ -4399,179 +4186,6 @@ export default function ManagerDashboard() {
                           )}
                         </TabsContent>
 
-                        {/* Waiter Types Tab */}
-                        <TabsContent value="waiter-types" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              {t("manager.waiter_types_description", {
-                                defaultValue:
-                                  "Define waiter roles and their printer routing",
-                              })}
-                            </p>
-                            <Button
-                              onClick={() => setAddWaiterTypeModalOpen(true)}
-                              size="sm"
-                              className="inline-flex items-center gap-2"
-                            >
-                              <Plus className="h-4 w-4" />{" "}
-                              {t("manager.add_type", {
-                                defaultValue: "Add type",
-                              })}
-                            </Button>
-                          </div>
-                          {loadingTypes ? (
-                            <DashboardGridSkeleton count={3} className="grid" />
-                          ) : waiterTypes.length === 0 ? (
-                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
-                              <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                              <p className="text-sm text-muted-foreground">
-                                {t("manager.no_waiter_types", {
-                                  defaultValue:
-                                    "No waiter types yet. Create types to categorize your waiters.",
-                                })}
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {waiterTypes.map((type) => (
-                                <div
-                                  key={type.id}
-                                  className="border border-border/60 rounded-lg p-3 bg-card flex items-center justify-between gap-3"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                                      <Users className="h-4 w-4 text-primary" />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
-                                      <p className="text-[10px] text-muted-foreground">
-                                        {t("manager.printer_label", {
-                                          defaultValue: "Printer",
-                                        })}
-                                        :{" "}
-                                        {type.printerTopic && printerTopics.includes(type.printerTopic)
-                                          ? type.printerTopic
-                                          : t("manager.none", {
-                                              defaultValue: "none",
-                                            })}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0"
-                                      onClick={() => openEditWaiterType(type)}
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteWaiterType(type.id)}
-                                      disabled={deletingWaiterTypeId === type.id}
-                                    >
-                                      {deletingWaiterTypeId === type.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </TabsContent>
-
-                        {/* Cook Types Tab */}
-                        <TabsContent value="cook-types" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              {t("manager.cook_types_description", {
-                                defaultValue:
-                                  "Define cook specializations and printer routing",
-                              })}
-                            </p>
-                            <Button
-                              onClick={() => setAddCookTypeModalOpen(true)}
-                              size="sm"
-                              className="inline-flex items-center gap-2"
-                            >
-                              <Plus className="h-4 w-4" />{" "}
-                              {t("manager.add_type", {
-                                defaultValue: "Add type",
-                              })}
-                            </Button>
-                          </div>
-                          {loadingTypes ? (
-                            <DashboardGridSkeleton count={3} className="grid" />
-                          ) : cookTypes.length === 0 ? (
-                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
-                              <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                              <p className="text-sm text-muted-foreground">
-                                {t("manager.no_cook_types", {
-                                  defaultValue:
-                                    "No cook types yet. Create types to categorize your kitchen staff.",
-                                })}
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {cookTypes.map((type) => (
-                                <div
-                                  key={type.id}
-                                  className="border border-border/60 rounded-lg p-3 bg-card flex items-center justify-between gap-3"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-8 w-8 rounded bg-orange-500/10 flex items-center justify-center shrink-0">
-                                      <ChefHat className="h-4 w-4 text-orange-600" />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
-                                      <p className="text-[10px] text-muted-foreground">
-                                        {t("manager.printer_label", {
-                                          defaultValue: "Printer",
-                                        })}
-                                        :{" "}
-                                        {type.printerTopic && printerTopics.includes(type.printerTopic)
-                                          ? type.printerTopic
-                                          : t("manager.none", {
-                                              defaultValue: "none",
-                                            })}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0"
-                                      onClick={() => openEditCookType(type)}
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteCookType(type.id)}
-                                      disabled={deletingCookTypeId === type.id}
-                                    >
-                                      {deletingCookTypeId === type.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </TabsContent>
                       </div>
                     </Tabs>
                   </Card>
@@ -5308,40 +4922,6 @@ export default function ManagerDashboard() {
                     }
                   />
                 </DialogFormField>
-                <DialogFormField index={1}>
-                  <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
-                  <Select
-                    value={activeWaiter.waiterTypeId ?? "none"}
-                    onValueChange={(value) =>
-                      setActiveWaiter((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              waiterTypeId: value === "none" ? null : value,
-                            }
-                          : prev
-                      )
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={t("manager.select_type", {
-                          defaultValue: "Select type",
-                        })}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        {t("manager.no_type", { defaultValue: "No type" })}
-                      </SelectItem>
-                      {waiterTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </DialogFormField>
                 <div className="grid gap-2">
                   <Label>
                     {t("manager.assigned_tables", {
@@ -5430,15 +5010,16 @@ export default function ManagerDashboard() {
                   />
                 </DialogFormField>
                 <DialogFormField index={1}>
-                  <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
+                  <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
                   <Select
-                    value={activeCook.cookTypeId ?? "none"}
+                    value={resolvePrinterValue(activeCook.printerTopic, printerTopics)}
                     onValueChange={(value) =>
                       setActiveCook((prev) =>
                         prev
                           ? {
                               ...prev,
-                              cookTypeId: value === "none" ? null : value,
+                              printerTopic:
+                                value === NO_PRINTER_VALUE ? null : value,
                             }
                           : prev
                       )
@@ -5446,18 +5027,18 @@ export default function ManagerDashboard() {
                   >
                     <SelectTrigger>
                       <SelectValue
-                        placeholder={t("manager.select_type", {
-                          defaultValue: "Select type",
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
                         })}
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">
-                        {t("manager.no_type", { defaultValue: "No type" })}
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", { defaultValue: "No printer" })}
                       </SelectItem>
-                      {cookTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.title}
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -5490,7 +5071,7 @@ export default function ManagerDashboard() {
                 email: "",
                 displayName: "",
                 password: "",
-                waiterTypeId: null,
+                printerTopic: null,
                 hybrid: false,
               });
             }
@@ -5555,37 +5136,39 @@ export default function ManagerDashboard() {
                   </SelectContent>
                 </Select>
               </DialogFormField>
-              <DialogFormField index={3}>
-                <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
-                <Select
-                  value={newWaiter.waiterTypeId ?? "none"}
-                  onValueChange={(value) =>
-                    setNewWaiter((prev) => ({
-                      ...prev,
-                      waiterTypeId: value === "none" ? null : value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={t("manager.select_type", {
-                        defaultValue: "Select type",
-                      })}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      {t("manager.no_type", { defaultValue: "No type" })}
-                    </SelectItem>
-                    {waiterTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.title}
+              {newWaiter.hybrid && (
+                <DialogFormField index={3}>
+                  <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
+                  <Select
+                    value={resolvePrinterValue(newWaiter.printerTopic, printerTopics)}
+                    onValueChange={(value) =>
+                      setNewWaiter((prev) => ({
+                        ...prev,
+                        printerTopic: value === NO_PRINTER_VALUE ? null : value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", { defaultValue: "No printer" })}
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </DialogFormField>
-              <DialogFormField index={4}>
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </DialogFormField>
+              )}
+              <DialogFormField index={newWaiter.hybrid ? 4 : 3}>
                 <Label htmlFor="new-waiter-password">
                   {t("auth.password", { defaultValue: "Password" })}
                 </Label>
@@ -5633,7 +5216,7 @@ export default function ManagerDashboard() {
                 email: "",
                 displayName: "",
                 password: "",
-                cookTypeId: null,
+                printerTopic: null,
               });
             }
           }}
@@ -5676,30 +5259,30 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={2}>
-                <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
+                <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
                 <Select
-                  value={newCook.cookTypeId ?? "none"}
+                  value={resolvePrinterValue(newCook.printerTopic, printerTopics)}
                   onValueChange={(value) =>
                     setNewCook((prev) => ({
                       ...prev,
-                      cookTypeId: value === "none" ? null : value,
+                      printerTopic: value === NO_PRINTER_VALUE ? null : value,
                     }))
                   }
                   >
                     <SelectTrigger>
                     <SelectValue
-                      placeholder={t("manager.select_type", {
-                        defaultValue: "Select type",
+                      placeholder={t("manager.select_printer", {
+                        defaultValue: "Select printer",
                       })}
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">
-                      {t("manager.no_type", { defaultValue: "No type" })}
+                    <SelectItem value={NO_PRINTER_VALUE}>
+                      {t("manager.no_printer", { defaultValue: "No printer" })}
                     </SelectItem>
-                    {cookTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.title}
+                    {buildPrinterOptions(printerTopics).map((topic) => (
+                      <SelectItem key={topic} value={topic}>
+                        {topic}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -5733,408 +5316,6 @@ export default function ManagerDashboard() {
               >
                 {addingCook && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t("manager.create_cook", { defaultValue: "Create cook" })}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={addCookTypeModalOpen}
-          onOpenChange={(open) => {
-            setAddCookTypeModalOpen(open);
-            if (!open) {
-              setNewCookType({ title: "", printerTopic: "" });
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {t("manager.add_cook_type", {
-                  defaultValue: "Add cook type",
-                })}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <DialogFormField index={0}>
-                <Label htmlFor="cook-type-title">
-                  {t("manager.title", { defaultValue: "Title" })}
-                </Label>
-                <Input
-                  id="cook-type-title"
-                  value={newCookType.title}
-                  onChange={(e) =>
-                    setNewCookType((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                />
-              </DialogFormField>
-              <DialogFormField index={1}>
-                <Label>
-                  {t("manager.printer_topic", {
-                    defaultValue: "Printer topic",
-                  })}
-                </Label>
-                <Select
-                  value={newCookType.printerTopic || NO_PRINTER_VALUE}
-                  onValueChange={(value) =>
-                    setNewCookType((prev) => ({
-                      ...prev,
-                      printerTopic: value === NO_PRINTER_VALUE ? "" : value,
-                    }))
-                  }
-                  >
-                    <SelectTrigger>
-                    <SelectValue
-                      placeholder={t("manager.select_printer", {
-                        defaultValue: "Select printer",
-                      })}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PRINTER_VALUE}>
-                      {t("manager.no_printer", { defaultValue: "No printer" })}
-                    </SelectItem>
-                    {printerTopics.map((topic) => (
-                      <SelectItem key={topic} value={topic}>
-                        {topic}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {printerTopics.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {t("manager.no_printers_configured", {
-                      defaultValue:
-                        "No printers configured in Architect settings.",
-                    })}
-                  </p>
-                ) : null}
-              </DialogFormField>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setAddCookTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleCreateCookType}
-                disabled={addingCookType || !newCookType.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {addingCookType && <Loader2 className="h-4 w-4 animate-spin" />}
-                {t("manager.create_type", { defaultValue: "Create type" })}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={editCookTypeModalOpen}
-          onOpenChange={(open) => {
-            setEditCookTypeModalOpen(open);
-            if (!open) {
-              setActiveCookType(null);
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {t("manager.edit_cook_type", {
-                  defaultValue: "Edit cook type",
-                })}
-              </DialogTitle>
-            </DialogHeader>
-            {activeCookType ? (
-              <div className="space-y-4">
-                <DialogFormField index={0}>
-                  <Label htmlFor="edit-cook-type-title">
-                    {t("manager.title", { defaultValue: "Title" })}
-                  </Label>
-                  <Input
-                    id="edit-cook-type-title"
-                    value={activeCookType.title}
-                    onChange={(e) =>
-                      setActiveCookType((prev) =>
-                        prev ? { ...prev, title: e.target.value } : prev
-                      )
-                    }
-                  />
-                </DialogFormField>
-                <DialogFormField index={1}>
-                  <Label>
-                    {t("manager.printer_topic", {
-                      defaultValue: "Printer topic",
-                    })}
-                  </Label>
-                  <Select
-                    value={resolvePrinterValue(activeCookType.printerTopic, printerTopics)}
-                    onValueChange={(value) =>
-                      setActiveCookType((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              printerTopic:
-                                value === NO_PRINTER_VALUE ? "" : value,
-                            }
-                          : prev
-                      )
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={t("manager.select_printer", {
-                          defaultValue: "Select printer",
-                        })}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_PRINTER_VALUE}>
-                        {t("manager.no_printer", {
-                          defaultValue: "No printer",
-                        })}
-                      </SelectItem>
-                      {buildPrinterOptions(printerTopics).map((topic) => (
-                        <SelectItem key={topic} value={topic}>
-                          {topic}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {printerTopics.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t("manager.no_printers_configured", {
-                        defaultValue:
-                          "No printers configured in Architect settings.",
-                      })}
-                    </p>
-                  ) : null}
-                </DialogFormField>
-              </div>
-            ) : null}
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setEditCookTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleUpdateCookType}
-                disabled={savingCookType || !activeCookType?.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {savingCookType && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                {t("actions.save_changes")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={addWaiterTypeModalOpen}
-          onOpenChange={(open) => {
-            setAddWaiterTypeModalOpen(open);
-            if (!open) {
-              setNewWaiterType({ title: "", printerTopic: "" });
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {t("manager.add_waiter_type", {
-                  defaultValue: "Add waiter type",
-                })}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <DialogFormField index={0}>
-                <Label htmlFor="waiter-type-title">
-                  {t("manager.title", { defaultValue: "Title" })}
-                </Label>
-                <Input
-                  id="waiter-type-title"
-                  value={newWaiterType.title}
-                  onChange={(e) =>
-                    setNewWaiterType((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                />
-              </DialogFormField>
-              <DialogFormField index={1}>
-                <Label htmlFor="waiter-type-topic">
-                  {t("manager.printer_topic", {
-                    defaultValue: "Printer topic",
-                  })}
-                </Label>
-                <Select
-                  value={newWaiterType.printerTopic || NO_PRINTER_VALUE}
-                  onValueChange={(value) =>
-                    setNewWaiterType((prev) => ({
-                      ...prev,
-                      printerTopic: value === NO_PRINTER_VALUE ? "" : value,
-                    }))
-                  }
-                  >
-                    <SelectTrigger>
-                    <SelectValue
-                      placeholder={t("manager.select_printer", {
-                        defaultValue: "Select printer",
-                      })}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PRINTER_VALUE}>
-                      {t("manager.no_printer", { defaultValue: "No printer" })}
-                    </SelectItem>
-                    {printerTopics.map((topic) => (
-                      <SelectItem key={topic} value={topic}>
-                        {topic}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {printerTopics.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {t("manager.no_printers_configured", {
-                      defaultValue:
-                        "No printers configured in Architect settings.",
-                    })}
-                  </p>
-                ) : null}
-              </DialogFormField>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setAddWaiterTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleCreateWaiterType}
-                disabled={addingWaiterType || !newWaiterType.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {addingWaiterType && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                {t("manager.create_type", { defaultValue: "Create type" })}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={editWaiterTypeModalOpen}
-          onOpenChange={(open) => {
-            setEditWaiterTypeModalOpen(open);
-            if (!open) {
-              setActiveWaiterType(null);
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {t("manager.edit_waiter_type", {
-                  defaultValue: "Edit waiter type",
-                })}
-              </DialogTitle>
-            </DialogHeader>
-            {activeWaiterType ? (
-              <div className="space-y-4">
-                <DialogFormField index={0}>
-                  <Label htmlFor="edit-waiter-type-title">
-                    {t("manager.title", { defaultValue: "Title" })}
-                  </Label>
-                  <Input
-                    id="edit-waiter-type-title"
-                    value={activeWaiterType.title}
-                    onChange={(e) =>
-                      setActiveWaiterType((prev) =>
-                        prev ? { ...prev, title: e.target.value } : prev
-                      )
-                    }
-                  />
-                </DialogFormField>
-                <DialogFormField index={1}>
-                  <Label>
-                    {t("manager.printer_topic", {
-                      defaultValue: "Printer topic",
-                    })}
-                  </Label>
-                  <Select
-                    value={resolvePrinterValue(activeWaiterType.printerTopic, printerTopics)}
-                    onValueChange={(value) =>
-                      setActiveWaiterType((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              printerTopic:
-                                value === NO_PRINTER_VALUE ? "" : value,
-                            }
-                          : prev
-                      )
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={t("manager.select_printer", {
-                          defaultValue: "Select printer",
-                        })}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_PRINTER_VALUE}>
-                        {t("manager.no_printer", {
-                          defaultValue: "No printer",
-                        })}
-                      </SelectItem>
-                      {buildPrinterOptions(printerTopics).map((topic) => (
-                        <SelectItem key={topic} value={topic}>
-                          {topic}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {printerTopics.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t("manager.no_printers_configured", {
-                        defaultValue:
-                          "No printers configured in Architect settings.",
-                      })}
-                    </p>
-                  ) : null}
-                </DialogFormField>
-              </div>
-            ) : null}
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setEditWaiterTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleUpdateWaiterType}
-                disabled={savingWaiterType || !activeWaiterType?.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {savingWaiterType && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                {t("actions.save_changes")}
               </Button>
             </DialogFooter>
           </DialogContent>

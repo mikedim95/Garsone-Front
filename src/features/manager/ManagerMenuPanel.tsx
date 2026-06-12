@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption, StaffType } from '@/types';
+import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
@@ -62,8 +62,7 @@ export const ManagerMenuPanel = () => {
   const [categories, setCategories] = useState<MenuCategory[]>([]);
 
   const [storeSlug, setStoreSlug] = useState<string>('');
-  const [cookTypes, setCookTypes] = useState<StaffType[]>([]);
-  const [waiterTypes, setWaiterTypes] = useState<StaffType[]>([]);
+  const [printerTopics, setPrinterTopics] = useState<string[]>([]);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -125,41 +124,29 @@ export const ManagerMenuPanel = () => {
   const normalizePrinterTopicValue = (value?: string | null) =>
     typeof value === 'string' ? value.trim().toLowerCase() : '';
 
-  type CookTypeOption = { id: string; title: string; printerTopic: string };
-  const cookTypeOptions = useMemo(() => {
-    return cookTypes
-      .map((type) => {
-        const printerTopic = normalizePrinterTopicValue(type.printerTopic);
-        if (!printerTopic) return null;
-        const title = (type.title || type.slug || printerTopic).trim();
-        return { id: type.id, title, printerTopic };
-      })
-      .filter((opt): opt is CookTypeOption => Boolean(opt));
-  }, [cookTypes]);
-
   const resolveItemPrinter = (value?: string | null) => {
     const trimmed = normalizePrinterTopicValue(value);
     if (trimmed) return trimmed;
-    return cookTypeOptions[0]?.printerTopic ?? '';
+    return printerTopics[0] ?? '';
   };
 
   const selectedPrinterTopic = normalizePrinterTopicValue(form.printerTopic);
-  const cookTypeTopics = useMemo(
-    () => new Set(cookTypeOptions.map((opt) => opt.printerTopic)),
-    [cookTypeOptions]
+  const printerTopicSet = useMemo(
+    () => new Set(printerTopics),
+    [printerTopics]
   );
   const showLegacyPrinter =
-    selectedPrinterTopic.length > 0 && !cookTypeTopics.has(selectedPrinterTopic);
-  const displayCookTypeOptions = showLegacyPrinter
+    selectedPrinterTopic.length > 0 && !printerTopicSet.has(selectedPrinterTopic);
+  const displayPrinterOptions = showLegacyPrinter
     ? [
         {
           id: 'legacy-printer',
           title: `Unassigned (${selectedPrinterTopic})`,
           printerTopic: selectedPrinterTopic,
         },
-        ...cookTypeOptions,
+        ...printerTopics.map((topic) => ({ id: topic, title: topic, printerTopic: topic })),
       ]
-    : cookTypeOptions;
+    : printerTopics.map((topic) => ({ id: topic, title: topic, printerTopic: topic }));
 
   const localizedCategoryTitle = (category?: MenuCategory | null) => {
     if (!category) return '';
@@ -184,12 +171,10 @@ export const ManagerMenuPanel = () => {
 
   const load = useCallback(async () => {
     try {
-      const [itemsRes, categoriesRes, storeRes, cookTypesRes, waiterTypesRes] = await Promise.all([
+      const [itemsRes, categoriesRes, storeRes] = await Promise.all([
         api.listItems(),
         api.listCategories(),
         api.getStore(),
-        api.listCookTypes(),
-        api.listWaiterTypes(),
       ]);
       setItems(itemsRes.items ?? []);
       setCategories(
@@ -198,9 +183,27 @@ export const ManagerMenuPanel = () => {
           title: c.title || c.titleEn || c.titleEl || '',
         }))
       );
-      setCookTypes(cookTypesRes.types ?? []);
-      setWaiterTypes(waiterTypesRes.types ?? []);
       if (storeRes?.store?.slug) setStoreSlug(storeRes.store.slug);
+      const rawPrinters =
+        (storeRes as any)?.store?.settings?.printers ??
+        (storeRes as any)?.store?.settingsJson?.printers ??
+        (storeRes as any)?.store?.printers ??
+        [];
+      setPrinterTopics(
+        Array.isArray(rawPrinters)
+          ? Array.from(
+              new Set(
+                rawPrinters
+                  .map((printer) =>
+                    typeof printer === 'string'
+                      ? normalizePrinterTopicValue(printer)
+                      : ''
+                  )
+                  .filter(Boolean)
+              )
+            )
+          : []
+      );
     } catch (error) {
       console.error('Failed to load menu data', error);
       toast({ title: 'Load failed', description: 'Could not load menu data' });
@@ -1260,31 +1263,33 @@ export const ManagerMenuPanel = () => {
             <section className="rounded-lg border border-border/70 bg-card/30 p-4">
               <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium">Cook type</span>
+                  <span className="text-sm font-medium">
+                    {t("manager.printer_label", { defaultValue: "Printer" })}
+                  </span>
                   <select
                     className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     value={form.printerTopic}
                     onChange={(e)=>setForm({...form, printerTopic: normalizePrinterTopicValue(e.target.value)})}
                   >
-                    {displayCookTypeOptions.length === 0 ? (
+                    {displayPrinterOptions.length === 0 ? (
                       <option value="">
-                        {t("manager.no_cook_types_configured", {
-                          defaultValue: "No cook types configured",
+                        {t("manager.no_printers_configured", {
+                          defaultValue: "No printers configured",
                         })}
                       </option>
                     ) : null}
-                    {displayCookTypeOptions.map((opt) => (
+                    {displayPrinterOptions.map((opt) => (
                       <option key={opt.id} value={opt.printerTopic}>
                         {opt.id === 'legacy-printer'
                           ? opt.title
-                          : `${opt.title} (${opt.printerTopic})`}
+                          : opt.title}
                       </option>
                     ))}
                   </select>
-                  {displayCookTypeOptions.length === 0 ? (
+                  {displayPrinterOptions.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      {t("manager.add_cook_types_first", {
-                        defaultValue: "Add cook types with printer topics first.",
+                      {t("manager.configure_printers_first", {
+                        defaultValue: "Configure printers in store settings first.",
                       })}
                     </p>
                   ) : null}

@@ -96,6 +96,7 @@ export interface User {
   displayName: string;
   storeId?: string;
   storeSlug?: string;
+  printerTopic?: string | null;
   cookTypeId?: string | null;
   waiterTypeId?: string | null;
   cookType?: StaffType | null;
@@ -360,8 +361,7 @@ export interface WaiterSummary {
   email: string;
   displayName: string;
   role?: UserRole | Uppercase<UserRole>;
-  waiterTypeId?: string | null;
-  waiterType?: StaffType | null;
+  printerTopic?: string | null;
 }
 
 export interface CookSummary {
@@ -369,6 +369,7 @@ export interface CookSummary {
   email: string;
   displayName: string;
   role?: UserRole | Uppercase<UserRole>;
+  printerTopic?: string | null;
   cookTypeId?: string | null;
   cookType?: StaffType | null;
 }

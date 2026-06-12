@@ -31,9 +31,7 @@ import type {
   StoreOnboardResponse,
   Table,
   CookSummary,
-  CookType,
   WaiterSummary,
-  WaiterType,
   WaiterTableOverview,
   OrderingMode,
   StoreOverview,
@@ -236,20 +234,16 @@ type CreateWaiterPayload = {
   email: string;
   password: string;
   displayName: string;
-  waiterTypeId?: string | null;
+  printerTopic?: string | null;
 };
 type UpdateWaiterPayload = Partial<CreateWaiterPayload>;
 type CreateCookPayload = {
   email: string;
   password: string;
   displayName: string;
-  cookTypeId?: string | null;
-};
-type UpdateCookPayload = Partial<CreateCookPayload>;
-type StaffTypePayload = {
-  title: string;
   printerTopic?: string | null;
 };
+type UpdateCookPayload = Partial<CreateCookPayload>;
 type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
 type ModifierUpdatePayload = Partial<Modifier>;
 type EditOrderPayload = CreateOrderPayload;
@@ -700,19 +694,19 @@ export const api = {
     email: string,
     password: string,
     displayName: string,
-    waiterTypeId?: string | null,
-    hybrid?: boolean
+    hybrid?: boolean,
+    printerTopic?: string | null
   ): Promise<{ waiter: WaiterSummary }> =>
     isOffline()
-      ? devMocks.createWaiter(email, password, displayName, waiterTypeId)
+      ? devMocks.createWaiter(email, password, displayName)
       : fetchApi<{ waiter: WaiterSummary }>("/manager/waiters", {
           method: "POST",
           body: JSON.stringify({
             email,
             password,
             displayName,
-            ...(waiterTypeId !== undefined ? { waiterTypeId } : {}),
             ...(hybrid ? { hybrid: true } : {}),
+            ...(printerTopic !== undefined ? { printerTopic } : {}),
           }),
         }),
   updateWaiter: (
@@ -730,68 +724,6 @@ export const api = {
       ? devMocks.deleteWaiter(id)
       : fetchApi<OkResponse>(`/manager/waiters/${id}`, { method: "DELETE" }),
 
-  // Manager: cook types CRUD
-  listCookTypes: (): Promise<{ types: CookType[] }> =>
-    isOffline()
-      ? devMocks.listCookTypes()
-      : fetchApi<{ types: CookType[] }>("/manager/cook-types"),
-  createCookType: (
-    data: StaffTypePayload
-  ): Promise<{ type: CookType }> =>
-    isOffline()
-      ? devMocks.createCookType(data)
-      : fetchApi<{ type: CookType }>("/manager/cook-types", {
-          method: "POST",
-          body: JSON.stringify(data),
-        }),
-  updateCookType: (
-    id: string,
-    data: Partial<StaffTypePayload>
-  ): Promise<{ type: CookType }> =>
-    isOffline()
-      ? devMocks.updateCookType(id, data)
-      : fetchApi<{ type: CookType }>(`/manager/cook-types/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(data),
-        }),
-  deleteCookType: (id: string): Promise<OkResponse> =>
-    isOffline()
-      ? devMocks.deleteCookType(id)
-      : fetchApi<OkResponse>(`/manager/cook-types/${id}`, {
-          method: "DELETE",
-        }),
-
-  // Manager: waiter types CRUD
-  listWaiterTypes: (): Promise<{ types: WaiterType[] }> =>
-    isOffline()
-      ? devMocks.listWaiterTypes()
-      : fetchApi<{ types: WaiterType[] }>("/manager/waiter-types"),
-  createWaiterType: (
-    data: StaffTypePayload
-  ): Promise<{ type: WaiterType }> =>
-    isOffline()
-      ? devMocks.createWaiterType(data)
-      : fetchApi<{ type: WaiterType }>("/manager/waiter-types", {
-          method: "POST",
-          body: JSON.stringify(data),
-        }),
-  updateWaiterType: (
-    id: string,
-    data: Partial<StaffTypePayload>
-  ): Promise<{ type: WaiterType }> =>
-    isOffline()
-      ? devMocks.updateWaiterType(id, data)
-      : fetchApi<{ type: WaiterType }>(`/manager/waiter-types/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(data),
-        }),
-  deleteWaiterType: (id: string): Promise<OkResponse> =>
-    isOffline()
-      ? devMocks.deleteWaiterType(id)
-      : fetchApi<OkResponse>(`/manager/waiter-types/${id}`, {
-          method: "DELETE",
-        }),
-
   // Manager: cooks CRUD
   listCooks: (): Promise<{ cooks: CookSummary[] }> =>
     isOffline()
@@ -801,17 +733,17 @@ export const api = {
     email: string,
     password: string,
     displayName: string,
-    cookTypeId?: string | null
+    printerTopic?: string | null
   ): Promise<{ cook: CookSummary }> =>
     isOffline()
-      ? devMocks.createCook(email, password, displayName, cookTypeId)
+      ? devMocks.createCook(email, password, displayName, printerTopic)
       : fetchApi<{ cook: CookSummary }>("/manager/cooks", {
           method: "POST",
           body: JSON.stringify({
             email,
             password,
             displayName,
-            ...(cookTypeId !== undefined ? { cookTypeId } : {}),
+            ...(printerTopic !== undefined ? { printerTopic } : {}),
           }),
         }),
   updateCook: (

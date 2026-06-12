@@ -21,8 +21,8 @@ type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; nam
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
 type Table = { id: Id; label: string; isActive: boolean };
 type StaffType = { id: Id; slug: string; title: string; printerTopic?: string | null };
-type Waiter = { id: Id; email: string; displayName: string; password?: string; waiterTypeId?: Id | null };
-type Cook = { id: Id; email: string; displayName: string; password?: string; cookTypeId?: Id | null };
+type Waiter = { id: Id; email: string; displayName: string; password?: string };
+type Cook = { id: Id; email: string; displayName: string; password?: string; printerTopic?: string | null; cookTypeId?: Id | null };
 type WaiterAssignment = { waiterId: Id; tableId: Id };
 type OrderItemStatus = 'PLACED' | 'ACCEPTED' | 'SERVED';
 type OrderItem = {
@@ -116,7 +116,7 @@ const normalizeTableRecord = (table: unknown): Table => {
 const normalizeWaiterRecord = (waiter: unknown): Waiter => {
   if (!isRecord(waiter)) {
     const id = uid('waiter');
-    return { id, email: `${id}@demo.local`, displayName: 'Waiter', waiterTypeId: null };
+    return { id, email: `${id}@demo.local`, displayName: 'Waiter' };
   }
   const id = typeof waiter.id === 'string' ? waiter.id : uid('waiter');
   const email = typeof waiter.email === 'string' ? waiter.email : `${id}@demo.local`;
@@ -125,9 +125,7 @@ const normalizeWaiterRecord = (waiter: unknown): Waiter => {
       ? waiter.displayName
       : email || 'Waiter';
   const password = typeof waiter.password === 'string' ? waiter.password : undefined;
-  const waiterTypeId =
-    typeof waiter.waiterTypeId === 'string' ? waiter.waiterTypeId : null;
-  return { id, email, displayName, password, waiterTypeId };
+  return { id, email, displayName, password };
 };
 
 const normalizeCookRecord = (cook: unknown): Cook => {
@@ -144,7 +142,9 @@ const normalizeCookRecord = (cook: unknown): Cook => {
   const password = typeof cook.password === 'string' ? cook.password : undefined;
   const cookTypeId =
     typeof cook.cookTypeId === 'string' ? cook.cookTypeId : null;
-  return { id, email, displayName, password, cookTypeId };
+  const printerTopic =
+    typeof cook.printerTopic === 'string' ? cook.printerTopic : null;
+  return { id, email, displayName, password, printerTopic, cookTypeId };
 };
 
 const normalizeStaffTypeRecord = (type: unknown): StaffType => {
@@ -431,7 +431,6 @@ function load(): Db {
         email: 'waiter1@demo.local',
         displayName: 'Waiter 1',
         password: 'password',
-        waiterTypeId: waiterTypeFloor.id,
       },
     ],
     cooks: [
@@ -440,6 +439,7 @@ function load(): Db {
         email: 'cook1@demo.local',
         displayName: 'Cook 1',
         password: 'password',
+        printerTopic: cookTypeKitchen.printerTopic ?? null,
         cookTypeId: cookTypeKitchen.id,
       },
     ],
@@ -569,15 +569,10 @@ function seedStaffTypesIfEmpty(db: Db) {
     ];
   }
   const defaultCookTypeId = db.cookTypes[0]?.id ?? null;
-  const defaultWaiterTypeId = db.waiterTypes[0]?.id ?? null;
+  const defaultPrinterTopic = db.cookTypes[0]?.printerTopic ?? db.store.printers?.[0] ?? null;
   if (defaultCookTypeId) {
     db.cooks = db.cooks.map((cook) =>
-      cook.cookTypeId ? cook : { ...cook, cookTypeId: defaultCookTypeId }
-    );
-  }
-  if (defaultWaiterTypeId) {
-    db.waiters = db.waiters.map((waiter) =>
-      waiter.waiterTypeId ? waiter : { ...waiter, waiterTypeId: defaultWaiterTypeId }
+      cook.printerTopic ? cook : { ...cook, cookTypeId: cook.cookTypeId ?? defaultCookTypeId, printerTopic: defaultPrinterTopic }
     );
   }
 }
@@ -946,14 +941,11 @@ export const devMocks = {
           : 'waiter';
     const waiter = role === 'waiter' ? db.waiters.find((w) => w.email === e) : null;
     const cook = role === 'cook' ? db.cooks.find((c) => c.email === e) : null;
-    const waiterType =
-      waiter?.waiterTypeId
-        ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-        : null;
     const cookType =
       cook?.cookTypeId
         ? db.cookTypes.find((t) => t.id === cook.cookTypeId) || null
         : null;
+    const printerTopic = cook?.printerTopic ?? cookType?.printerTopic ?? null;
     const user = {
       id: uid('user'),
       email,
@@ -961,9 +953,8 @@ export const devMocks = {
       displayName: role.charAt(0).toUpperCase() + role.slice(1),
       storeId: db.store.id,
       storeSlug: db.store.slug || 'local-store',
-      waiterTypeId: waiter?.waiterTypeId ?? null,
       cookTypeId: cook?.cookTypeId ?? null,
-      waiterType,
+      printerTopic,
       cookType,
     };
     return Promise.resolve({
@@ -1154,10 +1145,6 @@ export const devMocks = {
       id: waiter.id,
       email: waiter.email,
       displayName: waiter.displayName,
-      waiterTypeId: waiter.waiterTypeId ?? null,
-      waiterType: waiter.waiterTypeId
-        ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-        : null,
     }));
     const tables = db.tables.map((table) => ({
       id: table.id,
@@ -1175,10 +1162,6 @@ export const devMocks = {
               id: waiter.id,
               email: waiter.email,
               displayName: waiter.displayName,
-              waiterTypeId: waiter.waiterTypeId ?? null,
-              waiterType: waiter.waiterTypeId
-                ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-                : null,
             }
           : undefined,
         table: table
@@ -1188,7 +1171,7 @@ export const devMocks = {
     }).filter((a) => a.waiter && a.table) as Array<{
       waiterId: Id;
       tableId: Id;
-      waiter: { id: Id; email: string; displayName: string; waiterTypeId?: Id | null; waiterType?: StaffType | null };
+      waiter: { id: Id; email: string; displayName: string };
       table: { id: Id; label: string; active: boolean };
     }>;
     return Promise.resolve({ assignments, waiters, tables });
@@ -1225,41 +1208,25 @@ export const devMocks = {
         id: w.id,
         email: w.email,
         displayName: w.displayName,
-        waiterTypeId: w.waiterTypeId ?? null,
-        waiterType: w.waiterTypeId
-          ? db.waiterTypes.find((t) => t.id === w.waiterTypeId) || null
-          : null,
       })),
     });
   },
-  createWaiter(email: string, password: string, displayName: string, waiterTypeId?: string | null) {
+  createWaiter(email: string, password: string, displayName: string) {
     const db = snapshot();
     if (db.waiters.some((w) => w.email.toLowerCase() === email.toLowerCase())) {
       return Promise.reject(new Error('Waiter email already exists'));
-    }
-    if (waiterTypeId) {
-      const exists = db.waiterTypes.some((t) => t.id === waiterTypeId);
-      if (!exists) return Promise.reject(new Error('Waiter type not found'));
     }
     const waiter: Waiter = {
       id: uid('waiter'),
       email: email.toLowerCase(),
       displayName: displayName || email,
       password,
-      waiterTypeId: waiterTypeId ?? null,
     };
     db.waiters.push(waiter);
     save(db);
-    return Promise.resolve({
-      waiter: {
-        ...waiter,
-        waiterType: waiter.waiterTypeId
-          ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-          : null,
-      },
-    });
+    return Promise.resolve({ waiter });
   },
-  updateWaiter(id: Id, data: Partial<{ email: string; password: string; displayName: string; waiterTypeId?: string | null }>) {
+  updateWaiter(id: Id, data: Partial<{ email: string; password: string; displayName: string }>) {
     const db = snapshot();
     const waiter = db.waiters.find((w) => w.id === id);
     if (!waiter) return Promise.reject(new Error('Waiter not found'));
@@ -1275,24 +1242,8 @@ export const devMocks = {
     }
     if (data.displayName) waiter.displayName = data.displayName;
     if (data.password) waiter.password = data.password;
-    if (data.waiterTypeId !== undefined) {
-      if (data.waiterTypeId === null) {
-        waiter.waiterTypeId = null;
-      } else {
-        const exists = db.waiterTypes.some((t) => t.id === data.waiterTypeId);
-        if (!exists) return Promise.reject(new Error('Waiter type not found'));
-        waiter.waiterTypeId = data.waiterTypeId;
-      }
-    }
     save(db);
-    return Promise.resolve({
-      waiter: {
-        ...waiter,
-        waiterType: waiter.waiterTypeId
-          ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-          : null,
-      },
-    });
+    return Promise.resolve({ waiter });
   },
   deleteWaiter(id: Id) {
     const db = snapshot();
@@ -1393,9 +1344,6 @@ export const devMocks = {
   deleteWaiterType(id: Id) {
     const db = snapshot();
     db.waiterTypes = db.waiterTypes.filter((t) => t.id !== id);
-    db.waiters = db.waiters.map((w) =>
-      w.waiterTypeId === id ? { ...w, waiterTypeId: null } : w
-    );
     save(db);
     return Promise.resolve({ ok: true });
   },
@@ -1407,6 +1355,7 @@ export const devMocks = {
         id: c.id,
         email: c.email,
         displayName: c.displayName,
+        printerTopic: c.printerTopic ?? (c.cookTypeId ? db.cookTypes.find((t) => t.id === c.cookTypeId)?.printerTopic ?? null : null),
         cookTypeId: c.cookTypeId ?? null,
         cookType: c.cookTypeId
           ? db.cookTypes.find((t) => t.id === c.cookTypeId) || null
@@ -1414,34 +1363,30 @@ export const devMocks = {
       })),
     });
   },
-  createCook(email: string, password: string, displayName: string, cookTypeId?: string | null) {
+  createCook(email: string, password: string, displayName: string, printerTopic?: string | null) {
     const db = snapshot();
     if (db.cooks.some((c) => c.email.toLowerCase() === email.toLowerCase())) {
       return Promise.reject(new Error('Cook email already exists'));
     }
-    if (cookTypeId) {
-      const exists = db.cookTypes.some((t) => t.id === cookTypeId);
-      if (!exists) return Promise.reject(new Error('Cook type not found'));
-    }
+    const normalizedPrinterTopic = printerTopic?.trim() || null;
     const cook: Cook = {
       id: uid('cook'),
       email: email.toLowerCase(),
       displayName: displayName || email,
       password,
-      cookTypeId: cookTypeId ?? null,
+      printerTopic: normalizedPrinterTopic,
+      cookTypeId: null,
     };
     db.cooks.push(cook);
     save(db);
     return Promise.resolve({
       cook: {
         ...cook,
-        cookType: cook.cookTypeId
-          ? db.cookTypes.find((t) => t.id === cook.cookTypeId) || null
-          : null,
+        cookType: null,
       },
     });
   },
-  updateCook(id: Id, data: Partial<{ email: string; password: string; displayName: string; cookTypeId?: string | null }>) {
+  updateCook(id: Id, data: Partial<{ email: string; password: string; displayName: string; printerTopic?: string | null }>) {
     const db = snapshot();
     const cook = db.cooks.find((c) => c.id === id);
     if (!cook) return Promise.reject(new Error('Cook not found'));
@@ -1457,22 +1402,15 @@ export const devMocks = {
     }
     if (data.displayName) cook.displayName = data.displayName;
     if (data.password) cook.password = data.password;
-    if (data.cookTypeId !== undefined) {
-      if (data.cookTypeId === null) {
-        cook.cookTypeId = null;
-      } else {
-        const exists = db.cookTypes.some((t) => t.id === data.cookTypeId);
-        if (!exists) return Promise.reject(new Error('Cook type not found'));
-        cook.cookTypeId = data.cookTypeId;
-      }
+    if (data.printerTopic !== undefined) {
+      cook.printerTopic = data.printerTopic?.trim() || null;
+      cook.cookTypeId = null;
     }
     save(db);
     return Promise.resolve({
       cook: {
         ...cook,
-        cookType: cook.cookTypeId
-          ? db.cookTypes.find((t) => t.id === cook.cookTypeId) || null
-          : null,
+        cookType: null,
       },
     });
   },
