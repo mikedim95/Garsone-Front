@@ -1920,8 +1920,16 @@ export default function ManagerDashboard() {
     );
   }, [waiterDetails, cooks]);
 
-  const hybridPersonnelCount = useMemo(
-    () => staffRoster.filter((member) => member.isHybrid).length,
+  const waiterPersonnel = useMemo(
+    () => staffRoster.filter((member) => member.waiterDetail && !member.isHybrid),
+    [staffRoster]
+  );
+  const cookPersonnel = useMemo(
+    () => staffRoster.filter((member) => member.cook && !member.isHybrid),
+    [staffRoster]
+  );
+  const hybridPersonnel = useMemo(
+    () => staffRoster.filter((member) => member.isHybrid),
     [staffRoster]
   );
 
@@ -3941,11 +3949,9 @@ export default function ManagerDashboard() {
                 </TabsContent>
 
                 <TabsContent value="personnel" className="space-y-6 min-w-0 overflow-x-hidden">
-                  <DateRangeHeader />
-
                   {/* Unified Staff Management Card */}
                   <Card className="p-0 overflow-hidden">
-                    <Tabs defaultValue="personnel-roster" className="w-full">
+                    <Tabs defaultValue="waiters" className="w-full">
                       {/* Horizontal category navigation */}
                       <div className="border-b border-border/60 bg-muted/30">
                         <div className="px-4 sm:px-6 pt-4 pb-0">
@@ -3957,41 +3963,37 @@ export default function ManagerDashboard() {
                             </h3>
                             <div className="text-xs text-muted-foreground">
                               {t("manager.staff_summary", {
-                                defaultValue: "{{members}} members · {{types}} types",
+                                defaultValue: "{{members}} members",
                                 members: staffRoster.length,
-                                types: cookTypes.length + waiterTypes.length,
                               })}
                             </div>
                           </div>
                           <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto p-0 bg-transparent rounded-none">
                             <TabsTrigger 
-                              value="personnel-roster" 
+                              value="waiters" 
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <Users className="h-4 w-4 mr-1.5" />
-                              {t("manager.personnel", {
-                                defaultValue: "Personnel",
+                              {t("manager.waiters", {
+                                defaultValue: "Waiters",
                               })}
-                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{staffRoster.length}</Badge>
-                            </TabsTrigger>
-                            <div className="h-6 w-px bg-border mx-2 self-center" />
-                            <TabsTrigger 
-                              value="waiter-types" 
-                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                            >
-                              {t("manager.waiter_types", {
-                                defaultValue: "Waiter Types",
-                              })}
-                              <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{waiterTypes.length}</Badge>
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{waiterPersonnel.length}</Badge>
                             </TabsTrigger>
                             <TabsTrigger 
-                              value="cook-types" 
+                              value="cooks" 
                               className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
-                              {t("manager.cook_types", {
-                                defaultValue: "Cook Types",
-                              })}
-                              <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{cookTypes.length}</Badge>
+                              <ChefHat className="h-4 w-4 mr-1.5" />
+                              {t("manager.cooks", { defaultValue: "Cooks" })}
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{cookPersonnel.length}</Badge>
+                            </TabsTrigger>
+                            <TabsTrigger 
+                              value="hybrids" 
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                            >
+                              <UtensilsCrossed className="h-4 w-4 mr-1.5" />
+                              {t("manager.hybrids", { defaultValue: "Hybrids" })}
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{hybridPersonnel.length}</Badge>
                             </TabsTrigger>
                           </TabsList>
                         </div>
@@ -3999,74 +4001,42 @@ export default function ManagerDashboard() {
 
                       {/* Content area */}
                       <div className="p-4 sm:p-6">
-                        <TabsContent value="personnel-roster" className="mt-0 space-y-4">
+                        <TabsContent value="waiters" className="mt-0 space-y-4">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              {t("manager.personnel_description", {
+                              {t("manager.waiters_description", {
                                 defaultValue:
-                                  "Manage each person once, with waiter, cook, or hybrid capabilities shown together.",
+                                  "Manage waiter personnel, table assignments, and service options.",
                               })}
                             </p>
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <Button
-                                onClick={() => setAddModalOpen(true)}
+                                onClick={() => {
+                                  setNewWaiter((prev) => ({ ...prev, hybrid: false }));
+                                  setAddModalOpen(true);
+                                }}
                                 size="sm"
                                 className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                               >
                                 <Plus className="h-4 w-4" />{" "}
-                                {t("manager.add_personnel", {
-                                  defaultValue: "Add personnel",
-                                })}
-                              </Button>
-                              <Button
-                                onClick={() => setAddCookModalOpen(true)}
-                                size="sm"
-                                variant="outline"
-                                className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
-                              >
-                                <ChefHat className="h-4 w-4" />{" "}
-                                {t("manager.add_cook", {
-                                  defaultValue: "Add cook",
-                                })}
+                                {t("actions.add_waiter")}
                               </Button>
                             </div>
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                              <p className="text-xs text-muted-foreground">
-                                {t("manager.waiters", { defaultValue: "Waiters" })}
-                              </p>
-                              <p className="text-2xl font-semibold">{waiterDetails.length}</p>
-                            </div>
-                            <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                              <p className="text-xs text-muted-foreground">
-                                {t("manager.cooks", { defaultValue: "Cooks" })}
-                              </p>
-                              <p className="text-2xl font-semibold">{cooks.length}</p>
-                            </div>
-                            <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
-                              <p className="text-xs text-muted-foreground">
-                                {t("manager.hybrid_personnel", {
-                                  defaultValue: "Hybrid waiter + cook",
-                                })}
-                              </p>
-                              <p className="text-2xl font-semibold">{hybridPersonnelCount}</p>
-                            </div>
-                          </div>
-                          {loadingWaiters || loadingCooks ? (
+                          {loadingWaiters ? (
                             <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
-                          ) : staffRoster.length === 0 ? (
+                          ) : waiterPersonnel.length === 0 ? (
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
                               <Users className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
-                                {t("manager.no_personnel", {
-                                  defaultValue: "No personnel yet. Add a waiter, cook, or hybrid person to get started.",
+                                {t("manager.no_waiters", {
+                                  defaultValue: "No waiters yet. Add your first waiter to get started.",
                                 })}
                               </p>
                             </div>
                           ) : (
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {staffRoster.map((member) => (
+                              {waiterPersonnel.map((member) => (
                                 <div
                                   key={member.id}
                                   className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
@@ -4206,6 +4176,220 @@ export default function ManagerDashboard() {
                                         ) : (
                                           <Trash2 className="h-3 w-3" />
                                         )}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="cooks" className="mt-0 space-y-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              {t("manager.cooks_description", {
+                                defaultValue:
+                                  "Manage cook personnel and kitchen routing options.",
+                              })}
+                            </p>
+                            <Button
+                              onClick={() => setAddCookModalOpen(true)}
+                              size="sm"
+                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                            >
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.add_cook", {
+                                defaultValue: "Add cook",
+                              })}
+                            </Button>
+                          </div>
+                          {loadingCooks ? (
+                            <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
+                          ) : cookPersonnel.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
+                              <ChefHat className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <p className="text-sm text-muted-foreground">
+                                {t("manager.no_cooks", {
+                                  defaultValue: "No cooks yet. Add your first cook to get started.",
+                                })}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {cookPersonnel.map((member) => (
+                                <div
+                                  key={member.id}
+                                  className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                                      <ChefHat className="h-5 w-5 text-orange-600" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium text-foreground truncate">
+                                        {member.displayName || member.email}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {member.email}
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <Badge variant="outline" className="text-[10px] h-5">
+                                          {t("manager.cook", { defaultValue: "Cook" })}
+                                        </Badge>
+                                        {member.cook?.cookType?.title && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {member.cook.cookType.title}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+                                    {member.cook && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditCook(member.cook!)}
+                                      >
+                                        <Pencil className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.edit_details", {
+                                          defaultValue: "Edit details",
+                                        })}
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteCook(member.id)}
+                                      disabled={deletingCookId === member.id}
+                                    >
+                                      {deletingCookId === member.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3 w-3" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="hybrids" className="mt-0 space-y-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              {t("manager.hybrids_description", {
+                                defaultValue:
+                                  "Manage mixed personnel with both waiter and cook capabilities.",
+                              })}
+                            </p>
+                            <Button
+                              onClick={() => {
+                                setNewWaiter((prev) => ({ ...prev, hybrid: true }));
+                                setAddModalOpen(true);
+                              }}
+                              size="sm"
+                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                            >
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.create_hybrid_personnel", {
+                                defaultValue: "Create hybrid",
+                              })}
+                            </Button>
+                          </div>
+                          {loadingWaiters || loadingCooks ? (
+                            <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
+                          ) : hybridPersonnel.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
+                              <UtensilsCrossed className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <p className="text-sm text-muted-foreground">
+                                {t("manager.no_hybrids", {
+                                  defaultValue: "No hybrid personnel yet.",
+                                })}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {hybridPersonnel.map((member) => (
+                                <div
+                                  key={member.id}
+                                  className="group border border-primary/30 rounded-lg p-4 bg-primary/5 hover:bg-primary/10 transition-colors"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                      <span className="text-sm font-semibold text-primary">
+                                        {(member.displayName || member.email || "?")[0].toUpperCase()}
+                                      </span>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium text-foreground truncate">
+                                          {member.displayName || member.email}
+                                        </p>
+                                        {member.waiterDetail && (
+                                          <span className={cn(
+                                            "h-2 w-2 rounded-full shrink-0",
+                                            member.waiterDetail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
+                                          )} title={member.waiterDetail.shiftOn ? "On shift" : "Off shift"} />
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {member.email}
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <Badge variant="success" className="text-[10px] h-5">
+                                          {t("manager.hybrid_personnel", {
+                                            defaultValue: "Hybrid waiter + cook",
+                                          })}
+                                        </Badge>
+                                        {member.waiterDetail && (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {member.waiterDetail.assignedTables.length}{" "}
+                                            {t("manager.tables", { defaultValue: "tables" })}
+                                          </Badge>
+                                        )}
+                                        {member.waiterDetail?.waiter.waiterType?.title && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {member.waiterDetail.waiter.waiterType.title}
+                                          </Badge>
+                                        )}
+                                        {member.cook?.cookType?.title && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {member.cook.cookType.title}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/40">
+                                    {member.waiterDetail && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditWaiter(member.waiterDetail!.waiter)}
+                                      >
+                                        <Users className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.waiter_options", {
+                                          defaultValue: "Waiter options",
+                                        })}
+                                      </Button>
+                                    )}
+                                    {member.cook && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditCook(member.cook!)}
+                                      >
+                                        <ChefHat className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.cook_options", {
+                                          defaultValue: "Cook options",
+                                        })}
                                       </Button>
                                     )}
                                   </div>
