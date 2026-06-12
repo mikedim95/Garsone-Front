@@ -40,7 +40,6 @@ import {
   FileText,
   Download,
   BarChart2,
-  PanelLeftOpen,
   ListChecks,
   Users,
   UtensilsCrossed,
@@ -100,7 +99,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   Select,
@@ -2704,19 +2702,6 @@ export default function ManagerDashboard() {
 
   const DateRangeHeader = () => (
     <div className="relative flex items-center justify-center">
-      {sidebarCollapsed && (
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed(false)}
-          className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-card/95 border border-border/50 shadow-lg backdrop-blur-sm text-sm font-medium text-foreground hover:bg-accent transition-colors absolute left-0 top-1/2 -translate-y-1/2"
-          aria-label={t("manager.expand_navigation", {
-            defaultValue: "Expand navigation",
-          })}
-        >
-          <BarChart2 className="h-4 w-4" />
-          <span>›</span>
-        </button>
-      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-center sm:justify-center gap-3 w-full">
         <div className="flex items-center gap-2 flex-wrap justify-center">
           <div className="inline-flex rounded-lg border border-border/60 bg-card overflow-hidden shadow-sm">
@@ -2788,6 +2773,27 @@ export default function ManagerDashboard() {
     </div>
   );
 
+  const NavigatorButton = () =>
+    sidebarCollapsed ? (
+      <button
+        type="button"
+        onClick={() => {
+          if (window.matchMedia("(min-width: 640px)").matches) {
+            setSidebarCollapsed(false);
+          } else {
+            setMobileNavOpen(true);
+          }
+        }}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-card/95 border border-border/50 shadow-lg backdrop-blur-sm text-sm font-medium text-foreground hover:bg-accent transition-colors"
+        aria-label={t("manager.expand_navigation", {
+          defaultValue: "Expand navigation",
+        })}
+      >
+        <BarChart2 className="h-4 w-4" />
+        <span>›</span>
+      </button>
+    ) : null;
+
   return (
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
       <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
@@ -2850,34 +2856,6 @@ export default function ManagerDashboard() {
         />
 
         <div className="flex-1 flex min-h-0 relative">
-          {sidebarCollapsed && (
-            <div className="fixed left-4 top-24 z-50">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2 rounded-full border-border/60 bg-card/95 shadow-lg backdrop-blur-sm"
-                onClick={() => {
-                  if (window.matchMedia("(min-width: 640px)").matches) {
-                    setSidebarCollapsed(false);
-                  } else {
-                    setMobileNavOpen(true);
-                  }
-                }}
-                aria-label={t("manager.expand_navigation", {
-                  defaultValue: "Expand navigation",
-                })}
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t("manager.navigator", { defaultValue: "Navigator" })}
-                </span>
-                <span className="sm:hidden">
-                  {t("app.navigation", { defaultValue: "Menu" })}
-                </span>
-              </Button>
-            </div>
-          )}
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
@@ -2958,21 +2936,8 @@ export default function ManagerDashboard() {
             </aside>
 
             {/* Mobile Navigation */}
-            <div className="sm:hidden fixed bottom-4 left-4 z-50">
+            <div className="sm:hidden">
               <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="rounded-full shadow-lg px-4"
-                    aria-label={t("manager.nav_title", {
-                      defaultValue: "Dashboard",
-                    })}
-                  >
-                    <BarChart2 className="h-4 w-4 mr-2" />
-                    {t("app.navigation", { defaultValue: "Menu" })}
-                  </Button>
-                </SheetTrigger>
                 <SheetContent
                   side="left"
                   className="w-[280px] bg-background text-foreground"
@@ -3035,6 +3000,7 @@ export default function ManagerDashboard() {
 
             <div className="flex-1 w-full overflow-y-auto">
               <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
+                <NavigatorButton />
                 <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />
