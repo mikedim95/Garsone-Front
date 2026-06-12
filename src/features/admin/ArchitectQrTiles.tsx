@@ -1668,12 +1668,19 @@ export default function ArchitectQrTiles() {
       void loadPendingNodes();
       if (selectedStoreId) void loadRemoteNode(selectedStoreId);
       if (selectedStoreId) void loadStoreUsers(selectedStoreId);
+      if (selectedStoreId) void refreshStoreTiles(selectedStoreId, true);
+      return;
     }
     void refreshPoolTiles(true);
-  }, [activeTab, loadOverview, loadPendingNodes, loadRemoteNode, loadStoreUsers, refreshPoolTiles, selectedStoreId]);
+  }, [activeTab, loadOverview, loadPendingNodes, loadRemoteNode, loadStoreUsers, refreshPoolTiles, refreshStoreTiles, selectedStoreId]);
+
+  const unassignedPoolTiles = useMemo(
+    () => poolTiles.filter((tile) => !tile.storeId && !tile.tableId),
+    [poolTiles]
+  );
 
   const poolStats = useMemo(() => {
-    return poolTiles.reduce(
+    return unassignedPoolTiles.reduce(
       (acc, tile) => {
         acc.total += 1;
         acc[getTileLifecycle(tile)] += 1;
@@ -1687,7 +1694,7 @@ export default function ArchitectQrTiles() {
         live: 0,
       }
     );
-  }, [poolTiles]);
+  }, [unassignedPoolTiles]);
 
   const selectedStoreStats = useMemo(() => {
     return storeTiles.reduce(
@@ -1722,7 +1729,7 @@ export default function ArchitectQrTiles() {
 
   const filteredPoolTiles = useMemo(() => {
     const term = poolSearch.trim().toLowerCase();
-    return poolTiles.filter((tile) => {
+    return unassignedPoolTiles.filter((tile) => {
       if (poolStatusFilter !== "all" && getTileLifecycle(tile) !== poolStatusFilter) {
         return false;
       }
@@ -1736,7 +1743,7 @@ export default function ArchitectQrTiles() {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [poolSearch, poolStatusFilter, poolTiles]);
+  }, [poolSearch, poolStatusFilter, unassignedPoolTiles]);
 
   const filteredStoreTiles = useMemo(() => {
     const term = storeSearch.trim().toLowerCase();
@@ -1764,9 +1771,9 @@ export default function ArchitectQrTiles() {
   const headerSubtitle =
     activeTab === "overview"
       ? "Cross-venue usage, staffing and QR footprint."
-    : activeTab === "pool"
-      ? "Generate QR codes centrally, then bind them to venues."
-    : selectedStore
+      : activeTab === "pool"
+      ? "Unassigned QR inventory ready to bind to venues."
+      : selectedStore
       ? `Managing ${selectedStore.name}`
       : "Select a store to continue.";
 
@@ -1875,10 +1882,16 @@ export default function ArchitectQrTiles() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => openGenerateDialog("pool")}
+                onClick={() =>
+                  openGenerateDialog(
+                    activeTab === "settings" && selectedStoreId ? "store" : "pool"
+                  )
+                }
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Generate QR
+                {activeTab === "settings" && selectedStoreId
+                  ? "Generate Store QR"
+                  : "Generate QR"}
               </Button>
             </div>
           </div>
@@ -1886,24 +1899,24 @@ export default function ArchitectQrTiles() {
           <TabsContent value="pool" className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard
-                title="Total QR Codes"
+                title="Unassigned QR Codes"
                 value={poolStats.total}
-                description="Everything in the central pool."
+                description="No venue or table attached."
               />
               <MetricCard
-                title="Unbound"
+                title="Active"
                 value={poolStats.unbound}
-                description="No venue attached yet."
+                description="Ready to bind to a venue."
               />
               <MetricCard
-                title="Venue Linked"
-                value={poolStats.venue}
-                description="Ready for per-venue setup."
+                title="Inactive"
+                value={poolStats.inactive}
+                description="Held out of circulation."
               />
               <MetricCard
-                title="Table Assigned"
-                value={poolStats.live}
-                description="Assigned from venue settings."
+                title="Visible"
+                value={filteredPoolTiles.length}
+                description="Matching the current search and filter."
               />
             </div>
 
@@ -1911,8 +1924,8 @@ export default function ArchitectQrTiles() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Binding flow</CardTitle>
                 <CardDescription>
-                  QR codes now live in a central pool. Generate once, bind to a venue
-                  later, then assign tables from the venue's table settings.
+                  This pool only shows QR codes with no venue or table assignment.
+                  Once a QR is bound to a venue, it moves into that venue's Store QR Tiles tab.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-3">
@@ -1942,7 +1955,7 @@ export default function ArchitectQrTiles() {
                 <div className="relative flex-1 sm:max-w-sm">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Search code, alias or store..."
+                    placeholder="Search code or alias..."
                     value={poolSearch}
                     onChange={(event) => setPoolSearch(event.target.value)}
                     className="pl-9"
@@ -1958,10 +1971,8 @@ export default function ArchitectQrTiles() {
                     <SelectValue placeholder="Filter status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="all">All unassigned</SelectItem>
                     <SelectItem value="unbound">QR only</SelectItem>
-                    <SelectItem value="venue">Venue linked</SelectItem>
-                    <SelectItem value="live">Table assigned</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1998,7 +2009,7 @@ export default function ArchitectQrTiles() {
                     <QrCode className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
                     <p className="text-muted-foreground">No QR codes found.</p>
                     <p className="mt-1 text-sm text-muted-foreground/70">
-                      Generate global QR codes to start the pool.
+                      Generate global QR codes to start the unassigned pool.
                     </p>
                     <Button className="mt-4" onClick={() => openGenerateDialog("pool")}>
                       <Plus className="mr-2 h-4 w-4" />
@@ -2240,6 +2251,10 @@ export default function ArchitectQrTiles() {
                     <Settings className="h-4 w-4" />
                     Store Settings
                   </TabsTrigger>
+                  <TabsTrigger value="store-qr-tiles" className="gap-2">
+                    <QrCode className="h-4 w-4" />
+                    Store QR Tiles
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="store-overview" className="space-y-5">
@@ -2293,6 +2308,246 @@ export default function ArchitectQrTiles() {
                           {remoteNodeSummary.description}
                         </p>
                       </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="store-qr-tiles" className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <MetricCard
+                      title="Store QR Tiles"
+                      value={selectedStoreStats.total}
+                      description="All QR codes linked to this venue."
+                    />
+                    <MetricCard
+                      title="Table Unassigned"
+                      value={selectedStoreStats.unassigned}
+                      description="Venue-linked but not bound to a table."
+                    />
+                    <MetricCard
+                      title="Table Assigned"
+                      value={selectedStoreStats.live}
+                      description="QR codes bound to venue tables."
+                    />
+                    <MetricCard
+                      title="Inactive"
+                      value={selectedStoreStats.inactive}
+                      description="Venue QR codes held out of circulation."
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="relative flex-1 lg:max-w-sm">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search code, alias or table..."
+                        value={storeSearch}
+                        onChange={(event) => setStoreSearch(event.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        {filteredStoreTiles.length} tile
+                        {filteredStoreTiles.length === 1 ? "" : "s"}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void refreshStoreTiles(selectedStore.id)}
+                        disabled={loadingStoreTiles}
+                      >
+                        {loadingStoreTiles ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCcw className="mr-2 h-4 w-4" />
+                        )}
+                        Refresh
+                      </Button>
+                      <Button size="sm" onClick={() => openGenerateDialog("store")}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Generate Store QR
+                      </Button>
+                    </div>
+                  </div>
+
+                  {recentScope === "store" ? (
+                    <RecentTilesCard
+                      tiles={recentTiles}
+                      title={`Fresh QR codes for ${selectedStore.name}`}
+                      onCopyCode={copyTileCode}
+                      onCopyExport={copyRecentExport}
+                    />
+                  ) : null}
+
+                  <Card>
+                    <CardContent className="p-0">
+                      {loadingStoreTiles && storeTiles.length === 0 ? (
+                        <div className="p-6">
+                          <DashboardGridSkeleton count={4} />
+                        </div>
+                      ) : filteredStoreTiles.length === 0 ? (
+                        <div className="py-16 text-center">
+                          <QrCode className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
+                          <p className="text-muted-foreground">No store QR tiles found.</p>
+                          <p className="mt-1 text-sm text-muted-foreground/70">
+                            Bind QR codes from the pool or generate venue-specific QR codes.
+                          </p>
+                          <Button className="mt-4" onClick={() => openGenerateDialog("store")}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Generate Store QR
+                          </Button>
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/30 hover:bg-muted/30">
+                              <TableHead>Code / Alias</TableHead>
+                              <TableHead>Table</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="hidden md:table-cell">QR</TableHead>
+                              <TableHead className="text-center">Active</TableHead>
+                              <TableHead className="hidden lg:table-cell">Updated</TableHead>
+                              <TableHead className="w-12" />
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredStoreTiles.map((tile) => {
+                              const isBusy =
+                                updatingTileId === tile.id || deletingTileId === tile.id;
+
+                              return (
+                                <TableRow key={tile.id} className="align-top">
+                                  <TableCell className="min-w-[18rem]">
+                                    <div className="space-y-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <code className="rounded bg-muted px-2 py-0.5 text-sm font-semibold">
+                                          {tile.publicCode}
+                                        </code>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          onClick={() => void copyTileCode(tile.publicCode)}
+                                        >
+                                          {copiedKey === tile.publicCode ? (
+                                            <Check className="h-3.5 w-3.5 text-primary" />
+                                          ) : (
+                                            <Copy className="h-3.5 w-3.5" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          onClick={() => void copyTileUrl(tile.publicCode)}
+                                        >
+                                          {copiedKey === `url:${tile.publicCode}` ? (
+                                            <Check className="h-3.5 w-3.5 text-primary" />
+                                          ) : (
+                                            <LinkIcon className="h-3.5 w-3.5" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                      <Input
+                                        value={labelDrafts[tile.id] ?? tile.label ?? ""}
+                                        onChange={(event) =>
+                                          setLabelDrafts((current) => ({
+                                            ...current,
+                                            [tile.id]: event.target.value,
+                                          }))
+                                        }
+                                        onBlur={() => void commitLabel(tile)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") {
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        placeholder="Alias or placement note"
+                                        className="h-8"
+                                        disabled={isBusy}
+                                      />
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="min-w-[12rem]">
+                                    <p className="font-medium">
+                                      {tile.tableLabel || "No table assigned"}
+                                    </p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {tile.tableId
+                                        ? `Table ID ${tile.tableId}`
+                                        : "Assign from the venue table editor."}
+                                    </p>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="space-y-2">
+                                      <TileLifecycleBadge tile={tile} />
+                                      <p className="text-xs text-muted-foreground">
+                                        {getTileLifecycle(tile) === "venue"
+                                          ? "Ready for table assignment."
+                                          : getTileLifecycle(tile) === "live"
+                                          ? "Bound to a table."
+                                          : getTileLifecycle(tile) === "inactive"
+                                          ? "Kept out of circulation."
+                                          : "Not attached to a venue."}
+                                      </p>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="hidden md:table-cell">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPreviewQr({
+                                          code: tile.publicCode,
+                                          url: buildPublicUrl(tile.publicCode),
+                                        })
+                                      }
+                                      className="rounded border border-border/60 bg-white p-1 transition-colors hover:border-primary/50"
+                                    >
+                                      <QRCodeSVG
+                                        value={buildPublicUrl(tile.publicCode)}
+                                        size={44}
+                                        bgColor="#ffffff"
+                                        fgColor="#111827"
+                                        includeMargin={true}
+                                      />
+                                    </button>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Switch
+                                      checked={tile.isActive}
+                                      onCheckedChange={(checked) =>
+                                        void handleUpdateTile(tile.id, {
+                                          isActive: checked,
+                                        })
+                                      }
+                                      disabled={isBusy}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                                    {formatDate(tile.updatedAt || tile.createdAt)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                      onClick={() => void handleDeleteTile(tile.id)}
+                                      disabled={isBusy}
+                                    >
+                                      {deletingTileId === tile.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -2878,7 +3133,7 @@ export default function ArchitectQrTiles() {
                             size="sm"
                             onClick={() => {
                               setSelectedStoreId(store.id);
-                              setActiveTab("pool");
+                              setActiveTab("settings");
                             }}
                           >
                             Manage venue
