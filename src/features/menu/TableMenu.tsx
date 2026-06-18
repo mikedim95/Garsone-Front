@@ -2899,6 +2899,7 @@ export default function TableMenu() {
                         );
                         const canEditLine =
                           order.status === "PLACED" &&
+                          itemStatus === "PLACED" &&
                           !isSubmittedOrderItemCancelled(item);
                         const itemStatusLabel = t(
                           `menu.item_status_${itemStatus.toLowerCase()}`,
@@ -2914,10 +2915,10 @@ export default function TableMenu() {
                             tabIndex={canEditLine ? 0 : undefined}
                             key={`${order.id ?? orderIndex}-${item.id ?? item.itemId ?? itemIndex}`}
                             className={clsx(
-                              "w-full overflow-hidden rounded-2xl border border-border/60 bg-card/80 p-3 text-left transition-colors",
+                              "relative w-full overflow-hidden rounded-2xl border p-3 text-left transition-colors",
                               canEditLine
-                                ? "hover:border-primary/50 hover:bg-primary/5"
-                                : "cursor-default"
+                                ? "cursor-pointer border-primary/70 bg-primary/10 shadow-[0_0_0_1px_hsl(var(--primary)/0.28),0_16px_38px_hsl(var(--primary)/0.14)] hover:border-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                : "cursor-default border-border/60 bg-card/80"
                             )}
                             onClick={() =>
                               canEditLine
@@ -2931,9 +2932,22 @@ export default function TableMenu() {
                               handleActiveOrderItemClick(order, item);
                             }}
                           >
+                            {canEditLine ? (
+                              <span
+                                aria-hidden="true"
+                                className="absolute inset-y-3 left-0 w-1 rounded-r-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
+                              />
+                            ) : null}
                             <div className="flex min-w-0 items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-start gap-3">
-                                <span className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
+                                <span
+                                  className={clsx(
+                                    "inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold",
+                                    canEditLine
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-primary/10 text-primary"
+                                  )}
+                                >
                                   x{quantity}
                                 </span>
                                 <span className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
@@ -2981,11 +2995,28 @@ export default function TableMenu() {
                                 </Popover>
                               ) : null}
                             </div>
-                            <div className="mt-3 flex justify-end">
+                            <div
+                              className={clsx(
+                                "mt-3 flex items-center gap-3",
+                                canEditLine ? "justify-between" : "justify-end"
+                              )}
+                            >
+                              {canEditLine ? (
+                                <span className="inline-flex min-w-0 items-center gap-1 text-[11px] font-semibold text-primary">
+                                  <span className="truncate">
+                                    {t("menu.tap_item_to_edit", {
+                                      defaultValue: "Tap item to edit",
+                                    })}
+                                  </span>
+                                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                                </span>
+                              ) : null}
                               <span
                                 className={clsx(
                                   "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                                  itemStatusToneByStatus[itemStatus]
+                                  canEditLine
+                                    ? "border-primary/60 bg-primary/15 text-primary"
+                                    : itemStatusToneByStatus[itemStatus]
                                 )}
                               >
                                 {itemStatusLabel}
