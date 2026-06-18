@@ -62,7 +62,7 @@ export default function Login() {
       if (enrichedUser.role === "architect") navigate("/GarsoneAdmin");
       else if (enrichedUser.role === "manager") navigate("/manager");
       else if (enrichedUser.role === "cook") navigate("/cook");
-      else if (enrichedUser.role === "hybrid") navigate("/waiter");
+      else if (enrichedUser.role === "hybrid") navigate("/cook");
       else navigate("/waiter");
     } catch (err) {
       if (err instanceof ApiError) {
@@ -100,7 +100,7 @@ export default function Login() {
       if (user?.role === "architect") navigate("/GarsoneAdmin");
       else if (user?.role === "manager") navigate("/manager");
       else if (user?.role === "cook") navigate("/cook");
-      else if (user?.role === "hybrid") navigate("/waiter");
+      else if (user?.role === "hybrid") navigate("/cook");
       else navigate("/waiter");
     } catch (err) {
       if (err instanceof ApiError) setError(err.message || t("auth.password_change_failed"));

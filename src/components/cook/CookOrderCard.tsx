@@ -29,6 +29,8 @@ interface CookOrderCardProps {
   onAcceptWithPrint: (order: Order) => void;
   onCancel: (id: string) => void;
   onMarkAllReady: (id: string) => void;
+  onMarkServed?: (id: string) => void;
+  onMarkPaid?: (id: string) => void;
   onViewModifiers: (order: Order) => void;
   onUpdateItemStatus: (
     orderId: string,
@@ -68,6 +70,8 @@ export const CookOrderCard = ({
   onAcceptWithPrint,
   onCancel,
   onMarkAllReady,
+  onMarkServed,
+  onMarkPaid,
   onViewModifiers,
   onUpdateItemStatus,
   selectedItems = {},
@@ -79,15 +83,18 @@ export const CookOrderCard = ({
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const orderStatus = order.status as "PLACED" | "PREPARING";
+  const orderStatus = order.status;
   const elapsed = getElapsedMinutes(order.createdAt);
   const urgency = getUrgencyLevel(elapsed);
 
   // Filter out served items; keep accepted/pending visible.
   const visibleItems = useMemo(() => {
     const items = order.items ?? [];
+    if (order.status === "READY" || order.status === "SERVED" || order.status === "PAID") {
+      return items;
+    }
     return items.filter((item) => item.status !== "SERVED");
-  }, [order.items]);
+  }, [order.items, order.status]);
 
   // Progress calculation
   const totalItems = order.items?.length ?? 0;
@@ -152,7 +159,11 @@ export const CookOrderCard = ({
                 "h-12 w-12 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg",
                 orderStatus === "PLACED"
                   ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
-                  : "bg-gradient-to-br from-amber-500 to-amber-600 text-white"
+                  : orderStatus === "PREPARING"
+                    ? "bg-gradient-to-br from-amber-500 to-amber-600 text-white"
+                    : orderStatus === "READY"
+                      ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white"
+                      : "bg-gradient-to-br from-slate-500 to-slate-600 text-white"
               )}
             >
               {order.tableLabel}
@@ -207,7 +218,11 @@ export const CookOrderCard = ({
                 "border-0",
                 orderStatus === "PLACED"
                   ? "bg-primary/20 text-primary"
-                  : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                  : orderStatus === "PREPARING"
+                    ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                    : orderStatus === "READY"
+                      ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                      : "bg-slate-500/20 text-slate-600 dark:text-slate-400"
               )}
             >
               {visibleItems.length} {itemsLabel}
@@ -362,6 +377,42 @@ export const CookOrderCard = ({
                 <>
                   <CheckCircle2 className="h-4 w-4 mr-1.5" />
                   {t("cook.all_ready", { defaultValue: "All Ready" })}
+                </>
+              )}
+            </Button>
+          )}
+
+          {orderStatus === "READY" && onMarkServed && (
+            <Button
+              size="sm"
+              className="flex-1 min-w-[100px] bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => onMarkServed(order.id)}
+              disabled={isActing}
+            >
+              {isActing ? (
+                <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  {t("actions.mark_served", { defaultValue: "Mark Served" })}
+                </>
+              )}
+            </Button>
+          )}
+
+          {orderStatus === "SERVED" && onMarkPaid && (
+            <Button
+              size="sm"
+              className="flex-1 min-w-[100px] bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onMarkPaid(order.id)}
+              disabled={isActing}
+            >
+              {isActing ? (
+                <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  {t("actions.mark_paid", { defaultValue: "Mark Paid" })}
                 </>
               )}
             </Button>

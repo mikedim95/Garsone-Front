@@ -15,7 +15,10 @@ import {
 interface CookProViewProps {
   incoming: Order[];
   preparing: Order[];
+  ready?: Order[];
+  served?: Order[];
   loadingOrders: boolean;
+  showServiceStages?: boolean;
   accepting: Set<string>;
   printing: Set<string>;
   actingIds: Set<string>;
@@ -24,6 +27,8 @@ interface CookProViewProps {
   onAcceptWithPrint: (order: Order) => void;
   onCancel: (id: string) => void;
   onMarkReady: (id: string) => void;
+  onMarkServed?: (id: string) => void;
+  onMarkPaid?: (id: string) => void;
   onViewModifiers: (order: Order) => void;
   onToggleItem: (
     orderId: string,
@@ -52,7 +57,10 @@ const getUrgencyLevel = (minutes: number): "normal" | "warning" | "critical" => 
 export const CookProView = ({
   incoming,
   preparing,
+  ready = [],
+  served = [],
   loadingOrders,
+  showServiceStages = false,
   accepting,
   printing,
   actingIds,
@@ -61,6 +69,8 @@ export const CookProView = ({
   onAcceptWithPrint,
   onCancel,
   onMarkReady,
+  onMarkServed,
+  onMarkPaid,
   onViewModifiers,
   onToggleItem,
   onUpdateItemStatus,
@@ -71,7 +81,10 @@ export const CookProView = ({
   const highlightTimer = useRef<number | null>(null);
 
   const stats = useMemo(() => {
-    const totalItems = [...incoming, ...preparing].reduce((sum, o) => {
+    const trackedOrders = showServiceStages
+      ? [...incoming, ...preparing, ...ready, ...served]
+      : [...incoming, ...preparing];
+    const totalItems = trackedOrders.reduce((sum, o) => {
       const items = o.items ?? [];
       if (o.status === "PLACED") {
         return (
@@ -93,14 +106,16 @@ export const CookProView = ({
               incoming.length
           )
         : 0;
-    const urgentOrders = [...incoming, ...preparing].filter(
+    const urgentOrders = trackedOrders.filter(
       (o) => getUrgencyLevel(getElapsedMinutes(o.createdAt)) !== "normal"
     ).length;
     return { totalItems, avgWaitTime, urgentOrders };
-  }, [incoming, preparing]);
+  }, [incoming, preparing, ready, served, showServiceStages]);
 
   const urgentTarget = useMemo(() => {
-    const all = [...incoming, ...preparing];
+    const all = showServiceStages
+      ? [...incoming, ...preparing, ...ready, ...served]
+      : [...incoming, ...preparing];
     const urgent = all
       .map((order) => ({
         order,
@@ -116,7 +131,7 @@ export const CookProView = ({
       return new Date(a.order.createdAt).getTime() - new Date(b.order.createdAt).getTime();
     });
     return urgent[0].order;
-  }, [incoming, preparing]);
+  }, [incoming, preparing, ready, served, showServiceStages]);
 
   useEffect(() => {
     return () => {
@@ -240,7 +255,7 @@ export const CookProView = ({
       </div>
 
       {/* Two Column Layout */}
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className={clsx("grid gap-6", showServiceStages ? "xl:grid-cols-4 lg:grid-cols-2" : "lg:grid-cols-2")}>
         {/* Incoming Orders Column */}
         <div className="space-y-4">
           <div className="flex items-center gap-3 pb-2 border-b border-border">
@@ -343,6 +358,114 @@ export const CookProView = ({
             )}
           </div>
         </div>
+
+        {showServiceStages && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 pb-2 border-b border-border">
+              <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
+              <h2 className="text-lg font-semibold text-foreground">
+                {t("status.READY", { defaultValue: "Ready" })}
+              </h2>
+              <Badge variant="secondary" className="ml-auto">
+                {ready.length}
+              </Badge>
+            </div>
+
+            <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
+              {ready.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Utensils className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>{t("cook.no_ready", { defaultValue: "No ready orders" })}</p>
+                </div>
+              ) : (
+                ready.map((order) => (
+                  <div
+                    key={order.id}
+                    ref={(node) => {
+                      if (node) {
+                        orderRefs.current.set(order.id, node);
+                      } else {
+                        orderRefs.current.delete(order.id);
+                      }
+                    }}
+                  >
+                    <CookOrderCard
+                      order={order}
+                      highlighted={highlightedOrderId === order.id}
+                      onAcceptAll={onAccept}
+                      onAcceptWithPrint={onAcceptWithPrint}
+                      onCancel={onCancel}
+                      onMarkAllReady={onMarkReady}
+                      onMarkServed={onMarkServed}
+                      onMarkPaid={onMarkPaid}
+                      onViewModifiers={onViewModifiers}
+                      onUpdateItemStatus={handleUpdateItemStatus}
+                      selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                      onToggleItem={onToggleItem}
+                      isAccepting={accepting.has(order.id)}
+                      isPrinting={printing.has(order.id)}
+                      isActing={actingIds.has(`served:${order.id}`)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {showServiceStages && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 pb-2 border-b border-border">
+              <div className="h-3 w-3 rounded-full bg-slate-500 animate-pulse" />
+              <h2 className="text-lg font-semibold text-foreground">
+                {t("status.SERVED", { defaultValue: "Served" })}
+              </h2>
+              <Badge variant="secondary" className="ml-auto">
+                {served.length}
+              </Badge>
+            </div>
+
+            <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
+              {served.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Utensils className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>{t("cook.no_served", { defaultValue: "No served orders" })}</p>
+                </div>
+              ) : (
+                served.map((order) => (
+                  <div
+                    key={order.id}
+                    ref={(node) => {
+                      if (node) {
+                        orderRefs.current.set(order.id, node);
+                      } else {
+                        orderRefs.current.delete(order.id);
+                      }
+                    }}
+                  >
+                    <CookOrderCard
+                      order={order}
+                      highlighted={highlightedOrderId === order.id}
+                      onAcceptAll={onAccept}
+                      onAcceptWithPrint={onAcceptWithPrint}
+                      onCancel={onCancel}
+                      onMarkAllReady={onMarkReady}
+                      onMarkServed={onMarkServed}
+                      onMarkPaid={onMarkPaid}
+                      onViewModifiers={onViewModifiers}
+                      onUpdateItemStatus={handleUpdateItemStatus}
+                      selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                      onToggleItem={onToggleItem}
+                      isAccepting={accepting.has(order.id)}
+                      isPrinting={printing.has(order.id)}
+                      isActing={actingIds.has(`paid:${order.id}`)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

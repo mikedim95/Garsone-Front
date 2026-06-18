@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
+import { CookOrderCard } from "@/components/cook/CookOrderCard";
 import { OrderModifiersDialog } from "@/components/cook/OrderModifiersDialog";
 import { LayoutGrid, List, ListChecks, RefreshCcw } from "lucide-react";
 import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from "@/lib/storeSlug";
@@ -296,6 +297,7 @@ export default function CookDashboard() {
   const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const isHybridUser = user?.role === "hybrid";
   const cookPrinterTopic =
     user?.printerTopic ?? user?.cookType?.printerTopic ?? null;
 
@@ -339,6 +341,15 @@ export default function CookDashboard() {
       localStorage.setItem("COOK_VIEW_MODE", next);
     } catch {}
   };
+
+  useEffect(() => {
+    if (isHybridUser) {
+      setViewMode("pro");
+      try {
+        localStorage.setItem("COOK_VIEW_MODE", "pro");
+      } catch {}
+    }
+  }, [isHybridUser]);
   useEffect(() => {
     if (
       !isAuthenticated() ||
@@ -390,6 +401,13 @@ export default function CookDashboard() {
       ? `${storeSlug}/orders/placed/${normalizedCookTopic}`
       : `${storeSlug}/orders/placed`;
     const itemTopic = `${storeSlug}/orders/items`;
+    const statusTopics = [
+      `${storeSlug}/orders/preparing`,
+      `${storeSlug}/orders/ready`,
+      `${storeSlug}/orders/served`,
+      `${storeSlug}/orders/paid`,
+      `${storeSlug}/orders/canceled`,
+    ];
     const handler = (payload: unknown) => {
       if (!isOrderPlacedPayload(payload)) return;
       const payloadOrder = isRecord(payload.order) ? payload.order : null;
@@ -409,6 +427,24 @@ export default function CookDashboard() {
       );
       if (normalized) upsertOrder(normalized);
     };
+    const handleStatusOrder = async (payload: unknown) => {
+      if (!isRecord(payload)) return;
+      const rawOrder = (payload as any).order;
+      if (rawOrder) {
+        const normalized = normalizeOrder(rawOrder, Date.now(), cookPrinterTopic);
+        if (normalized) upsertOrder(normalized);
+        return;
+      }
+      const orderId = typeof (payload as any).orderId === "string" ? (payload as any).orderId : "";
+      if (!orderId) return;
+      try {
+        const res = await api.getOrder(orderId);
+        const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+        if (normalized) upsertOrder(normalized);
+      } catch (error) {
+        console.warn("Failed to hydrate cook order status event", error);
+      }
+    };
     const handleItemStatus = (payload: unknown) => {
       if (!isRecord(payload)) return;
       const rawOrder = (payload as any).order;
@@ -419,9 +455,15 @@ export default function CookDashboard() {
     realtimeService.connect();
     realtimeService.subscribe(topic, handler);
     realtimeService.subscribe(itemTopic, handleItemStatus);
+    statusTopics.forEach((statusTopic) => {
+      realtimeService.subscribe(statusTopic, handleStatusOrder);
+    });
     return () => {
       realtimeService.unsubscribe(topic, handler);
       realtimeService.unsubscribe(itemTopic, handleItemStatus);
+      statusTopics.forEach((statusTopic) => {
+        realtimeService.unsubscribe(statusTopic, handleStatusOrder);
+      });
     };
   }, [storeSlug, cookPrinterTopic, upsertOrder]);
 
@@ -446,6 +488,28 @@ export default function CookDashboard() {
         }),
     [ordersAll]
   );
+  const ready = useMemo(
+    () =>
+      ordersAll
+        .filter((o) => o.status === "READY")
+        .sort((a, b) => {
+          const aTime = new Date(a.readyAt || a.updatedAt || a.createdAt).getTime();
+          const bTime = new Date(b.readyAt || b.updatedAt || b.createdAt).getTime();
+          return aTime - bTime;
+        }),
+    [ordersAll]
+  );
+  const served = useMemo(
+    () =>
+      ordersAll
+        .filter((o) => o.status === "SERVED")
+        .sort((a, b) => {
+          const aTime = new Date(a.servedAt || a.updatedAt || a.createdAt).getTime();
+          const bTime = new Date(b.servedAt || b.updatedAt || b.createdAt).getTime();
+          return aTime - bTime;
+        }),
+    [ordersAll]
+  );
 
   const getVisibleItemsForOrder = useCallback((order: Order) => {
     const items = order.items ?? [];
@@ -463,6 +527,14 @@ export default function CookDashboard() {
   const preparingVisible = useMemo(
     () => preparing.filter((order) => getVisibleItemsForOrder(order).length > 0),
     [preparing, getVisibleItemsForOrder]
+  );
+  const readyVisible = useMemo(
+    () => ready.filter((order) => getVisibleItemsForOrder(order).length > 0),
+    [ready, getVisibleItemsForOrder]
+  );
+  const servedVisible = useMemo(
+    () => served.filter((order) => getVisibleItemsForOrder(order).length > 0),
+    [served, getVisibleItemsForOrder]
   );
 
   const toggleItemSelection = useCallback(
@@ -770,6 +842,60 @@ export default function CookDashboard() {
     }
   };
 
+  const markServed = async (id: string) => {
+    setActingIds((s) => new Set(s).add(`served:${id}`));
+    try {
+      const res = await api.updateOrderStatus(id, "SERVED");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "SERVED");
+      }
+      toast({
+        title: t("status.SERVED", { defaultValue: "Served" }),
+        description: t("cook.order_now_served", {
+          defaultValue: "Order {{orderId}} is SERVED",
+          orderId: id,
+        }),
+      });
+      clearAllSelectionsForOrder(id);
+    } finally {
+      setActingIds((s) => {
+        const n = new Set(s);
+        n.delete(`served:${id}`);
+        return n;
+      });
+    }
+  };
+
+  const markPaid = async (id: string) => {
+    setActingIds((s) => new Set(s).add(`paid:${id}`));
+    try {
+      const res = await api.updateOrderStatus(id, "PAID");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "PAID");
+      }
+      toast({
+        title: t("status.PAID", { defaultValue: "Paid" }),
+        description: t("cook.order_now_paid", {
+          defaultValue: "Order {{orderId}} is PAID",
+          orderId: id,
+        }),
+      });
+      clearAllSelectionsForOrder(id);
+    } finally {
+      setActingIds((s) => {
+        const n = new Set(s);
+        n.delete(`paid:${id}`);
+        return n;
+      });
+    }
+  };
+
   // Individual item status update handler for the Pro view
   const updateSingleItemStatus = async (
     orderId: string,
@@ -931,6 +1057,9 @@ export default function CookDashboard() {
             <CookProView
               incoming={incomingVisible}
               preparing={preparingVisible}
+              ready={readyVisible}
+              served={servedVisible}
+              showServiceStages={isHybridUser}
               loadingOrders={loadingOrders}
               accepting={accepting}
               printing={printing}
@@ -940,6 +1069,8 @@ export default function CookDashboard() {
               onAcceptWithPrint={acceptWithPrint}
               onCancel={cancelOrder}
               onMarkReady={markReady}
+              onMarkServed={markServed}
+              onMarkPaid={markPaid}
               onViewModifiers={setModifierOrder}
               onToggleItem={toggleItemSelection}
               onUpdateItemStatus={updateSingleItemStatus}
@@ -1209,6 +1340,80 @@ export default function CookDashboard() {
                   );
                   })}
                 </div>
+              )}
+
+              {isHybridUser && (
+                <>
+                  <div className="flex items-center gap-2 sm:gap-3 mt-10">
+                    <div className="h-1 w-10 sm:w-12 bg-emerald-500 rounded-full" />
+                    <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                      {t("status.READY", { defaultValue: "Ready" })}
+                    </h2>
+                    <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
+                      {readyVisible.length}
+                    </div>
+                  </div>
+                  {loadingOrders ? (
+                    <DashboardGridSkeleton count={2} />
+                  ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+                      {readyVisible.map((order) => (
+                        <CookOrderCard
+                          key={order.id}
+                          order={order}
+                          onAcceptAll={accept}
+                          onAcceptWithPrint={acceptWithPrint}
+                          onCancel={cancelOrder}
+                          onMarkAllReady={markReady}
+                          onMarkServed={markServed}
+                          onMarkPaid={markPaid}
+                          onViewModifiers={setModifierOrder}
+                          onUpdateItemStatus={updateSingleItemStatus}
+                          selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                          onToggleItem={toggleItemSelection}
+                          isAccepting={accepting.has(order.id)}
+                          isPrinting={printing.has(order.id)}
+                          isActing={actingIds.has(`served:${order.id}`)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 sm:gap-3 mt-10">
+                    <div className="h-1 w-10 sm:w-12 bg-slate-500 rounded-full" />
+                    <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                      {t("status.SERVED", { defaultValue: "Served" })}
+                    </h2>
+                    <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
+                      {servedVisible.length}
+                    </div>
+                  </div>
+                  {loadingOrders ? (
+                    <DashboardGridSkeleton count={2} />
+                  ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+                      {servedVisible.map((order) => (
+                        <CookOrderCard
+                          key={order.id}
+                          order={order}
+                          onAcceptAll={accept}
+                          onAcceptWithPrint={acceptWithPrint}
+                          onCancel={cancelOrder}
+                          onMarkAllReady={markReady}
+                          onMarkServed={markServed}
+                          onMarkPaid={markPaid}
+                          onViewModifiers={setModifierOrder}
+                          onUpdateItemStatus={updateSingleItemStatus}
+                          selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                          onToggleItem={toggleItemSelection}
+                          isAccepting={accepting.has(order.id)}
+                          isPrinting={printing.has(order.id)}
+                          isActing={actingIds.has(`paid:${order.id}`)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
