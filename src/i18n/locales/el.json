@@ -146,7 +146,8 @@
     "locality_tag_unrecognized": "Το tag δεν αναγνωρίστηκε. Δοκιμάστε άλλο tag.",
     "locality_scan_failed": "Η σάρωση απέτυχε. Δοκιμάστε ξανά.",
     "locality_scan_start_failed": "Δεν ήταν δυνατή η έναρξη σάρωσης NFC.",
-    "locality_qr_invalid": "Πληκτρολογήστε έγκυρο σύνδεσμο ή κωδικό QR."
+    "locality_qr_invalid": "Πληκτρολογήστε έγκυρο σύνδεσμο ή κωδικό QR.",
+    "order_group_fallback": "Παραγγελία {{index}}"
   },
   "order": {
     "success_title": "Η παραγγελία ολοκληρώθηκε",

@@ -146,7 +146,8 @@
                   "locality_tag_unrecognized": "Tag data not recognized. Try another tag.",
                   "locality_scan_failed": "Scan failed. Try again.",
                   "locality_scan_start_failed": "Unable to start NFC scanning.",
-                  "locality_qr_invalid": "Enter a valid QR link or code."
+                  "locality_qr_invalid": "Enter a valid QR link or code.",
+                  "order_group_fallback": "Order {{index}}"
               },
     "order":  {
                   "success_title":  "Order successful",

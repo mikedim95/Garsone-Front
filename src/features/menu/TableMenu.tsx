@@ -806,14 +806,20 @@ export default function TableMenu() {
         .length,
     0
   );
-  const activeOrderLineItems = activeOrderSourceOrders.flatMap(
-    (order, orderIndex) =>
-      (order.items ?? []).map((item, itemIndex) => ({
+  const activeOrderGroups = activeOrderSourceOrders
+    .map((order, orderIndex) => ({
+      order,
+      orderIndex,
+      lines: (order.items ?? []).map((item, itemIndex) => ({
         item,
         itemIndex,
         order,
         orderIndex,
-      }))
+      })),
+    }))
+    .filter((group) => group.lines.length > 0);
+  const activeOrderLineItems = activeOrderGroups.flatMap(
+    (group) => group.lines
   );
   const activeOrderTotal = activeOrderSourceOrders.reduce(
     (sum, order) => sum + computeSubmittedOrderTotal(order),
@@ -2878,8 +2884,62 @@ export default function TableMenu() {
                       {t("menu.no_items", { defaultValue: "No items" })}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {activeOrderLineItems.map((line) => {
+                    <div className="space-y-3">
+                      {activeOrderGroups.map((group) => {
+                        const groupStatus =
+                          group.order.status ?? activeOrderStatus;
+                        const groupStatusLabel = t(`status.${groupStatus}`, {
+                          defaultValue: groupStatus,
+                        });
+                        const groupTime = new Date(
+                          group.order.createdAt || Date.now()
+                        ).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        });
+                        const groupOrderLabel = group.order.id
+                          ? `#${group.order.id.slice(-6).toUpperCase()}`
+                          : t("menu.order_group_fallback", {
+                              index: group.orderIndex + 1,
+                              defaultValue: `Order ${group.orderIndex + 1}`,
+                            });
+                        const groupItemCountLabel = t("menu.item_count", {
+                          count: group.lines.length,
+                          defaultValue:
+                            group.lines.length === 1
+                              ? `${group.lines.length} item`
+                              : `${group.lines.length} items`,
+                        });
+                        const groupTotal = computeSubmittedOrderTotal(
+                          group.order
+                        );
+
+                        return (
+                          <div
+                            key={group.order.id ?? `order-${group.orderIndex}`}
+                            className="rounded-[1.35rem] border border-border/70 bg-background/35 p-2.5 shadow-sm"
+                          >
+                            {activeOrderGroups.length > 1 ? (
+                              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+                                <div className="min-w-0">
+                                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <span className="text-xs font-bold text-foreground">
+                                      {groupOrderLabel}
+                                    </span>
+                                    <span className="rounded-full border border-border/60 bg-card/80 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                      {groupStatusLabel}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                    <span>{groupTime}</span>
+                                    <span>{groupItemCountLabel}</span>
+                                    <span>EUR {groupTotal.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                            <div className="space-y-2">
+                              {group.lines.map((line) => {
                         const { item, itemIndex, order, orderIndex } = line;
                         const fallback = t("menu.last_order_item_fallback", {
                           index: itemIndex + 1,
@@ -3021,6 +3081,10 @@ export default function TableMenu() {
                               >
                                 {itemStatusLabel}
                               </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                             </div>
                           </div>
                         );
