@@ -136,6 +136,11 @@ type StaffRosterMember = {
   };
   cook?: CookSummary;
 };
+type ActiveHybrid = StaffRosterMember & {
+  originalDisplayName?: string;
+  printerTopic?: string | null;
+  originalPrinterTopic?: string | null;
+};
 type TableSummary = {
   id: string;
   label: string;
@@ -439,6 +444,8 @@ export default function ManagerDashboard() {
   const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
   const [editCookModalOpen, setEditCookModalOpen] = useState(false);
   const [activeCook, setActiveCook] = useState<ActiveCook | null>(null);
+  const [hybridModalOpen, setHybridModalOpen] = useState(false);
+  const [activeHybrid, setActiveHybrid] = useState<ActiveHybrid | null>(null);
   const [initialTableSelection, setInitialTableSelection] = useState<
     Set<string>
   >(new Set());
@@ -446,6 +453,7 @@ export default function ManagerDashboard() {
   const [newWaiterTableSelection, setNewWaiterTableSelection] = useState<Set<string>>(new Set());
   const [savingWaiter, setSavingWaiter] = useState(false);
   const [savingCook, setSavingCook] = useState(false);
+  const [savingHybrid, setSavingHybrid] = useState(false);
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newWaiter, setNewWaiter] = useState<WaiterForm>({
@@ -867,6 +875,21 @@ export default function ManagerDashboard() {
       originalPrinterTopic: cook.printerTopic ?? null,
     });
     setEditCookModalOpen(true);
+  };
+
+  const openEditHybrid = (member: StaffRosterMember) => {
+    const assignedIds = (member.waiterDetail?.assignedTables ?? [])
+      .map((table) => table.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    setActiveHybrid({
+      ...member,
+      originalDisplayName: member.displayName,
+      printerTopic: member.cook?.printerTopic ?? null,
+      originalPrinterTopic: member.cook?.printerTopic ?? null,
+    });
+    setTableSelection(new Set(assignedIds));
+    setInitialTableSelection(new Set(assignedIds));
+    setHybridModalOpen(true);
   };
 
   const tablesById = useMemo(() => {
@@ -2326,6 +2349,15 @@ export default function ManagerDashboard() {
     }
   };
 
+  const closeHybridModal = (open: boolean) => {
+    setHybridModalOpen(open);
+    if (!open) {
+      setActiveHybrid(null);
+      setTableSelection(new Set());
+      setInitialTableSelection(new Set());
+    }
+  };
+
   const handleToggleTable = (tableId: string, checked: boolean) => {
     setTableSelection((prev) => {
       const next = new Set(prev);
@@ -2470,6 +2502,47 @@ export default function ManagerDashboard() {
       console.error("Failed to save cook changes", error);
     } finally {
       setSavingCook(false);
+    }
+  };
+
+  const handleSaveHybrid = async () => {
+    if (!activeHybrid) return;
+    setSavingHybrid(true);
+    try {
+      const desired = new Set(tableSelection);
+      const current = new Set(initialTableSelection);
+      const toAdd = Array.from(desired).filter((id) => !current.has(id));
+      const toRemove = Array.from(current).filter((id) => !desired.has(id));
+
+      const ops: Array<Promise<unknown>> = [];
+      const trimmedName = (activeHybrid.displayName || "").trim();
+      const originalName = activeHybrid.originalDisplayName || "";
+      if (trimmedName && trimmedName !== originalName) {
+        ops.push(api.updateWaiter(activeHybrid.id, { displayName: trimmedName }));
+      }
+
+      const selectedPrinterTopic = activeHybrid.printerTopic ?? null;
+      const originalPrinterTopic = activeHybrid.originalPrinterTopic ?? null;
+      if (selectedPrinterTopic !== originalPrinterTopic) {
+        ops.push(api.updateCook(activeHybrid.id, { printerTopic: selectedPrinterTopic }));
+      }
+
+      toAdd.forEach((tableId) =>
+        ops.push(api.assignWaiterTable(activeHybrid.id, tableId))
+      );
+      toRemove.forEach((tableId) =>
+        ops.push(api.removeWaiterTable(activeHybrid.id, tableId))
+      );
+
+      if (ops.length) {
+        await Promise.all(ops);
+      }
+      await Promise.all([loadWaiterData(), loadCookData()]);
+      closeHybridModal(false);
+    } catch (error) {
+      console.error("Failed to save hybrid changes", error);
+    } finally {
+      setSavingHybrid(false);
     }
   };
 
@@ -4181,32 +4254,17 @@ export default function ManagerDashboard() {
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/40">
-                                    {member.waiterDetail && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="flex-1 h-8 text-xs"
-                                        onClick={() => openEditWaiter(member.waiterDetail!.waiter)}
-                                      >
-                                        <Users className="h-3 w-3 mr-1" />{" "}
-                                        {t("manager.waiter_options", {
-                                          defaultValue: "Waiter options",
-                                        })}
-                                      </Button>
-                                    )}
-                                    {member.cook && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="flex-1 h-8 text-xs"
-                                        onClick={() => openEditCook(member.cook!)}
-                                      >
-                                        <ChefHat className="h-3 w-3 mr-1" />{" "}
-                                        {t("manager.cook_options", {
-                                          defaultValue: "Cook options",
-                                        })}
-                                      </Button>
-                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="flex-1 h-8 text-xs"
+                                      onClick={() => openEditHybrid(member)}
+                                    >
+                                      <UtensilsCrossed className="h-3 w-3 mr-1" />{" "}
+                                      {t("manager.hybrid_options", {
+                                        defaultValue: "Options",
+                                      })}
+                                    </Button>
                                   </div>
                                 </div>
                               ))}
@@ -5094,6 +5152,134 @@ export default function ManagerDashboard() {
                 className="inline-flex items-center gap-2"
               >
                 {savingCook && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t("actions.save_changes")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={hybridModalOpen} onOpenChange={closeHybridModal}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                {t("manager.hybrid_options", { defaultValue: "Hybrid options" })}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.hybrid_options_description", {
+                  defaultValue:
+                    "Update hybrid staff display name, printer, and table assignments.",
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            {activeHybrid ? (
+              <div className="space-y-6">
+                <DialogFormField index={0}>
+                  <Label htmlFor="hybrid-name">
+                    {t("manager.display_name", {
+                      defaultValue: "Display name",
+                    })}
+                  </Label>
+                  <Input
+                    id="hybrid-name"
+                    value={activeHybrid.displayName}
+                    onChange={(e) =>
+                      setActiveHybrid((prev) =>
+                        prev ? { ...prev, displayName: e.target.value } : prev
+                      )
+                    }
+                  />
+                </DialogFormField>
+                <DialogFormField index={1}>
+                  <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
+                  <Select
+                    value={resolvePrinterValue(activeHybrid.printerTopic, printerTopics)}
+                    onValueChange={(value) =>
+                      setActiveHybrid((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              printerTopic:
+                                value === NO_PRINTER_VALUE ? null : value,
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", { defaultValue: "No printer" })}
+                      </SelectItem>
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </DialogFormField>
+                <div className="grid gap-2">
+                  <Label>
+                    {t("manager.assigned_tables", {
+                      defaultValue: "Assigned tables",
+                    })}
+                  </Label>
+                  <ScrollArea className="max-h-56 rounded-lg border">
+                    <div className="p-3 space-y-2">
+                      {tables.map((table) => {
+                        const checked = tableSelection.has(table.id);
+                        const disabled = !table.active && !checked;
+                        return (
+                          <label
+                            key={table.id}
+                            className={`flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm ${
+                              disabled ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  handleToggleTable(table.id, Boolean(value))
+                                }
+                                disabled={disabled}
+                              />
+                              <span className="font-medium text-foreground">
+                                {t("manager.table", { defaultValue: "Table" })}{" "}
+                                {table.label}
+                              </span>
+                            </div>
+                            {!table.active ? (
+                              <span className="text-xs text-muted-foreground">
+                                {t("manager.inactive", {
+                                  defaultValue: "Inactive",
+                                })}
+                              </span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => closeHybridModal(false)}>
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleSaveHybrid}
+                disabled={savingHybrid}
+                className="inline-flex items-center gap-2"
+              >
+                {savingHybrid && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t("actions.save_changes")}
               </Button>
             </DialogFooter>

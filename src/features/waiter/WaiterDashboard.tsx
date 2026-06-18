@@ -880,6 +880,7 @@ export default function WaiterDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const loadingOrders = !assignmentsLoaded || !shiftLoaded;
+  const isHybridUser = user?.role === 'hybrid';
   // Always allow waiter to place orders for their assigned tables
   const enableWaiterMenu = true;
   const storedStoreName = (() => {
@@ -1055,6 +1056,7 @@ export default function WaiterDashboard() {
                   orders={allTableOrders}
                   onUpdateStatus={handleUpdateStatus}
                   onUpdateItemStatus={handleUpdateItemStatus}
+                  mode={isHybridUser ? 'full' : 'waiter'}
                   showInactiveTables={showInactiveTables}
                   onToggleInactive={() => setShowInactiveTables(prev => !prev)}
                 />
@@ -1087,8 +1089,13 @@ export default function WaiterDashboard() {
                       order={order}
                       onUpdateStatus={handleUpdateStatus}
                       onUpdateItemStatus={handleUpdateItemStatus}
-                      mode="waiter"
-                      busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
+                      mode={isHybridUser ? 'full' : 'waiter'}
+                      busy={
+                        actingIds.has(`PREPARING:${order.id}`) ||
+                        actingIds.has(`READY:${order.id}`) ||
+                        actingIds.has(`SERVED:${order.id}`) ||
+                        actingIds.has(`PAID:${order.id}`)
+                      }
                       highlighted={highlightedIds.has(order.id)}
                     />
                   ))}

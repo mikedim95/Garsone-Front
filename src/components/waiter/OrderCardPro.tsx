@@ -179,7 +179,7 @@ export function OrderCardPro({
           disabled={isBusy}
           className={clsx(buttonBase, 'bg-secondary text-secondary-foreground hover:bg-secondary/80 flex-1')}
         >
-          {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ChefHat className="w-4 h-4" /><span>Start</span></>}
+          {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ChefHat className="w-4 h-4" /><span>Accept</span></>}
         </motion.button>
       );
     }

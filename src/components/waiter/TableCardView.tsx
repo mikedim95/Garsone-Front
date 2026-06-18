@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Order, OrderItemStatus, OrderStatus } from '@/types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -21,6 +21,7 @@ interface TableCardViewProps {
   showInactiveTables?: boolean;
   onToggleInactive?: () => void;
   busy?: boolean;
+  mode?: 'full' | 'waiter';
 }
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
@@ -56,12 +57,14 @@ export function TableCardView({
   showInactiveTables,
   onToggleInactive,
   busy,
+  mode = 'waiter',
 }: TableCardViewProps) {
   const { t } = useTranslation();
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
   const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
   const [showLessImportant, setShowLessImportant] = useState(false);
+  const canKitchenActions = mode === 'full';
 
   // Reset toggle when closing the modal or switching tables
   useEffect(() => {
@@ -318,6 +321,9 @@ export function TableCardView({
                 {selectedTableData?.orders.length || 0} orders
               </Badge>
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Table orders and available order actions
+            </DialogDescription>
           </DialogHeader>
           {/* Table orders filter toolbar */}
           <div className="px-4 py-2 flex items-center justify-between border-b border-border/60">
@@ -427,6 +433,30 @@ export function TableCardView({
 
                       {/* Status change buttons */}
                       <div className="flex flex-wrap gap-2 pt-1">
+                        {canKitchenActions && order.status === 'PLACED' && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="gap-1 h-8 text-xs bg-amber-600 hover:bg-amber-700"
+                            onClick={() => handleStatusChange(order.id, 'PREPARING')}
+                            disabled={isActing}
+                          >
+                            <ChefHat className="w-3 h-3" />
+                            Accept
+                          </Button>
+                        )}
+                        {canKitchenActions && order.status === 'PREPARING' && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="gap-1 h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                            onClick={() => handleStatusChange(order.id, 'READY')}
+                            disabled={isActing}
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            Mark Ready
+                          </Button>
+                        )}
                         {order.status === 'READY' && (
                           <Button
                             size="sm"
