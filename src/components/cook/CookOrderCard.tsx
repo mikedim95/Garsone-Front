@@ -116,6 +116,7 @@ export const CookOrderCard = ({
   const readyShortLabel = t("cook.ready_short", { defaultValue: "ready" });
   const itemsLabel = t("cook.items", { defaultValue: "items" });
   const progressLabel = t("cook.progress", { defaultValue: "Progress" });
+  const tablePrefix = t("manager.table", { defaultValue: "Table" });
   const readyRatioLabel = t("cook.ready_ratio", {
     defaultValue: "{{served}}/{{total}} ready",
     served: servedItems,
@@ -171,7 +172,7 @@ export const CookOrderCard = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-foreground">
-                  {formatTableLabel(order.tableLabel)}
+                  {formatTableLabel(order.tableLabel, tablePrefix)}
                 </span>
                 {queuePosition && (
                   <Badge variant="outline" className="text-[10px] px-1.5">

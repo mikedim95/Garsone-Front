@@ -109,6 +109,7 @@ export function OrderModifiersDialog({
 
   const note = order.note?.trim();
   const orderTime = formatTime(order.createdAt);
+  const tablePrefix = t("manager.table", { defaultValue: "Table" });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -117,7 +118,7 @@ export function OrderModifiersDialog({
           <DialogTitle className="flex items-center gap-2">
             <span>{t("cook.modifiers_title", { defaultValue: "Order modifiers" })}</span>
             {order.tableLabel && (
-              <Badge variant="outline">{formatTableLabel(order.tableLabel)}</Badge>
+              <Badge variant="outline">{formatTableLabel(order.tableLabel, tablePrefix)}</Badge>
             )}
             <Badge variant="secondary" className="ml-auto">
               {resolvedItems.length} {t("cook.items", { defaultValue: "items" })}

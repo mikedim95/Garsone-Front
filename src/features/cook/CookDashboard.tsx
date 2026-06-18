@@ -986,6 +986,8 @@ export default function CookDashboard() {
   });
   const proViewLabel = t("cook.pro_view", { defaultValue: "Pro" });
   const classicViewLabel = t("cook.classic_view", { defaultValue: "Classic" });
+  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
+  const tablePrefix = t("manager.table", { defaultValue: "Table" });
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const storedStoreName = (() => {
@@ -1047,7 +1049,7 @@ export default function CookDashboard() {
               onClick={() => window.location.reload()}
             >
               <RefreshCcw className="mr-2 h-4 w-4" />
-              Refresh
+              {refreshLabel}
             </Button>
           }
         />
@@ -1104,7 +1106,7 @@ export default function CookDashboard() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
-                              <span>{formatTableLabel(o.tableLabel)}</span>
+                              <span>{formatTableLabel(o.tableLabel, tablePrefix)}</span>
                               <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
                                 {t("cook.priority_number", {
                                   defaultValue: "Priority #{{priority}}",
@@ -1251,7 +1253,7 @@ export default function CookDashboard() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground text-sm sm:text-base">
-                              {formatTableLabel(o.tableLabel)}
+                              {formatTableLabel(o.tableLabel, tablePrefix)}
                               {typeof o.priority === 'number' && (
                                 <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
                                   {t("cook.priority_number", {
