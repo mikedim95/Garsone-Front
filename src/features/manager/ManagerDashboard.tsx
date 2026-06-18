@@ -79,6 +79,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -94,6 +95,7 @@ import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -2772,6 +2774,11 @@ export default function ManagerDashboard() {
                         defaultValue: "Analytics",
                       })}
                     </SheetTitle>
+                    <SheetDescription className="sr-only">
+                      {t("manager.navigation_menu_description", {
+                        defaultValue: "Manager dashboard navigation",
+                      })}
+                    </SheetDescription>
                   </SheetHeader>
                   <div className="mt-4 space-y-1">
                     {[
@@ -4924,6 +4931,11 @@ export default function ManagerDashboard() {
               <DialogTitle>
                 {t("manager.edit_waiter", { defaultValue: "Edit waiter" })}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.edit_waiter_description", {
+                  defaultValue: "Update waiter details and table assignments.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             {activeWaiter ? (
               <div className="space-y-6">
@@ -5011,6 +5023,11 @@ export default function ManagerDashboard() {
               <DialogTitle>
                 {t("manager.edit_cook", { defaultValue: "Edit cook" })}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.edit_cook_description", {
+                  defaultValue: "Update cook details and printer assignment.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             {activeCook ? (
               <div className="space-y-4">
@@ -5108,6 +5125,17 @@ export default function ManagerDashboard() {
                     })
                   : t("actions.add_waiter")}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {newWaiter.hybrid
+                  ? t("manager.create_hybrid_description", {
+                      defaultValue:
+                        "Create a hybrid staff member with printer and table assignments.",
+                    })
+                  : t("manager.create_waiter_description", {
+                      defaultValue:
+                        "Create a waiter and assign tables.",
+                    })}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
@@ -5272,6 +5300,11 @@ export default function ManagerDashboard() {
               <DialogTitle>
                 {t("manager.add_cook", { defaultValue: "Add cook" })}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.create_cook_description", {
+                  defaultValue: "Create a cook and assign a printer.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
@@ -5388,6 +5421,11 @@ export default function ManagerDashboard() {
                   ? t("manager.edit_table", { defaultValue: "Edit table" })
                   : t("actions.add_table")}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.table_dialog_description", {
+                  defaultValue: "Create or edit a table and its QR tile.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid gap-2">
