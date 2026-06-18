@@ -386,8 +386,31 @@ export default function ManagerDashboard() {
   const { dashboardDark, themeClass } = useDashboardTheme();
   const isMobile = useIsMobile();
   const isManagerRole = user?.role === "manager" || user?.role === "architect";
+  const uncategorizedLabel = t("manager.uncategorized", {
+    defaultValue: "Uncategorized",
+  });
+  const itemFallbackLabel = t("manager.item", { defaultValue: "Item" });
+  const minutesShortLabel = t("manager.minutes_short", { defaultValue: "min" });
   const formatStatusLabel = useCallback(
     (status: OrderStatus) => t(`status.${status}`, { defaultValue: status }),
+    [t]
+  );
+  const formatDaypartLabel = useCallback(
+    (label: string) => {
+      const key = label.toLowerCase();
+      const labels: Record<string, string> = {
+        breakfast: t("manager.daypart_breakfast", {
+          defaultValue: "Breakfast",
+        }),
+        lunch: t("manager.daypart_lunch", { defaultValue: "Lunch" }),
+        afternoon: t("manager.daypart_afternoon", {
+          defaultValue: "Afternoon",
+        }),
+        evening: t("manager.daypart_evening", { defaultValue: "Evening" }),
+        late: t("manager.daypart_late", { defaultValue: "Late" }),
+      };
+      return labels[key] ?? label;
+    },
     [t]
   );
   const formatStatusAxisLabel = useCallback(
@@ -407,8 +430,11 @@ export default function ManagerDashboard() {
     [formatStatusLabel, isMobile]
   );
   const formatDaypartAxisLabel = useCallback(
-    (label: string) => (isMobile ? shortenChartLabel(label, 6) : label),
-    [isMobile]
+    (label: string) => {
+      const translated = formatDaypartLabel(label);
+      return isMobile ? shortenChartLabel(translated, 6) : translated;
+    },
+    [formatDaypartLabel, isMobile]
   );
   const formatCategoryAxisLabel = useCallback(
     (label: string) => (isMobile ? shortenChartLabel(label, 8) : label),
@@ -935,6 +961,21 @@ export default function ManagerDashboard() {
       );
   }, [qrTiles, tableForm.id]);
 
+  const formatQrTileLabel = useCallback(
+    (tile: Pick<QRTile, "label" | "publicCode">) => {
+      const label = (tile.label || tile.publicCode).trim();
+      const unassignedMatch = /^unassigned\s+(.+)$/i.exec(label);
+      if (unassignedMatch) {
+        return t("manager.unassigned_qr_tile", {
+          defaultValue: "Unassigned {{label}}",
+          label: unassignedMatch[1],
+        });
+      }
+      return label;
+    },
+    [t]
+  );
+
   const currencyCode =
     typeof window !== "undefined"
       ? window.localStorage.getItem("CURRENCY") || "EUR"
@@ -1292,9 +1333,9 @@ export default function ManagerDashboard() {
       if (itemId && menuCategoryLookup.has(itemId)) {
         return menuCategoryLookup.get(itemId)!;
       }
-      return "Uncategorized";
+      return uncategorizedLabel;
     },
-    [menuCategoryLookup]
+    [menuCategoryLookup, uncategorizedLabel]
   );
 
   useEffect(() => {
@@ -1347,8 +1388,8 @@ export default function ManagerDashboard() {
       } else if (fallbackTotal > 0) {
         if (lines.length === 0) {
           buckets.set(
-            "Uncategorized",
-            (buckets.get("Uncategorized") ?? 0) + fallbackTotal
+            uncategorizedLabel,
+            (buckets.get(uncategorizedLabel) ?? 0) + fallbackTotal
           );
         } else {
           const share = fallbackTotal / lines.length;
@@ -1365,7 +1406,7 @@ export default function ManagerDashboard() {
       revenue,
       share: (revenue / total) * 100,
     }));
-  }, [servedInRange, resolveCategoryLabel, menuMetaReady]);
+  }, [servedInRange, resolveCategoryLabel, menuMetaReady, uncategorizedLabel]);
 
   const avgTicketByDaypart = useMemo(() => {
     const parts = ["Breakfast", "Lunch", "Afternoon", "Evening"] as const;
@@ -1429,7 +1470,7 @@ export default function ManagerDashboard() {
       pickLabel(line?.title) ||
       pickLabel((line as { titleSnapshot?: string })?.titleSnapshot) ||
       pickLabel(line?.name) ||
-      "Item";
+      itemFallbackLabel;
 
     const map = new Map<string, { name: string; revenue: number }>();
     servedInRange.forEach((order) => {
@@ -1448,7 +1489,7 @@ export default function ManagerDashboard() {
     return Array.from(map.values())
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
-  }, [servedInRange, rangeInfo.start, rangeInfo.end]);
+  }, [servedInRange, rangeInfo.start, rangeInfo.end, itemFallbackLabel]);
 
   const dayFormatter = useMemo(
     () =>
@@ -1474,14 +1515,14 @@ export default function ManagerDashboard() {
       (order.items ?? []).map((line) => ({
         orderId: order.id,
         itemId: line.item?.id ?? "",
-        name: line.item?.name ?? line.item?.title ?? "Item",
+        name: line.item?.name ?? line.item?.title ?? itemFallbackLabel,
         category: resolveCategoryLabel(line.item ?? line),
         quantity: getLineQuantity(line),
         selectedModifiers: line.selectedModifiers ?? {},
         placedAt: getPlacedDate(order),
       }))
     );
-  }, [ordersAll, resolveCategoryLabel]);
+  }, [ordersAll, resolveCategoryLabel, itemFallbackLabel]);
 
   const categoryUnits = useMemo(() => {
     const buckets = new Map<string, number>();
@@ -1596,14 +1637,14 @@ export default function ManagerDashboard() {
     const map = new Map<string, Map<string, number>>();
     orderLineItems.forEach((line) => {
       const key = line.name;
-      const cat = line.category || "Uncategorized";
+      const cat = line.category || uncategorizedLabel;
       const counts = map.get(key) || new Map<string, number>();
       counts.set(cat, (counts.get(cat) ?? 0) + line.quantity);
       map.set(key, counts);
     });
     const result = new Map<string, string>();
     map.forEach((counts, item) => {
-      let best = "Uncategorized";
+      let best = uncategorizedLabel;
       let bestCount = -1;
       counts.forEach((c, cat) => {
         if (c > bestCount) {
@@ -1614,7 +1655,7 @@ export default function ManagerDashboard() {
       result.set(item, best);
     });
     return result;
-  }, [orderLineItems]);
+  }, [orderLineItems, uncategorizedLabel]);
 
   const cannibalizationPairs = useMemo(() => {
     const up: Record<string, Array<{ item: string; pct: number }>> = {};
@@ -1622,7 +1663,7 @@ export default function ManagerDashboard() {
     const thresholdUp = 25;
     const thresholdDown = -25;
     menuTrendInfo.deltaPct.forEach((pct, name) => {
-      const cat = itemCategoryMap.get(name) || "Uncategorized";
+      const cat = itemCategoryMap.get(name) || uncategorizedLabel;
       if (pct >= thresholdUp) {
         (up[cat] = up[cat] || []).push({ item: name, pct });
       } else if (pct <= thresholdDown) {
@@ -1643,7 +1684,7 @@ export default function ManagerDashboard() {
       });
     });
     return pairs.slice(0, 6);
-  }, [menuTrendInfo, itemCategoryMap]);
+  }, [menuTrendInfo, itemCategoryMap, uncategorizedLabel]);
 
   const daypartFitRows = useMemo(() => {
     // Fit score = share in top daypart within last 14 days
@@ -1733,7 +1774,7 @@ export default function ManagerDashboard() {
         const d = getPlacedDate(order);
         if (d < periodStart || d > addDays(periodEnd, 1)) return;
         (order.items ?? []).forEach((line) => {
-          const name = line.item?.name ?? line.item?.title ?? "Item";
+          const name = line.item?.name ?? line.item?.title ?? itemFallbackLabel;
           const qty = getLineQuantity(line);
           const price = unitPrice(line);
           const cost =
@@ -1767,7 +1808,7 @@ export default function ManagerDashboard() {
       }
     });
     return best;
-  }, [servedOrders, hasCostData]);
+  }, [servedOrders, hasCostData, itemFallbackLabel]);
 
   // Personnel: Pro analytics (defined after waiterDetails)
 
@@ -2317,7 +2358,10 @@ export default function ManagerDashboard() {
   const handleDeleteTable = async (tableId: string) => {
     if (
       !window.confirm(
-        "Delete this table? It will be marked inactive and unassigned from waiters."
+        t("manager.confirm_delete_table", {
+          defaultValue:
+            "Delete this table? It will be marked inactive and unassigned from waiters.",
+        })
       )
     )
       return;
@@ -2427,8 +2471,13 @@ export default function ManagerDashboard() {
     if (
       !window.confirm(
         isHybrid
-          ? "Remove waiter access from this hybrid person? The cook account will remain."
-          : "Delete this waiter account?"
+          ? t("manager.confirm_remove_waiter_role", {
+              defaultValue:
+                "Remove waiter access from this hybrid person? The cook account will remain.",
+            })
+          : t("manager.confirm_delete_waiter", {
+              defaultValue: "Delete this waiter account?",
+            })
       )
     )
       return;
@@ -2552,8 +2601,13 @@ export default function ManagerDashboard() {
     if (
       !window.confirm(
         isHybrid
-          ? "Remove cook access from this hybrid person? The waiter account will remain."
-          : "Delete this cook account?"
+          ? t("manager.confirm_remove_cook_role", {
+              defaultValue:
+                "Remove cook access from this hybrid person? The waiter account will remain.",
+            })
+          : t("manager.confirm_delete_cook", {
+              defaultValue: "Delete this cook account?",
+            })
       )
     )
       return;
@@ -3256,6 +3310,9 @@ export default function ManagerDashboard() {
                                       }
                                     />
                                     <Tooltip
+                                      labelFormatter={(label) =>
+                                        formatDaypartLabel(String(label))
+                                      }
                                       formatter={(value: ValueType) => {
                                         const numericValue =
                                           typeof value === "number"
@@ -3263,7 +3320,9 @@ export default function ManagerDashboard() {
                                             : Number(value ?? 0);
                                         return [
                                           formatCurrency(numericValue),
-                                          "Avg ticket",
+                                          t("manager.avg_ticket", {
+                                            defaultValue: "Avg ticket",
+                                          }),
                                         ];
                                       }}
                                     />
@@ -3315,12 +3374,16 @@ export default function ManagerDashboard() {
                       <DateRangeHeader />
                       <Card className="p-4 sm:p-6">
                         <p className="text-sm text-muted-foreground mb-4">
-                          Operations KPIs
+                          {t("manager.operations_kpis", {
+                            defaultValue: "Operations KPIs",
+                          })}
                         </p>
                         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Total Orders
+                              {t("manager.total_orders", {
+                                defaultValue: "Total Orders",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {totalOrders}
@@ -3328,7 +3391,9 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Avg Serve Time (min)
+                              {t("manager.avg_serve_min", {
+                                defaultValue: "Avg Serve Time (min)",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {formatMinutesValue(avgServeTimeMinutes)}
@@ -3336,7 +3401,9 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Median Serve (min)
+                              {t("manager.median_serve_min", {
+                                defaultValue: "Median Serve (min)",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {formatMinutesValue(medianServeMinutes)}
@@ -3344,7 +3411,9 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Busiest Hour
+                              {t("manager.busiest_hour", {
+                                defaultValue: "Busiest Hour",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {busiestHourLabel ?? "—"}
@@ -3357,10 +3426,12 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">
-                              Volume
+                              {t("manager.volume", { defaultValue: "Volume" })}
                             </p>
                             <h3 className="text-lg font-semibold">
-                              Orders timeline
+                              {t("manager.orders_timeline", {
+                                defaultValue: "Orders timeline",
+                              })}
                             </h3>
                           </div>
                           <div className="text-xs font-semibold text-muted-foreground">
@@ -3590,10 +3661,14 @@ export default function ManagerDashboard() {
                               <div className="flex items-center justify-between mb-4">
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    Reliability
+                                    {t("manager.reliability", {
+                                      defaultValue: "Reliability",
+                                    })}
                                   </p>
                                   <h3 className="text-lg font-semibold">
-                                    SLA Breaches
+                                    {t("manager.sla_breaches", {
+                                      defaultValue: "SLA Breaches",
+                                    })}
                                   </h3>
                                 </div>
                                 <ProBadge />
@@ -3603,7 +3678,10 @@ export default function ManagerDashboard() {
                                   {slaBreaches.length}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  Target: {SLA_TARGET_MINUTES} min
+                                  {t("manager.target_minutes", {
+                                    defaultValue: "Target: {{minutes}} min",
+                                    minutes: SLA_TARGET_MINUTES,
+                                  })}
                                 </div>
                               </div>
                               {slaBreaches.length ? (
@@ -3636,17 +3714,24 @@ export default function ManagerDashboard() {
                             <div className="flex items-center justify-between mb-4">
                               <div>
                                 <p className="text-sm text-muted-foreground">
-                                  Queue Pressure
+                                  {t("manager.queue_pressure", {
+                                    defaultValue: "Queue Pressure",
+                                  })}
                                 </p>
                                 <h3 className="text-lg font-semibold">
-                                  Bottleneck Heatmap
+                                  {t("manager.bottleneck_heatmap", {
+                                    defaultValue: "Bottleneck Heatmap",
+                                  })}
                                 </h3>
                               </div>
                               <ProBadge />
                             </div>
                             <div className="overflow-x-auto">
                               <div className="text-xs text-muted-foreground mb-2">
-                                Counts by hour of placement and current status
+                                {t("manager.bottleneck_heatmap_description", {
+                                  defaultValue:
+                                    "Counts by hour of placement and current status",
+                                })}
                               </div>
                               <div className="inline-block">
                                 <div
@@ -3667,7 +3752,7 @@ export default function ManagerDashboard() {
                                   {bottleneckMatrix.statuses.map((status) => (
                                     <Fragment key={`row-${status}`}>
                                       <div className="text-[10px] pr-2 flex items-center justify-end text-muted-foreground">
-                                        {status}
+                                        {formatStatusLabel(status)}
                                       </div>
                                       {bottleneckMatrix.hours.map((h) => {
                                         const v =
@@ -3702,10 +3787,14 @@ export default function ManagerDashboard() {
                             <div className="flex items-center justify-between mb-2">
                               <div>
                                 <p className="text-sm text-muted-foreground">
-                                  Engagement
+                                  {t("manager.engagement", {
+                                    defaultValue: "Engagement",
+                                  })}
                                 </p>
                                 <h3 className="text-lg font-semibold">
-                                  Reorder Rate (≤45m)
+                                  {t("manager.reorder_rate_45m", {
+                                    defaultValue: "Reorder Rate (≤45m)",
+                                  })}
                                 </h3>
                               </div>
                               <ProBadge />
@@ -3715,9 +3804,12 @@ export default function ManagerDashboard() {
                                 {reorderRate.percent}%
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {reorderRate.tablesWithReorder}/
-                                {reorderRate.tablesWithOrders} tables placed a
-                                second order within 45 minutes.
+                                {t("manager.reorder_rate_description", {
+                                  defaultValue:
+                                    "{{reordered}}/{{total}} tables placed a second order within 45 minutes.",
+                                  reordered: reorderRate.tablesWithReorder,
+                                  total: reorderRate.tablesWithOrders,
+                                })}
                               </div>
                             </div>
                           </Card>
@@ -3728,10 +3820,14 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">
-                              Exceptions
+                              {t("manager.exceptions", {
+                                defaultValue: "Exceptions",
+                              })}
                             </p>
                             <h3 className="text-lg font-semibold">
-                              Stuck orders
+                              {t("manager.stuck_orders", {
+                                defaultValue: "Stuck orders",
+                              })}
                             </h3>
                           </div>
                         </div>
@@ -3748,8 +3844,12 @@ export default function ManagerDashboard() {
                                       {order.tableLabel ?? order.tableId}
                                     </p>
                                     <p className="text-xs text-muted-foreground">
-                                      {order.status} · {minutes.toFixed(1)} min
-                                      (limit {threshold}m)
+                                      {formatStatusLabel(order.status)} ·{" "}
+                                      {minutes.toFixed(1)} {minutesShortLabel}{" "}
+                                      {t("manager.limit_minutes", {
+                                        defaultValue: "(limit {{minutes}}m)",
+                                        minutes: threshold,
+                                      })}
                                     </p>
                                   </div>
                                   <Badge variant="destructive">
@@ -3832,7 +3932,9 @@ export default function ManagerDashboard() {
                                     className="py-2 text-muted-foreground"
                                     colSpan={4}
                                   >
-                                    No orders yet.
+                                    {t("manager.no_orders_yet", {
+                                      defaultValue: "No orders yet.",
+                                    })}
                                   </td>
                                 </tr>
                               )}
@@ -3953,7 +4055,13 @@ export default function ManagerDashboard() {
                                           <span className={cn(
                                             "h-2 w-2 rounded-full shrink-0",
                                             member.waiterDetail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
-                                          )} title={member.waiterDetail.shiftOn ? "On shift" : "Off shift"} />
+                                          )} title={member.waiterDetail.shiftOn
+                                            ? t("manager.on_shift", {
+                                                defaultValue: "On shift",
+                                              })
+                                            : t("manager.off_shift", {
+                                                defaultValue: "Off shift",
+                                              })} />
                                         )}
                                       </div>
                                       <p className="text-xs text-muted-foreground truncate">
@@ -4227,7 +4335,13 @@ export default function ManagerDashboard() {
                                           <span className={cn(
                                             "h-2 w-2 rounded-full shrink-0",
                                             member.waiterDetail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
-                                          )} title={member.waiterDetail.shiftOn ? "On shift" : "Off shift"} />
+                                          )} title={member.waiterDetail.shiftOn
+                                            ? t("manager.on_shift", {
+                                                defaultValue: "On shift",
+                                              })
+                                            : t("manager.off_shift", {
+                                                defaultValue: "Off shift",
+                                              })} />
                                         )}
                                       </div>
                                       <p className="text-xs text-muted-foreground truncate">
@@ -4545,7 +4659,7 @@ export default function ManagerDashboard() {
                                     :{" "}
                                     <span className="text-foreground">
                                       {assignedTile
-                                        ? `${assignedTile.label || assignedTile.publicCode} (${assignedTile.publicCode})`
+                                        ? `${formatQrTileLabel(assignedTile)} (${assignedTile.publicCode})`
                                         : t("manager.not_assigned", {
                                             defaultValue: "Not assigned",
                                           })}
@@ -4751,7 +4865,7 @@ export default function ManagerDashboard() {
                                   {!isMobile ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
                                   <Pie
                                     data={daypartMix.map((d) => ({
-                                      name: d.daypart,
+                                      name: formatDaypartLabel(d.daypart),
                                       value: d.count,
                                     }))}
                                     dataKey="value"
@@ -4894,7 +5008,9 @@ export default function ManagerDashboard() {
                                       className="border-b last:border-b-0"
                                     >
                                       <td className="py-2">{r.item}</td>
-                                      <td className="py-2">{r.top}</td>
+                                      <td className="py-2">
+                                        {formatDaypartLabel(r.top)}
+                                      </td>
                                       <td className="py-2">
                                         {r.fit.toFixed(0)}%
                                       </td>
@@ -5647,7 +5763,7 @@ export default function ManagerDashboard() {
                     </SelectItem>
                     {tableQrTileOptions.map((tile) => (
                       <SelectItem key={tile.id} value={tile.id}>
-                        {tile.label || tile.publicCode} ({tile.publicCode})
+                        {formatQrTileLabel(tile)} ({tile.publicCode})
                       </SelectItem>
                     ))}
                   </SelectContent>
