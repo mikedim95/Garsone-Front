@@ -441,6 +441,7 @@ export default function ManagerDashboard() {
     Set<string>
   >(new Set());
   const [tableSelection, setTableSelection] = useState<Set<string>>(new Set());
+  const [newWaiterTableSelection, setNewWaiterTableSelection] = useState<Set<string>>(new Set());
   const [savingWaiter, setSavingWaiter] = useState(false);
   const [savingCook, setSavingCook] = useState(false);
 
@@ -2335,6 +2336,18 @@ export default function ManagerDashboard() {
     });
   };
 
+  const handleToggleNewWaiterTable = (tableId: string, checked: boolean) => {
+    setNewWaiterTableSelection((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(tableId);
+      } else {
+        next.delete(tableId);
+      }
+      return next;
+    });
+  };
+
   const handleSaveWaiter = async () => {
     if (!activeWaiter) return;
     setSavingWaiter(true);
@@ -2401,12 +2414,17 @@ export default function ManagerDashboard() {
     setAddingWaiter(true);
     try {
       const displayName = newWaiter.displayName.trim() || newWaiter.email;
-      await api.createWaiter(
+      const created = await api.createWaiter(
         newWaiter.email,
         newWaiter.password,
         displayName,
         Boolean(newWaiter.hybrid),
         newWaiter.hybrid ? newWaiter.printerTopic : undefined
+      );
+      await Promise.all(
+        Array.from(newWaiterTableSelection).map((tableId) =>
+          api.assignWaiterTable(created.waiter.id, tableId)
+        )
       );
       setNewWaiter({
         email: "",
@@ -2415,6 +2433,7 @@ export default function ManagerDashboard() {
         printerTopic: null,
         hybrid: false,
       });
+      setNewWaiterTableSelection(new Set());
       setAddModalOpen(false);
       await Promise.all([loadWaiterData(), newWaiter.hybrid ? loadCookData() : Promise.resolve()]);
     } catch (error) {
@@ -3809,7 +3828,8 @@ export default function ManagerDashboard() {
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <Button
                                 onClick={() => {
-                                  setNewWaiter((prev) => ({ ...prev, hybrid: false }));
+                                  setNewWaiter((prev) => ({ ...prev, hybrid: false, printerTopic: null }));
+                                  setNewWaiterTableSelection(new Set());
                                   setAddModalOpen(true);
                                 }}
                                 size="sm"
@@ -4082,6 +4102,7 @@ export default function ManagerDashboard() {
                             <Button
                               onClick={() => {
                                 setNewWaiter((prev) => ({ ...prev, hybrid: true }));
+                                setNewWaiterTableSelection(new Set());
                                 setAddModalOpen(true);
                               }}
                               size="sm"
@@ -5074,12 +5095,19 @@ export default function ManagerDashboard() {
                 printerTopic: null,
                 hybrid: false,
               });
+              setNewWaiterTableSelection(new Set());
             }
           }}
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>{t("actions.add_waiter")}</DialogTitle>
+              <DialogTitle>
+                {newWaiter.hybrid
+                  ? t("manager.create_hybrid_personnel", {
+                      defaultValue: "Create hybrid",
+                    })
+                  : t("actions.add_waiter")}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
@@ -5110,34 +5138,8 @@ export default function ManagerDashboard() {
                   }
                 />
               </DialogFormField>
-              <DialogFormField index={2}>
-                <Label>{t("manager.personnel_role", { defaultValue: "Personnel role" })}</Label>
-                <Select
-                  value={newWaiter.hybrid ? "hybrid" : "waiter"}
-                  onValueChange={(value) =>
-                    setNewWaiter((prev) => ({
-                      ...prev,
-                      hybrid: value === "hybrid",
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="waiter">
-                      {t("actions.add_waiter", { defaultValue: "Waiter" })}
-                    </SelectItem>
-                    <SelectItem value="hybrid">
-                      {t("manager.hybrid_personnel", {
-                        defaultValue: "Hybrid waiter + cook",
-                      })}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </DialogFormField>
               {newWaiter.hybrid && (
-                <DialogFormField index={3}>
+                <DialogFormField index={2}>
                   <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
                   <Select
                     value={resolvePrinterValue(newWaiter.printerTopic, printerTopics)}
@@ -5168,6 +5170,50 @@ export default function ManagerDashboard() {
                   </Select>
                 </DialogFormField>
               )}
+              <DialogFormField index={newWaiter.hybrid ? 3 : 2}>
+                <Label>
+                  {t("manager.assigned_tables", {
+                    defaultValue: "Assigned tables",
+                  })}
+                </Label>
+                <ScrollArea className="max-h-44 rounded-lg border">
+                  <div className="p-3 space-y-2">
+                    {tables.map((table) => {
+                      const checked = newWaiterTableSelection.has(table.id);
+                      const disabled = !table.active && !checked;
+                      return (
+                        <label
+                          key={table.id}
+                          className={`flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm ${
+                            disabled ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) =>
+                                handleToggleNewWaiterTable(table.id, Boolean(value))
+                              }
+                              disabled={disabled}
+                            />
+                            <span className="font-medium text-foreground">
+                              {t("manager.table", { defaultValue: "Table" })}{" "}
+                              {table.label}
+                            </span>
+                          </div>
+                          {!table.active ? (
+                            <span className="text-xs text-muted-foreground">
+                              {t("manager.inactive", {
+                                defaultValue: "Inactive",
+                              })}
+                            </span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </DialogFormField>
               <DialogFormField index={newWaiter.hybrid ? 4 : 3}>
                 <Label htmlFor="new-waiter-password">
                   {t("auth.password", { defaultValue: "Password" })}
