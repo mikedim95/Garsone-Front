@@ -416,6 +416,10 @@ export default function WaiterDashboard() {
   useEffect(() => {
     if (!isAuthenticated() || (user?.role !== 'waiter' && user?.role !== 'hybrid')) {
       navigate('/login');
+      return;
+    }
+    if (user?.role === 'hybrid') {
+      navigate('/cook', { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
 
