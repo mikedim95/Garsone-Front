@@ -102,7 +102,7 @@ export const CookOrderItem = ({
       exit={{ opacity: 0, scale: 0.95, y: -10 }}
       transition={{ duration: 0.2 }}
       className={clsx(
-        "group relative flex items-center gap-3 p-3 rounded-xl border transition-all duration-200",
+        "group relative flex min-w-0 flex-wrap min-[360px]:flex-nowrap items-center gap-2 min-[360px]:gap-3 p-2 min-[360px]:p-3 rounded-xl border transition-all duration-200",
         isServed
           ? "bg-emerald-500/5 border-emerald-500/20 opacity-60"
           : isCooking
@@ -113,7 +113,7 @@ export const CookOrderItem = ({
       {/* Quantity Badge */}
       <div
         className={clsx(
-          "flex-shrink-0 h-9 w-9 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm transition-colors",
+          "flex-shrink-0 h-8 w-8 min-[360px]:h-9 min-[360px]:w-9 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm transition-colors",
           isServed
             ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
             : isCooking
@@ -158,7 +158,7 @@ export const CookOrderItem = ({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="flex-shrink-0"
+            className="flex-shrink-0 max-[359px]:ml-10 max-[359px]:w-[calc(100%_-_2.5rem)]"
           >
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </motion.div>
@@ -168,11 +168,12 @@ export const CookOrderItem = ({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
+            className="max-[359px]:ml-10 max-[359px]:w-[calc(100%_-_2.5rem)]"
           >
             <Button
               size="sm"
               variant="default"
-              className="h-8 px-3 text-xs font-medium shadow-sm"
+              className="h-8 px-3 text-xs font-medium shadow-sm max-[359px]:w-full"
               onClick={handleAccept}
             >
               <ChefHat className="h-3.5 w-3.5 mr-1" />
@@ -185,10 +186,11 @@ export const CookOrderItem = ({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
+            className="max-[359px]:ml-10 max-[359px]:w-[calc(100%_-_2.5rem)]"
           >
             <Button
               size="sm"
-              className="h-8 px-3 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+              className="h-8 px-3 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm max-[359px]:w-full"
               onClick={handleMarkReady}
             >
               <CheckCircle2 className="h-3.5 w-3.5 mr-1" />

@@ -1004,8 +1004,8 @@ export default function CookDashboard() {
   );
 
   return (
-    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
-      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
+    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh min-w-0 overflow-x-hidden')}>
+      <div className="min-h-screen min-h-dvh min-w-0 dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
           supertitle={t('cook.dashboard') || 'Cook Dashboard'}
           title={storeTitle}
@@ -1054,7 +1054,7 @@ export default function CookDashboard() {
           }
         />
 
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">
+        <div className="w-full min-w-0 px-2 min-[360px]:px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">
           {viewMode === "pro" ? (
             <CookProView
               incoming={incomingVisible}
@@ -1079,9 +1079,9 @@ export default function CookDashboard() {
             />
           ) : (
             <>
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex min-w-0 items-start gap-2 sm:gap-3">
                 <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
-                <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">
                   {t('cook.incoming_orders')}
                 </h2>
                 <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
@@ -1228,9 +1228,9 @@ export default function CookDashboard() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 sm:gap-3 mt-10">
+              <div className="flex min-w-0 items-start gap-2 sm:gap-3 mt-10">
                 <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
-                <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('cook.in_preparation')}</h2>
+                <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">{t('cook.in_preparation')}</h2>
                 <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
                   {preparingVisible.length}
                 </div>
@@ -1346,9 +1346,9 @@ export default function CookDashboard() {
 
               {isHybridUser && (
                 <>
-                  <div className="flex items-center gap-2 sm:gap-3 mt-10">
+                  <div className="flex min-w-0 items-start gap-2 sm:gap-3 mt-10">
                     <div className="h-1 w-10 sm:w-12 bg-emerald-500 rounded-full" />
-                    <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                    <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">
                       {t("status.READY", { defaultValue: "Ready" })}
                     </h2>
                     <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
@@ -1381,9 +1381,9 @@ export default function CookDashboard() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2 sm:gap-3 mt-10">
+                  <div className="flex min-w-0 items-start gap-2 sm:gap-3 mt-10">
                     <div className="h-1 w-10 sm:w-12 bg-slate-500 rounded-full" />
-                    <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                    <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">
                       {t("status.SERVED", { defaultValue: "Served" })}
                     </h2>
                     <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
