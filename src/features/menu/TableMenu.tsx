@@ -796,16 +796,6 @@ export default function TableMenu() {
   const editablePendingOrders = activeOrderSourceOrders.filter(
     (order) => order.id && order.status === "PLACED"
   );
-  const editablePendingOrderIds = editablePendingOrders
-    .map((order) => order.id)
-    .filter((id): id is string => Boolean(id));
-  const editablePendingLineCount = editablePendingOrders.reduce(
-    (count, order) =>
-      count +
-      (order.items ?? []).filter((item) => !isSubmittedOrderItemCancelled(item))
-        .length,
-    0
-  );
   const activeOrderGroups = activeOrderSourceOrders
     .map((order, orderIndex) => ({
       order,
@@ -1769,37 +1759,6 @@ export default function TableMenu() {
     const mappedItems = prepareOrderForEditing(order);
     if (!mappedItems) return;
     setCartOpenSignal((s) => s + 1);
-  };
-
-  const handleEditPendingOrders = async () => {
-    const fallbackOrders = editablePendingOrders;
-    if (!activeTableId) {
-      preparePendingOrdersForEditing(fallbackOrders);
-      return;
-    }
-
-    try {
-      const res = await api.getPublicTableOrders(activeTableId, {
-        storeSlug: storeSlug || undefined,
-        unpaid: true,
-        take: 20,
-      });
-      const dismissedIds = readDismissedOrderIds(dismissedOrderStorageKey);
-      const freshOrders = (res?.orders ?? [])
-        .map(toOrderSummary)
-        .filter((order) => order.status !== "PAID")
-        .filter((order) => !order.id || !dismissedIds.has(order.id));
-      setPlacedOrders(freshOrders);
-      const freshPendingOrders = freshOrders.filter(
-        (order) => order.id && order.status === "PLACED"
-      );
-      preparePendingOrdersForEditing(
-        freshPendingOrders.length ? freshPendingOrders : fallbackOrders
-      );
-    } catch (error) {
-      console.warn("Failed to refresh pending orders before edit", error);
-      preparePendingOrdersForEditing(fallbackOrders);
-    }
   };
 
   const handleActiveOrderItemClick = (
@@ -3092,29 +3051,6 @@ export default function TableMenu() {
                     </div>
                   )}
                 </div>
-                {editablePendingOrderIds.length > 0 ? (
-                  <div className="shrink-0 border-t border-border/50 bg-card/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                    <Button
-                      className="h-12 w-full rounded-full text-base font-semibold"
-                      onClick={() => void handleEditPendingOrders()}
-                      disabled={checkoutBusy || !editablePendingLineCount}
-                    >
-                      {t("menu.edit_pending_orders", {
-                        count: editablePendingLineCount,
-                        defaultValue:
-                          editablePendingLineCount === 1
-                            ? "Edit pending item"
-                            : "Edit pending items",
-                      })}
-                    </Button>
-                    <p className="mt-2 text-center text-xs text-muted-foreground">
-                      {t("menu.edit_pending_orders_hint", {
-                        defaultValue:
-                          "Loads all pending items into the cart so you can update or remove variations.",
-                      })}
-                    </p>
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </DialogContent>
