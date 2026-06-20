@@ -1073,6 +1073,7 @@ export default function ArchitectQrTiles() {
               : undefined,
         });
         syncTile(res.tile);
+        return true;
       } catch (error) {
         console.error("Failed to update QR tile", error);
         toast({
@@ -1083,11 +1084,30 @@ export default function ArchitectQrTiles() {
               ? error.message
               : "Could not update this URL.",
         });
+        return false;
       } finally {
         setUpdatingTileId(null);
       }
     },
     [syncTile, toast]
+  );
+
+  const handleVenueAssignment = useCallback(
+    async (tile: QRTile, storeId: string | null) => {
+      if ((tile.storeId ?? null) === storeId) return;
+
+      const targetStore = stores.find((store) => store.id === storeId);
+      const updated = await handleUpdateTile(tile.id, { storeId });
+      if (!updated) return;
+
+      toast({
+        title: storeId ? "QR moved to venue" : "QR removed from venue",
+        description: storeId
+          ? `${tile.publicCode} now opens ${targetStore?.name ?? "the selected venue"}. Its previous table assignment was cleared.`
+          : `${tile.publicCode} is now unassigned and ready to use at another venue.`,
+      });
+    },
+    [handleUpdateTile, stores, toast]
   );
 
   const handleDeleteTile = useCallback(
@@ -1729,7 +1749,8 @@ export default function ArchitectQrTiles() {
 
   const filteredPoolTiles = useMemo(() => {
     const term = poolSearch.trim().toLowerCase();
-    return unassignedPoolTiles.filter((tile) => {
+    const searchableTiles = term ? poolTiles : unassignedPoolTiles;
+    return searchableTiles.filter((tile) => {
       if (poolStatusFilter !== "all" && getTileLifecycle(tile) !== poolStatusFilter) {
         return false;
       }
@@ -1743,7 +1764,7 @@ export default function ArchitectQrTiles() {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [poolSearch, poolStatusFilter, unassignedPoolTiles]);
+  }, [poolSearch, poolStatusFilter, poolTiles, unassignedPoolTiles]);
 
   const filteredStoreTiles = useMemo(() => {
     const term = storeSearch.trim().toLowerCase();
@@ -1926,6 +1947,7 @@ export default function ArchitectQrTiles() {
                 <CardDescription>
                   This pool only shows QR codes with no venue or table assignment.
                   Once a QR is bound to a venue, it moves into that venue's Store QR Tiles tab.
+                  Search by a printed code to find and move it even when it belongs to another venue.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-3">
@@ -1955,7 +1977,7 @@ export default function ArchitectQrTiles() {
                 <div className="relative flex-1 sm:max-w-sm">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Search code or alias..."
+                    placeholder="Find any printed code or alias..."
                     value={poolSearch}
                     onChange={(event) => setPoolSearch(event.target.value)}
                     className="pl-9"
@@ -2093,10 +2115,10 @@ export default function ArchitectQrTiles() {
                               <Select
                                 value={tile.storeId ?? UNBOUND_STORE_VALUE}
                                 onValueChange={(value) =>
-                                  void handleUpdateTile(tile.id, {
-                                    storeId:
-                                      value === UNBOUND_STORE_VALUE ? null : value,
-                                  })
+                                  void handleVenueAssignment(
+                                    tile,
+                                    value === UNBOUND_STORE_VALUE ? null : value
+                                  )
                                 }
                                 disabled={isBusy}
                               >
@@ -2336,6 +2358,20 @@ export default function ArchitectQrTiles() {
                     />
                   </div>
 
+                  <Card interactive={false} className="border-primary/25 bg-primary/5">
+                    <CardContent className="flex gap-3 p-4">
+                      <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                      <div>
+                        <p className="font-medium">Assign or move printed QR tiles here</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Use the Venue assignment control on any row. Moving a QR changes
+                          where the same printed code opens and clears its old table. Removing
+                          it from the venue keeps the code reusable in the unassigned pool.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="relative flex-1 lg:max-w-sm">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2403,6 +2439,7 @@ export default function ArchitectQrTiles() {
                           <TableHeader>
                             <TableRow className="bg-muted/30 hover:bg-muted/30">
                               <TableHead>Code / Alias</TableHead>
+                              <TableHead>Venue assignment</TableHead>
                               <TableHead>Table</TableHead>
                               <TableHead>Status</TableHead>
                               <TableHead className="hidden md:table-cell">QR</TableHead>
@@ -2468,6 +2505,35 @@ export default function ArchitectQrTiles() {
                                         disabled={isBusy}
                                       />
                                     </div>
+                                  </TableCell>
+                                  <TableCell className="min-w-[14rem]">
+                                    <Select
+                                      value={tile.storeId ?? UNBOUND_STORE_VALUE}
+                                      onValueChange={(value) =>
+                                        void handleVenueAssignment(
+                                          tile,
+                                          value === UNBOUND_STORE_VALUE ? null : value
+                                        )
+                                      }
+                                      disabled={isBusy}
+                                    >
+                                      <SelectTrigger className="h-9 font-medium">
+                                        <SelectValue placeholder="Choose venue" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={UNBOUND_STORE_VALUE}>
+                                          Remove from venue (unassigned)
+                                        </SelectItem>
+                                        {stores.map((store) => (
+                                          <SelectItem key={store.id} value={store.id}>
+                                            {store.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                      Move or remove this printed code without deleting it.
+                                    </p>
                                   </TableCell>
                                   <TableCell className="min-w-[12rem]">
                                     <p className="font-medium">
