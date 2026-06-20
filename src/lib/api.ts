@@ -382,6 +382,15 @@ export const api = {
     isOffline()
       ? devMocks.getStore()
       : fetchApi<{ store: StoreInfo }>("/store"),
+  updatePrintOnArrival: (enabled: boolean): Promise<{ store: StoreInfo }> =>
+    isOffline()
+      ? devMocks.getStore().then(({ store }) => ({
+          store: { ...store, printOnArrival: enabled },
+        }))
+      : fetchApi<{ store: StoreInfo }>("/manager/store/print-on-arrival", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        }),
   getTables: (): Promise<{ tables: Table[] }> =>
     isOffline()
       ? devMocks.getTables()

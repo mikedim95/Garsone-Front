@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -63,6 +63,8 @@ export const ManagerMenuPanel = () => {
 
   const [storeSlug, setStoreSlug] = useState<string>('');
   const [printerTopics, setPrinterTopics] = useState<string[]>([]);
+  const [printOnArrival, setPrintOnArrival] = useState(false);
+  const [savingPrintOnArrival, setSavingPrintOnArrival] = useState(false);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -184,6 +186,10 @@ export const ManagerMenuPanel = () => {
         }))
       );
       if (storeRes?.store?.slug) setStoreSlug(storeRes.store.slug);
+      setPrintOnArrival(
+        storeRes?.store?.printOnArrival === true ||
+          storeRes?.store?.settings?.printOnArrival === true
+      );
       const rawPrinters =
         (storeRes as any)?.store?.settings?.printers ??
         (storeRes as any)?.store?.settingsJson?.printers ??
@@ -661,6 +667,32 @@ export const ManagerMenuPanel = () => {
     }
   };
 
+  const togglePrintOnArrival = async () => {
+    const enabled = !printOnArrival;
+    setSavingPrintOnArrival(true);
+    try {
+      await api.updatePrintOnArrival(enabled);
+      setPrintOnArrival(enabled);
+      toast({
+        title: preferGreek ? 'Η εκτύπωση ενημερώθηκε' : 'Printing updated',
+        description: enabled
+          ? preferGreek
+            ? 'Οι παραγγελίες θα εκτυπώνονται μόλις φτάνουν.'
+            : 'Orders will print as soon as they arrive.'
+          : preferGreek
+            ? 'Οι παραγγελίες θα εκτυπώνονται κατά την αποδοχή.'
+            : 'Orders will print when accepted.',
+      });
+    } catch (error) {
+      toast({
+        title: preferGreek ? 'Η ενημέρωση απέτυχε' : 'Update failed',
+        description: error instanceof Error ? error.message : 'Could not update printer setting',
+      });
+    } finally {
+      setSavingPrintOnArrival(false);
+    }
+  };
+
   return (
     <Card className="p-4 sm:p-6">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -670,6 +702,21 @@ export const ManagerMenuPanel = () => {
           })}
         </h2>
         <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={printOnArrival ? 'default' : 'outline'}
+            className="gap-2 w-full sm:w-auto"
+            onClick={togglePrintOnArrival}
+            disabled={savingPrintOnArrival}
+            aria-pressed={printOnArrival}
+          >
+            {savingPrintOnArrival ? (
+              <span className="h-4 w-4 rounded-full border-2 border-current/60 border-t-transparent animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            {preferGreek ? 'Εκτύπωση στην άφιξη' : 'Print on arrival'}: {printOnArrival ? 'ON' : 'OFF'}
+          </Button>
           <Button size="sm" className="gap-2 w-full sm:w-auto" onClick={openCategoryCreate}>
             <Plus className="h-4 w-4" />{" "}
             {t("manager.add_category", { defaultValue: "Add Category" })}

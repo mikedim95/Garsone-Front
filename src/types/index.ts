@@ -206,7 +206,13 @@ export interface StoreInfo {
   currencySymbol?: string;
   timezone?: string;
   orderingMode?: OrderingMode;
-   printers?: string[];
+  printers?: string[];
+  printOnArrival?: boolean;
+  settings?: {
+    printers?: string[];
+    printOnArrival?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 export type RemoteNodeStatus = 'PENDING' | 'ONLINE' | 'APPLYING' | 'DEGRADED' | 'ERROR' | 'OFFLINE';
