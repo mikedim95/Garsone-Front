@@ -420,10 +420,12 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify(data),
         }),
-  managerDeleteTable: (id: string): Promise<{ table: ManagerTableSummary }> =>
+  managerDeleteTable: (
+    id: string
+  ): Promise<{ table?: ManagerTableSummary; deleted?: boolean; id?: string }> =>
     isOffline()
       ? devMocks.managerDeleteTable(id)
-      : fetchApi<{ table: ManagerTableSummary }>(`/manager/tables/${id}`, {
+      : fetchApi<{ table?: ManagerTableSummary; deleted?: boolean; id?: string }>(`/manager/tables/${id}`, {
           method: "DELETE",
         }),
   managerUploadImage: async (

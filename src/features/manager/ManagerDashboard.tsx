@@ -513,6 +513,7 @@ export default function ManagerDashboard() {
   });
   const [savingTable, setSavingTable] = useState(false);
   const [tableDeletingId, setTableDeletingId] = useState<string | null>(null);
+  const [showInactiveTables, setShowInactiveTables] = useState(false);
   const [menuCategoryLookup, setMenuCategoryLookup] = useState<
     Map<string, string>
   >(new Map());
@@ -1984,6 +1985,15 @@ export default function ManagerDashboard() {
     });
   }, [sortedTables, ordersByTable]);
 
+  const inactiveTableCount = useMemo(
+    () => tablesOverview.filter((table) => !table.isActive).length,
+    [tablesOverview]
+  );
+  const visibleTablesOverview = useMemo(
+    () => tablesOverview.filter((table) => table.isActive || showInactiveTables),
+    [showInactiveTables, tablesOverview]
+  );
+
   const totalOrders = useMemo(() => ordersInRange.length, [ordersInRange]);
 
   const serveDurationsMinutes = useMemo(() => {
@@ -2336,23 +2346,70 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleDeleteTable = async (tableId: string) => {
+  const handleDeleteTable = async (table: ManagerTableSummary) => {
+    const permanently = !table.isActive;
     if (
       !window.confirm(
-        t("manager.confirm_delete_table", {
-          defaultValue:
-            "Delete this table? It will be marked inactive and unassigned from waiters.",
-        })
+        permanently
+          ? t("manager.confirm_permanent_delete_table", {
+              defaultValue:
+                "Delete table {{label}} permanently? This also deletes its order history. The QR code will be kept and unassigned.",
+              label: table.label,
+            })
+          : t("manager.confirm_delete_table", {
+              defaultValue:
+                "Delete this table? It will be marked inactive and unassigned from waiters.",
+            })
       )
     )
       return;
-    setTableDeletingId(tableId);
+    setTableDeletingId(table.id);
     try {
-      await api.managerDeleteTable(tableId);
+      await api.managerDeleteTable(table.id);
       await loadManagerTables();
+      if (permanently && storeId) await loadQrTiles(storeId);
       await Promise.all([loadWaiterData(), loadCookData()]);
+      toast({
+        title: permanently
+          ? t("manager.table_permanently_deleted", { defaultValue: "Table permanently deleted" })
+          : t("manager.table_moved_inactive", { defaultValue: "Table moved to inactive" }),
+        description: permanently
+          ? t("manager.qr_available_again", { defaultValue: "Its QR code is available to assign again." })
+          : t("manager.inactive_table_hint", { defaultValue: "Use Show inactive to restore or permanently delete it." }),
+      });
     } catch (error) {
       console.error("Failed to delete table", error);
+      toast({
+        variant: "destructive",
+        title: permanently
+          ? t("manager.permanent_deletion_failed", { defaultValue: "Permanent deletion failed" })
+          : t("manager.table_deletion_failed", { defaultValue: "Table deletion failed" }),
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setTableDeletingId(null);
+    }
+  };
+
+  const handleRestoreTable = async (table: ManagerTableSummary) => {
+    setTableDeletingId(table.id);
+    try {
+      await api.managerUpdateTable(table.id, { isActive: true });
+      await loadManagerTables();
+      await Promise.all([loadWaiterData(), loadCookData()]);
+      toast({
+        title: t("manager.table_restored", {
+          defaultValue: "Table {{label}} restored",
+          label: table.label,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to restore table", error);
+      toast({
+        variant: "destructive",
+        title: t("manager.table_restore_failed", { defaultValue: "Table restore failed" }),
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
     } finally {
       setTableDeletingId(null);
     }
@@ -4545,7 +4602,19 @@ export default function ManagerDashboard() {
                           })}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 self-start">
+                      <div className="flex flex-wrap items-center gap-2 self-start">
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm">
+                          <Checkbox
+                            checked={showInactiveTables}
+                            onCheckedChange={(checked) =>
+                              setShowInactiveTables(Boolean(checked))
+                            }
+                          />
+                          {t("manager.show_inactive_tables", {
+                            defaultValue: "Show inactive ({{count}})",
+                            count: inactiveTableCount,
+                          })}
+                        </label>
                         <Button
                           variant="outline"
                           size="sm"
@@ -4604,16 +4673,21 @@ export default function ManagerDashboard() {
                         count={4}
                         className="grid sm:grid-cols-2"
                       />
-                    ) : tablesOverview.length === 0 ? (
+                    ) : visibleTablesOverview.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        {t("manager.no_tables", {
-                          defaultValue:
-                            "No tables yet. Add your first table to get started.",
-                        })}
+                        {inactiveTableCount > 0
+                          ? t("manager.no_active_tables", {
+                              defaultValue:
+                                "No active tables. Check Show inactive to restore or permanently delete tables.",
+                            })
+                          : t("manager.no_tables", {
+                              defaultValue:
+                                "No tables yet. Add your first table to get started.",
+                            })}
                       </p>
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {tablesOverview.map((table) => {
+                        {visibleTablesOverview.map((table) => {
                           const assignedTile = assignedQrTileByTableId.get(table.id) ?? null;
                           return (
                             <div
@@ -4656,20 +4730,33 @@ export default function ManagerDashboard() {
                                 </Badge>
                               </div>
                               <div className="flex flex-col sm:flex-row gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full sm:w-auto"
-                                  onClick={() => openEditTable(table)}
-                                >
-                                  <Pencil className="h-4 w-4 mr-2" />
-                                  {t("actions.edit")}
-                                </Button>
+                                {table.isActive ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full sm:w-auto"
+                                    onClick={() => openEditTable(table)}
+                                  >
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    {t("actions.edit")}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full sm:w-auto"
+                                    onClick={() => void handleRestoreTable(table)}
+                                    disabled={tableDeletingId === table.id}
+                                  >
+                                    <RefreshCcw className="h-4 w-4 mr-2" />
+                                    {t("manager.restore_table", { defaultValue: "Restore" })}
+                                  </Button>
+                                )}
                                 <Button
                                   variant="destructive"
                                   size="sm"
                                   className="w-full sm:w-auto"
-                                  onClick={() => handleDeleteTable(table.id)}
+                                  onClick={() => void handleDeleteTable(table)}
                                   disabled={tableDeletingId === table.id}
                                 >
                                   {tableDeletingId === table.id ? (
@@ -4677,7 +4764,11 @@ export default function ManagerDashboard() {
                                   ) : (
                                     <Trash2 className="h-4 w-4 mr-2" />
                                   )}
-                                  {t("actions.delete")}
+                                  {table.isActive
+                                    ? t("actions.delete")
+                                    : t("manager.delete_table_permanently", {
+                                        defaultValue: "Delete permanently",
+                                      })}
                                 </Button>
                               </div>
                             </div>

@@ -1141,6 +1141,15 @@ export const devMocks = {
     const db = snapshot();
     const table = db.tables.find((t) => t.id === id);
     if (!table) return Promise.reject(new Error('Table not found'));
+    if (!table.isActive) {
+      db.qrTiles.forEach((tile) => {
+        if (tile.tableId === id) tile.tableId = null;
+      });
+      db.tables = db.tables.filter((t) => t.id !== id);
+      db.waiterAssignments = db.waiterAssignments.filter((a) => a.tableId !== id);
+      save(db);
+      return Promise.resolve({ deleted: true, id });
+    }
     table.isActive = false;
     db.waiterAssignments = db.waiterAssignments.filter((a) => a.tableId !== id);
     save(db);
