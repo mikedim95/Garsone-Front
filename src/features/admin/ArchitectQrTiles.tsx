@@ -257,6 +257,8 @@ const getTileLifecycle = (tile: QRTile): TileLifecycle => {
 
 const buildNodeConfigPayload = (nodeConfig: RemoteNodeConfig): RemoteNodeConfig => ({
   ...nodeConfig,
+  localHostname: nodeConfig.localHostname?.trim().toLowerCase(),
+  tailscaleHostname: nodeConfig.tailscaleHostname?.trim().toLowerCase(),
   wifiNetworks: (nodeConfig.wifiNetworks ?? [])
     .map((wifi, index) => ({
       ...wifi,
@@ -859,9 +861,19 @@ export default function ArchitectQrTiles() {
           node.lastAppliedVersion === targetVersion ||
           ack?.version === targetVersion
         ) {
+          const hostnameFailure = Object.values(ack?.hostnames ?? {}).find(
+            (result) => result?.requested && !result.applied
+          );
           toast({
-            title: "Pi acknowledged config",
-            description: ack?.message || `OK, got it. Config v${targetVersion} received.`,
+            variant:
+              ack?.status === "DEGRADED" || ack?.status === "ERROR" || hostnameFailure
+                ? "destructive"
+                : "default",
+            title: hostnameFailure ? "Pi could not apply a hostname" : "Pi acknowledged config",
+            description:
+              hostnameFailure?.message ||
+              ack?.message ||
+              `OK, got it. Config v${targetVersion} received.`,
           });
           return;
         }
@@ -2819,14 +2831,29 @@ export default function ArchitectQrTiles() {
                         <Input value={nodeConfig.nodeSlug} onChange={(event) => updateNodeField("nodeSlug", event.target.value)} />
                       </div>
                       <div>
-                        <Label>Tailscale hostname</Label>
-                        <Input value={nodeConfig.tailscaleHostname || ""} onChange={(event) => updateNodeField("tailscaleHostname", event.target.value)} />
+                        <Label>Tailscale machine name</Label>
+                        <Input
+                          value={nodeConfig.tailscaleHostname || ""}
+                          maxLength={63}
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          onChange={(event) => updateNodeField("tailscaleHostname", event.target.value)}
+                        />
                       </div>
                       <div>
-                        <Label>Local hostname</Label>
-                        <Input value={nodeConfig.localHostname || ""} onChange={(event) => updateNodeField("localHostname", event.target.value)} />
+                        <Label>LAN / router hostname</Label>
+                        <Input
+                          value={nodeConfig.localHostname || ""}
+                          maxLength={63}
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          onChange={(event) => updateNodeField("localHostname", event.target.value)}
+                        />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Saving applies these names on the Pi. Tailscale updates directly; the router may show the LAN name after its next DHCP lease refresh.
+                    </p>
 
                     <Separator />
 
@@ -3023,6 +3050,17 @@ export default function ArchitectQrTiles() {
                         <span>
                           Desired v{remoteNode.desiredConfigVersion} · Applied {remoteNode.lastAppliedVersion ?? "never"} · Last seen {formatDate(remoteNode.lastSeenAt || undefined)}
                         </span>
+                        {remoteNode.statusMessage ? (
+                          <span
+                            className={
+                              remoteNode.status === "DEGRADED" || remoteNode.status === "ERROR"
+                                ? "text-destructive"
+                                : "text-foreground"
+                            }
+                          >
+                            {remoteNode.statusMessage}
+                          </span>
+                        ) : null}
                         {remoteNode.config?.lastConfigAck ? (
                           <span className="text-foreground">
                             {remoteNode.config.lastConfigAck.message || "OK, got it."} - Received {formatDate(remoteNode.config.lastConfigAck.receivedAt)}

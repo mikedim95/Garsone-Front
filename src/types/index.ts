@@ -248,6 +248,12 @@ export interface RemoteNodeConfigAck {
   receivedAt?: string;
   message?: string;
   applied?: boolean;
+  status?: RemoteNodeStatus;
+  hostnames?: Partial<Record<"localHostname" | "tailscaleHostname", {
+    requested?: string;
+    applied?: boolean;
+    message?: string;
+  }>>;
 }
 
 export interface RemoteNodeConfig {
