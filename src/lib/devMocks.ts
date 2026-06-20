@@ -778,11 +778,12 @@ export const devMocks = {
       tiles,
     });
   },
-  adminGenerateQrTiles(storeId: string, data: { count: number }) {
+  adminGenerateQrTiles(storeId: string, data: { count?: number; publicCodes?: string[] }) {
     const db = snapshot();
-    const requestedCount = Number.isFinite(data?.count)
+    const manualCodes = data.publicCodes?.map((code) => code.trim().toUpperCase());
+    const requestedCount = manualCodes?.length ?? (Number.isFinite(data?.count)
       ? Math.trunc(Number(data.count))
-      : 0;
+      : 0);
     if (requestedCount < 1) {
       return Promise.reject(new Error('Count must be at least 1'));
     }
@@ -792,11 +793,14 @@ export const devMocks = {
     const existing = new Set(
       db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
     );
+    if (manualCodes?.some((code) => !QR_CODE_REGEX.test(code) || existing.has(code))) {
+      return Promise.reject(new Error('Manual QR code is invalid or already exists'));
+    }
 
     const created: QRTileRecord[] = [];
     const now = Date.now();
     while (created.length < requestedCount) {
-      const publicCode = generateMockPublicCode();
+      const publicCode = manualCodes?.[created.length] ?? generateMockPublicCode();
       if (!QR_CODE_REGEX.test(publicCode) || existing.has(publicCode)) continue;
       existing.add(publicCode);
       const tile: QRTileRecord = {
@@ -815,11 +819,12 @@ export const devMocks = {
     save(db);
     return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
   },
-  adminGenerateGlobalQrTiles(data: { count: number }) {
+  adminGenerateGlobalQrTiles(data: { count?: number; publicCodes?: string[] }) {
     const db = snapshot();
-    const requestedCount = Number.isFinite(data?.count)
+    const manualCodes = data.publicCodes?.map((code) => code.trim().toUpperCase());
+    const requestedCount = manualCodes?.length ?? (Number.isFinite(data?.count)
       ? Math.trunc(Number(data.count))
-      : 0;
+      : 0);
     if (requestedCount < 1) {
       return Promise.reject(new Error('Count must be at least 1'));
     }
@@ -829,11 +834,14 @@ export const devMocks = {
     const existing = new Set(
       db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
     );
+    if (manualCodes?.some((code) => !QR_CODE_REGEX.test(code) || existing.has(code))) {
+      return Promise.reject(new Error('Manual QR code is invalid or already exists'));
+    }
 
     const created: QRTileRecord[] = [];
     const now = Date.now();
     while (created.length < requestedCount) {
-      const publicCode = generateMockPublicCode();
+      const publicCode = manualCodes?.[created.length] ?? generateMockPublicCode();
       if (!QR_CODE_REGEX.test(publicCode) || existing.has(publicCode)) continue;
       existing.add(publicCode);
       const tile: QRTileRecord = {

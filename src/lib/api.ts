@@ -256,7 +256,7 @@ type QRTileUpdatePayload = {
   isActive?: boolean;
   label?: string | null;
 };
-type GenerateTilePayload = { count: number };
+type GenerateTilePayload = { count?: number; publicCodes?: string[] };
 type PurgeStoreHistoryResponse = {
   success: boolean;
   store: StoreInfo;

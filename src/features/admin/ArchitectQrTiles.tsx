@@ -84,6 +84,7 @@ type StoreOption = Pick<
 >;
 type ActiveTab = "pool" | "settings" | "overview";
 type GenerateScope = "pool" | "store";
+type GenerateMethod = "random" | "manual";
 type TileLifecycle = "inactive" | "unbound" | "venue" | "live";
 type PoolStatusFilter = "all" | TileLifecycle;
 type StoreOnboardForm = StoreOnboardPayload;
@@ -96,6 +97,7 @@ type StoreUserForm = {
 };
 
 const MAX_GENERATE_COUNT = 500;
+const QR_CODE_REGEX = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
 const UNBOUND_STORE_VALUE = "__unbound__";
 const ADD_STORE_VALUE = "__add_store__";
 
@@ -492,7 +494,9 @@ export default function ArchitectQrTiles() {
   const [historyConfirmation, setHistoryConfirmation] = useState("");
   const [purgingHistory, setPurgingHistory] = useState(false);
   const [generateScope, setGenerateScope] = useState<GenerateScope>("pool");
+  const [generateMethod, setGenerateMethod] = useState<GenerateMethod>("random");
   const [generateCount, setGenerateCount] = useState<number>(20);
+  const [manualPublicCode, setManualPublicCode] = useState("");
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
   const [deletingTileId, setDeletingTileId] = useState<string | null>(null);
   const [updatingMode, setUpdatingMode] = useState(false);
@@ -533,10 +537,12 @@ export default function ArchitectQrTiles() {
   const historyConfirmationPhrase = selectedStore
     ? `DELETE HISTORY ${selectedStore.slug}`
     : "";
-  const canGenerate =
-    Number.isFinite(generateCount) &&
-    Math.trunc(generateCount) >= 1 &&
-    Math.trunc(generateCount) <= MAX_GENERATE_COUNT;
+  const normalizedManualCode = manualPublicCode.trim().toUpperCase();
+  const canGenerate = generateMethod === "manual"
+    ? QR_CODE_REGEX.test(normalizedManualCode)
+    : Number.isFinite(generateCount) &&
+      Math.trunc(generateCount) >= 1 &&
+      Math.trunc(generateCount) <= MAX_GENERATE_COUNT;
   const canCreateStore =
     storeOnboardForm.name.trim().length > 0 &&
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(storeOnboardForm.slug.trim()) &&
@@ -1104,24 +1110,30 @@ export default function ArchitectQrTiles() {
 
   const handleBulkCreate = useCallback(async () => {
     const count = Math.trunc(generateCount);
-    if (!Number.isFinite(count) || count < 1 || count > MAX_GENERATE_COUNT) {
+    if (!canGenerate) {
       toast({
         variant: "destructive",
-        title: "Invalid count",
-        description: `Choose a number between 1 and ${MAX_GENERATE_COUNT}.`,
+        title: generateMethod === "manual" ? "Invalid QR code" : "Invalid count",
+        description: generateMethod === "manual"
+          ? "Use the format GT-XXXX-XXXX."
+          : `Choose a number between 1 and ${MAX_GENERATE_COUNT}.`,
       });
       return;
     }
 
     try {
+      const payload = generateMethod === "manual"
+        ? { publicCodes: [normalizedManualCode] }
+        : { count };
       const res =
         generateScope === "pool"
-          ? await api.adminGenerateGlobalQrTiles({ count })
-          : await api.adminGenerateQrTiles(selectedStoreId, { count });
+          ? await api.adminGenerateGlobalQrTiles(payload)
+          : await api.adminGenerateQrTiles(selectedStoreId, payload);
       const created = res.tiles ?? [];
 
       setDialogOpen(false);
       setGenerateCount(generateScope === "pool" ? 20 : 10);
+      setManualPublicCode("");
       setRecentScope(generateScope);
       setRecentTiles(created);
       setPoolTiles((current) => mergeTiles(current, created));
@@ -1146,10 +1158,13 @@ export default function ArchitectQrTiles() {
     }
   }, [
     generateCount,
+    generateMethod,
     generateScope,
     mergeTiles,
+    normalizedManualCode,
     selectedStoreId,
     toast,
+    canGenerate,
   ]);
 
   const handleModeChange = useCallback(
@@ -1759,7 +1774,9 @@ export default function ArchitectQrTiles() {
       return;
     }
     setGenerateScope(scope);
+    setGenerateMethod("random");
     setGenerateCount(scope === "pool" ? 20 : 10);
+    setManualPublicCode("");
     setDialogOpen(true);
   };
 
@@ -3483,6 +3500,8 @@ export default function ArchitectQrTiles() {
           setDialogOpen(open);
           if (!open) {
             setGenerateCount(generateScope === "pool" ? 20 : 10);
+            setGenerateMethod("random");
+            setManualPublicCode("");
           }
         }}
       >
@@ -3490,8 +3509,8 @@ export default function ArchitectQrTiles() {
           <DialogHeader>
             <DialogTitle>
               {generateScope === "pool"
-                ? "Generate global QR codes"
-                : `Generate QR codes for ${selectedStore?.name ?? "store"}`}
+                ? "Create global QR codes"
+                : `Create QR codes for ${selectedStore?.name ?? "store"}`}
             </DialogTitle>
             <DialogDescription>
               {generateScope === "pool"
@@ -3500,26 +3519,51 @@ export default function ArchitectQrTiles() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid gap-2">
-              <Label htmlFor="generate-count">How many QR codes</Label>
-              <Input
-                id="generate-count"
-                type="number"
-                min={1}
-                max={MAX_GENERATE_COUNT}
-                value={Number.isFinite(generateCount) ? generateCount : ""}
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  setGenerateCount(Number.isFinite(next) ? next : 0);
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                Max {MAX_GENERATE_COUNT} per batch.
-              </p>
-            </div>
+            <Tabs
+              value={generateMethod}
+              onValueChange={(value) => setGenerateMethod(value as GenerateMethod)}
+            >
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="random">Random batch</TabsTrigger>
+                <TabsTrigger value="manual">Manual code</TabsTrigger>
+              </TabsList>
+              <TabsContent value="random" className="mt-4 grid gap-2">
+                <Label htmlFor="generate-count">How many QR codes</Label>
+                <Input
+                  id="generate-count"
+                  type="number"
+                  min={1}
+                  max={MAX_GENERATE_COUNT}
+                  value={Number.isFinite(generateCount) ? generateCount : ""}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setGenerateCount(Number.isFinite(next) ? next : 0);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Max {MAX_GENERATE_COUNT} per batch.
+                </p>
+              </TabsContent>
+              <TabsContent value="manual" className="mt-4 grid gap-2">
+                <Label htmlFor="manual-public-code">QR code</Label>
+                <Input
+                  id="manual-public-code"
+                  value={manualPublicCode}
+                  onChange={(event) => setManualPublicCode(event.target.value.toUpperCase())}
+                  placeholder="GT-ABCD-1234"
+                  className="font-mono uppercase"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the exact code printed on the QR tile. Format: GT-XXXX-XXXX.
+                </p>
+              </TabsContent>
+            </Tabs>
             {!canGenerate ? (
               <p className="text-xs text-destructive">
-                Enter a number between 1 and {MAX_GENERATE_COUNT}.
+                {generateMethod === "manual"
+                  ? "Enter a valid code in the format GT-XXXX-XXXX."
+                  : `Enter a number between 1 and ${MAX_GENERATE_COUNT}.`}
               </p>
             ) : null}
           </div>
@@ -3529,7 +3573,7 @@ export default function ArchitectQrTiles() {
             </Button>
             <Button onClick={() => void handleBulkCreate()} disabled={!canGenerate}>
               <Plus className="mr-2 h-4 w-4" />
-              Generate
+              {generateMethod === "manual" ? "Create exact code" : "Generate"}
             </Button>
           </DialogFooter>
         </DialogContent>
