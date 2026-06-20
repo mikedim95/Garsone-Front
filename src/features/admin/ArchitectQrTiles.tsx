@@ -518,8 +518,6 @@ export default function ArchitectQrTiles() {
   const [loadingNode, setLoadingNode] = useState(false);
   const [savingNode, setSavingNode] = useState(false);
   const [testingPrinterKey, setTestingPrinterKey] = useState<string | null>(null);
-  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
-
   const isArchitect = user?.role === "architect";
   const selectedStore = useMemo(
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
@@ -615,11 +613,10 @@ export default function ArchitectQrTiles() {
       const text =
         mode === "csv"
           ? [
-              "publicCode,label,storeName,tableLabel",
+              "publicCode,storeName,tableLabel",
               ...recentTiles.map((tile) =>
                 [
                   tile.publicCode,
-                  JSON.stringify(tile.label ?? ""),
                   JSON.stringify(tile.storeName ?? ""),
                   JSON.stringify(tile.tableLabel ?? ""),
                 ].join(",")
@@ -627,7 +624,7 @@ export default function ArchitectQrTiles() {
             ].join("\n")
           : recentTiles
               .map((tile) =>
-                [tile.publicCode, tile.label || "", tile.tableLabel || ""]
+                [tile.publicCode, tile.tableLabel || ""]
                   .filter(Boolean)
                   .join(" — ")
               )
@@ -669,10 +666,6 @@ export default function ArchitectQrTiles() {
           : current;
       });
 
-      setLabelDrafts((current) => ({
-        ...current,
-        [tile.id]: tile.label ?? "",
-      }));
     },
     [selectedStoreId]
   );
@@ -681,11 +674,6 @@ export default function ArchitectQrTiles() {
     setPoolTiles((current) => current.filter((tile) => tile.id !== tileId));
     setStoreTiles((current) => current.filter((tile) => tile.id !== tileId));
     setRecentTiles((current) => current.filter((tile) => tile.id !== tileId));
-    setLabelDrafts((current) => {
-      const next = { ...current };
-      delete next[tileId];
-      return next;
-    });
   }, []);
 
   const loadStores = useCallback(async () => {
@@ -741,15 +729,6 @@ export default function ArchitectQrTiles() {
         const res = await api.adminListAllQrTiles();
         const tiles = res.tiles ?? [];
         setPoolTiles(tiles);
-        setLabelDrafts((current) => {
-          const next = { ...current };
-          tiles.forEach((tile) => {
-            if (typeof next[tile.id] === "undefined") {
-              next[tile.id] = tile.label ?? "";
-            }
-          });
-          return next;
-        });
       } catch (error) {
         console.error("Failed to load QR tile pool", error);
         toast({
@@ -775,15 +754,6 @@ export default function ArchitectQrTiles() {
         const tilesRes = await api.adminListQrTiles(storeId);
         const tiles = tilesRes.tiles ?? [];
         setStoreTiles(tiles);
-        setLabelDrafts((current) => {
-          const next = { ...current };
-          tiles.forEach((tile) => {
-            if (typeof next[tile.id] === "undefined") {
-              next[tile.id] = tile.label ?? "";
-            }
-          });
-          return next;
-        });
       } catch (error) {
         console.error("Failed to load store QR tiles", error);
         toast({
@@ -1132,16 +1102,6 @@ export default function ArchitectQrTiles() {
     [removeTileLocally, toast]
   );
 
-  const commitLabel = useCallback(
-    async (tile: QRTile) => {
-      const next = (labelDrafts[tile.id] ?? tile.label ?? "").trim();
-      const current = (tile.label ?? "").trim();
-      if (next === current) return;
-      await handleUpdateTile(tile.id, { label: next || null });
-    },
-    [handleUpdateTile, labelDrafts]
-  );
-
   const handleBulkCreate = useCallback(async () => {
     const count = Math.trunc(generateCount);
     if (!Number.isFinite(count) || count < 1 || count > MAX_GENERATE_COUNT) {
@@ -1168,14 +1128,6 @@ export default function ArchitectQrTiles() {
       if (generateScope === "store") {
         setStoreTiles((current) => mergeTiles(current, created));
       }
-      setLabelDrafts((current) => {
-        const next = { ...current };
-        created.forEach((tile) => {
-          next[tile.id] = tile.label ?? "";
-        });
-        return next;
-      });
-
       toast({
         title:
           generateScope === "pool"
@@ -1757,7 +1709,6 @@ export default function ArchitectQrTiles() {
       if (!term) return true;
       return [
         tile.publicCode,
-        tile.label,
         tile.storeName,
         tile.storeSlug,
       ]
@@ -1770,7 +1721,7 @@ export default function ArchitectQrTiles() {
     const term = storeSearch.trim().toLowerCase();
     if (!term) return storeTiles;
     return storeTiles.filter((tile) =>
-      [tile.publicCode, tile.label, tile.tableLabel]
+      [tile.publicCode, tile.tableLabel]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term))
     );
@@ -1977,7 +1928,7 @@ export default function ArchitectQrTiles() {
                 <div className="relative flex-1 sm:max-w-sm">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Find any printed code or alias..."
+                    placeholder="Find any printed code..."
                     value={poolSearch}
                     onChange={(event) => setPoolSearch(event.target.value)}
                     className="pl-9"
@@ -2042,7 +1993,7 @@ export default function ArchitectQrTiles() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableHead>Code / Alias</TableHead>
+                        <TableHead>Code</TableHead>
                         <TableHead>Venue</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="hidden md:table-cell">QR</TableHead>
@@ -2091,24 +2042,6 @@ export default function ArchitectQrTiles() {
                                     )}
                                   </Button>
                                 </div>
-                                <Input
-                                  value={labelDrafts[tile.id] ?? tile.label ?? ""}
-                                  onChange={(event) =>
-                                    setLabelDrafts((current) => ({
-                                      ...current,
-                                      [tile.id]: event.target.value,
-                                    }))
-                                  }
-                                  onBlur={() => void commitLabel(tile)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter") {
-                                      event.currentTarget.blur();
-                                    }
-                                  }}
-                                  placeholder="Alias or placement note"
-                                  className="h-8"
-                                  disabled={isBusy}
-                                />
                               </div>
                             </TableCell>
                             <TableCell className="min-w-[13rem]">
@@ -2376,7 +2309,7 @@ export default function ArchitectQrTiles() {
                     <div className="relative flex-1 lg:max-w-sm">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        placeholder="Search code, alias or table..."
+                        placeholder="Search code or table..."
                         value={storeSearch}
                         onChange={(event) => setStoreSearch(event.target.value)}
                         className="pl-9"
@@ -2438,7 +2371,7 @@ export default function ArchitectQrTiles() {
                         <Table>
                           <TableHeader>
                             <TableRow className="bg-muted/30 hover:bg-muted/30">
-                              <TableHead>Code / Alias</TableHead>
+                              <TableHead>Code</TableHead>
                               <TableHead>Venue assignment</TableHead>
                               <TableHead>Table</TableHead>
                               <TableHead>Status</TableHead>
@@ -2486,24 +2419,6 @@ export default function ArchitectQrTiles() {
                                           )}
                                         </Button>
                                       </div>
-                                      <Input
-                                        value={labelDrafts[tile.id] ?? tile.label ?? ""}
-                                        onChange={(event) =>
-                                          setLabelDrafts((current) => ({
-                                            ...current,
-                                            [tile.id]: event.target.value,
-                                          }))
-                                        }
-                                        onBlur={() => void commitLabel(tile)}
-                                        onKeyDown={(event) => {
-                                          if (event.key === "Enter") {
-                                            event.currentTarget.blur();
-                                          }
-                                        }}
-                                        placeholder="Alias or placement note"
-                                        className="h-8"
-                                        disabled={isBusy}
-                                      />
                                     </div>
                                   </TableCell>
                                   <TableCell className="min-w-[14rem]">
