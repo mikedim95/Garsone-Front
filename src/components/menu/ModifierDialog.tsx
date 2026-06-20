@@ -17,6 +17,10 @@ interface Props {
   initialSelected?: SelectionMap;
   initialQty?: number;
   confirmLabel?: string;
+  minQuantity?: number;
+  onRemove?: () => void;
+  removeLabel?: string;
+  saving?: boolean;
 }
 
 const getModifierPriceDelta = (option: Modifier['options'][number]) => {
@@ -33,10 +37,14 @@ export const ModifierDialog = ({
   initialSelected,
   initialQty = 1,
   confirmLabel,
+  minQuantity = 1,
+  onRemove,
+  removeLabel,
+  saving = false,
 }: Props) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
-  const [qty, setQty] = useState<number>(initialQty || 1);
+  const [qty, setQty] = useState<number>(Math.max(minQuantity, initialQty));
   const [submitted, setSubmitted] = useState(false);
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
   const formatter = useMemo(() => {
@@ -54,21 +62,21 @@ export const ModifierDialog = ({
 
   useEffect(() => {
     setSelected(initialSelected || {});
-    setQty(initialQty || 1);
+    setQty(Math.max(minQuantity, initialQty));
     setSubmitted(false);
-  }, [initialSelected, initialQty, item?.id, open]);
+  }, [initialSelected, initialQty, item?.id, minQuantity, open]);
 
   const effectiveModifiers: Modifier[] = useMemo(() => item?.modifiers || [], [item]);
 
   const canConfirm = useMemo(() => {
-    if (!effectiveModifiers?.length) return true;
+    if (qty === 0 || !effectiveModifiers?.length) return true;
     return effectiveModifiers.every((m) => {
       const required = !!m.required || (m.minSelect ?? 0) > 0;
       if (!required) return true;
       const value = selected[m.id];
       return Array.isArray(value) ? value.length > 0 : !!value;
     });
-  }, [effectiveModifiers, selected]);
+  }, [effectiveModifiers, qty, selected]);
 
   const handlePick = (modifierId: string, optionId: string) => {
     setSelected((prev) => ({ ...prev, [modifierId]: optionId }));
@@ -92,7 +100,7 @@ export const ModifierDialog = ({
       setSubmitted(true);
       return;
     }
-    onConfirm(selected, Math.max(1, qty));
+    onConfirm(selected, Math.max(minQuantity, qty));
     setSelected({});
     setSubmitted(false);
   };
@@ -193,7 +201,8 @@ export const ModifierDialog = ({
             type="button"
             variant="outline"
             size="icon"
-            onClick={() => setQty((v) => Math.max(1, v - 1))}
+            onClick={() => setQty((v) => Math.max(minQuantity, v - 1))}
+            disabled={saving}
             aria-label={t('menu.decrease_quantity', { defaultValue: 'Decrease quantity' })}
           >
             -
@@ -204,6 +213,7 @@ export const ModifierDialog = ({
             variant="outline"
             size="icon"
             onClick={() => setQty((v) => v + 1)}
+            disabled={saving}
             aria-label={t('menu.increase_quantity', { defaultValue: 'Increase quantity' })}
           >
             +
@@ -211,10 +221,15 @@ export const ModifierDialog = ({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+          {onRemove ? (
+            <Button variant="destructive" onClick={onRemove} disabled={saving}>
+              {removeLabel ?? t('menu.remove_item', { defaultValue: 'Cancel item' })}
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
             {t('actions.cancel', { defaultValue: 'Cancel' })}
           </Button>
-          <Button onClick={handleConfirm}>
+          <Button onClick={handleConfirm} disabled={saving}>
             {confirmLabel ?? t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
           </Button>
         </DialogFooter>

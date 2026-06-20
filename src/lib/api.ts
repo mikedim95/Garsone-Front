@@ -670,6 +670,22 @@ export const api = {
             body: JSON.stringify({ status }),
           }
         ),
+  updateOrderItem: (
+    orderId: string,
+    orderItemId: string,
+    data: {
+      quantity: number;
+      modifiers?: Record<string, string | string[]>;
+      localityApprovalToken?: string;
+      localitySessionId?: string;
+    }
+  ): Promise<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }> =>
+    isOffline()
+      ? devMocks.updateOrderItem(orderId, orderItemId, data)
+      : fetchApi<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }>(
+          `/orders/${orderId}/items/${orderItemId}`,
+          { method: "PATCH", body: JSON.stringify(data) }
+        ),
 
   // Manager: waiter-table assignments
   getWaiterTables: (): Promise<WaiterTableOverview> =>

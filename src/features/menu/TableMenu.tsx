@@ -712,8 +712,10 @@ export default function TableMenu() {
   const activeOrderMinimizeTimerRef = useRef<number | null>(null);
   const [activeLineEditor, setActiveLineEditor] = useState<{
     orderId: string;
-    cartIndex: number;
+    orderItemId: string;
+    cartItem: CartItem;
   } | null>(null);
+  const [activeLineSaving, setActiveLineSaving] = useState(false);
   const [cartOpenSignal, setCartOpenSignal] = useState(0);
   const [orderPlacedSignal, setOrderPlacedSignal] = useState(0);
   const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
@@ -780,8 +782,7 @@ export default function TableMenu() {
   const activeOrderTone = getStatusTone(activeOrderStatus);
   const hasActiveOrderBar = shouldShowLastOrderButton;
   const hasExpandedActiveOrderBar = false;
-  const activeLineCartItem =
-    activeLineEditor !== null ? cartItems[activeLineEditor.cartIndex] : null;
+  const activeLineCartItem = activeLineEditor?.cartItem ?? null;
   const activeOrderPlacedTime = new Date(
     activeOrder?.createdAt || Date.now()
   ).toLocaleTimeString([], {
@@ -1768,65 +1769,82 @@ export default function TableMenu() {
     if (!order?.id) return;
     if (order.status !== "PLACED") return;
     if (!menuData?.items?.length) return;
-    const pendingOrders = editablePendingOrders.length
-      ? editablePendingOrders
-      : [order];
-    const prepared = preparePendingOrdersForEditing(pendingOrders, {
-      openCart: false,
-    });
-    if (!prepared) return;
     const targetCartItem = mapSubmittedOrderItemToCartItem(
       orderItem,
       menuData.items
     );
-    if (!targetCartItem) {
-      setCartOpenSignal((s) => s + 1);
-      return;
-    }
-    const targetKey = getCartItemKey(targetCartItem);
-    const cartIndex = prepared.mappedItems.findIndex(
-      (cartItem) => getCartItemKey(cartItem) === targetKey
-    );
-    if (cartIndex < 0) {
-      setCartOpenSignal((s) => s + 1);
-      return;
-    }
+    const orderItemId = orderItem.id;
+    if (!targetCartItem || !orderItemId) return;
     setActiveOrderOpen(false);
     setActiveLineEditor({
-      orderId: prepared.editableOrders[0]?.id ?? order.id,
-      cartIndex,
+      orderId: order.id,
+      orderItemId,
+      cartItem: targetCartItem,
     });
   };
 
-  const handleConfirmActiveLineEdit = (
+  const handleConfirmActiveLineEdit = async (
     selected: Record<string, string | string[]>,
     qty: number
   ) => {
     if (!activeLineEditor) return;
-    const currentItems = useCartStore.getState().items;
-    const current = currentItems[activeLineEditor.cartIndex];
-    if (!current) {
+    const approval = usesImmediateGuestCheckout
+      ? null
+      : getStoredLocalityApproval({
+          tableId: activeTableId || "",
+          storeSlug: storeSlug || null,
+          purpose: "ORDER_SUBMIT",
+          sessionId: localitySessionId,
+        }) ?? (await requestLocalityApproval());
+    if (!usesImmediateGuestCheckout && !approval) return;
+
+    try {
+      setActiveLineSaving(true);
+      const response = await api.updateOrderItem(
+        activeLineEditor.orderId,
+        activeLineEditor.orderItemId,
+        {
+          quantity: Math.max(0, qty),
+          modifiers: selected,
+          ...(approval
+            ? {
+                localityApprovalToken: approval.token,
+                localitySessionId,
+              }
+            : {}),
+        }
+      );
+      const summary = toOrderSummary(response.order);
+      setLastOrder(summary);
+      setPlacedOrders((current) => {
+        const next = current.filter((order) => order.id !== summary.id);
+        next.unshift(summary);
+        return next;
+      });
+      if (approval) clearStoredLocalityApproval();
       setActiveLineEditor(null);
-      return;
+      setActiveOrderOpen(true);
+      toast({
+        title: qty === 0
+          ? t("menu.item_cancelled_title", { defaultValue: "Item cancelled" })
+          : t("menu.item_updated_title", { defaultValue: "Item updated" }),
+        description: response.change
+          ? `${response.change.from} → ${response.change.to}`
+          : undefined,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        handleOrderAcceptedDuringEdit(activeLineEditor.orderId);
+        setActiveLineEditor(null);
+      } else {
+        toast({
+          title: t("menu.item_update_failed", { defaultValue: "Item update failed" }),
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
+    } finally {
+      setActiveLineSaving(false);
     }
-    const nextItems = currentItems.map((cartItem, index) =>
-      index === activeLineEditor.cartIndex
-        ? {
-            ...cartItem,
-            quantity: Math.max(1, qty || 1),
-            selectedModifiers: selected,
-          }
-        : cartItem
-    );
-    setItems(mergeCartItems(nextItems));
-    setActiveLineEditor(null);
-    setCartOpenSignal((s) => s + 1);
-    toast({
-      title: t("menu.item_updated_title", { defaultValue: "Item updated" }),
-      description: t("menu.review_updated_order", {
-        defaultValue: "Review your order and submit the update.",
-      }),
-    });
   };
 
   const handleOrdersAcceptedDuringEdit = (orderIds: string[]) => {
@@ -3247,8 +3265,16 @@ export default function TableMenu() {
             confirmLabel={t("actions.save_changes", {
               defaultValue: "Save changes",
             })}
-            onClose={() => setActiveLineEditor(null)}
-            onConfirm={handleConfirmActiveLineEdit}
+            minQuantity={0}
+            saving={activeLineSaving}
+            removeLabel={t("menu.cancel_item", { defaultValue: "Cancel item" })}
+            onRemove={() => void handleConfirmActiveLineEdit({}, 0)}
+            onClose={() => {
+              if (!activeLineSaving) setActiveLineEditor(null);
+            }}
+            onConfirm={(selected, quantity) =>
+              void handleConfirmActiveLineEdit(selected, quantity)
+            }
           />
         </Suspense>
       </div>

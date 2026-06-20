@@ -1084,6 +1084,43 @@ export const devMocks = {
     save(db);
     return Promise.resolve({ order: order ? enrichOrder(db, order) : order });
   },
+  updateOrderItem(
+    orderId: Id,
+    orderItemId: Id,
+    data: { quantity: number; modifiers?: Record<string, string | string[]> }
+  ) {
+    const db = snapshot();
+    const order = db.orders.find((candidate) => candidate.id === orderId);
+    if (!order || order.status !== 'PLACED') {
+      return Promise.reject(new Error('Order can no longer be edited'));
+    }
+    const index = order.items.findIndex((item) => item.id === orderItemId);
+    if (index < 0) return Promise.reject(new Error('Order item not found'));
+    const current = order.items[index];
+    const menuItem = db.items.find((item) => item.id === current.itemId);
+    const before = `${current.qty || 1}x ${menuItem?.title || 'Item'}`;
+    if (data.quantity === 0) {
+      order.items.splice(index, 1);
+      if (order.items.length === 0) order.status = 'CANCELLED';
+    } else {
+      current.qty = data.quantity;
+      current.modifiers = Object.entries(data.modifiers || {}).map(
+        ([modifierId, optionIds]) => ({
+          modifierId,
+          optionIds: Array.isArray(optionIds) ? optionIds : [optionIds],
+        })
+      );
+    }
+    save(db);
+    const after = data.quantity === 0
+      ? `REMOVED ${menuItem?.title || 'Item'}`
+      : `${data.quantity}x ${menuItem?.title || 'Item'}`;
+    return Promise.resolve({
+      order: enrichOrder(db, order),
+      change: { from: before, to: after },
+      removed: data.quantity === 0,
+    });
+  },
   managerDeleteOrder(orderId: Id) {
     const db = snapshot();
     db.orders = db.orders.filter(o=>o.id!==orderId);
