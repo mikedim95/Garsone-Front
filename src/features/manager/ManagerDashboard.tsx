@@ -954,27 +954,8 @@ export default function ManagerDashboard() {
   const tableQrTileOptions = useMemo(() => {
     return qrTiles
       .filter((tile) => !tile.tableId || tile.tableId === tableForm.id)
-      .sort((a, b) =>
-        `${a.label ?? ""}${a.publicCode}`.localeCompare(
-          `${b.label ?? ""}${b.publicCode}`
-        )
-      );
+      .sort((a, b) => a.publicCode.localeCompare(b.publicCode));
   }, [qrTiles, tableForm.id]);
-
-  const formatQrTileLabel = useCallback(
-    (tile: Pick<QRTile, "label" | "publicCode">) => {
-      const label = (tile.label || tile.publicCode).trim();
-      const unassignedMatch = /^unassigned\s+(.+)$/i.exec(label);
-      if (unassignedMatch) {
-        return t("manager.unassigned_qr_tile", {
-          defaultValue: "Unassigned {{label}}",
-          label: unassignedMatch[1],
-        });
-      }
-      return label;
-    },
-    [t]
-  );
 
   const currencyCode =
     typeof window !== "undefined"
@@ -4659,7 +4640,7 @@ export default function ManagerDashboard() {
                                     :{" "}
                                     <span className="text-foreground">
                                       {assignedTile
-                                        ? `${formatQrTileLabel(assignedTile)} (${assignedTile.publicCode})`
+                                        ? assignedTile.publicCode
                                         : t("manager.not_assigned", {
                                             defaultValue: "Not assigned",
                                           })}
@@ -5763,7 +5744,7 @@ export default function ManagerDashboard() {
                     </SelectItem>
                     {tableQrTileOptions.map((tile) => (
                       <SelectItem key={tile.id} value={tile.id}>
-                        {formatQrTileLabel(tile)} ({tile.publicCode})
+                        {tile.publicCode}
                       </SelectItem>
                     ))}
                   </SelectContent>
