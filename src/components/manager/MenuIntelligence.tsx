@@ -19,7 +19,7 @@ type OrderItemLike = Order['items'][number] & {
   name?: string;
   price?: number;
   priceCents?: number;
-  selectedModifiers?: Record<string, string>;
+  selectedModifiers?: Record<string, string | string[]>;
 };
 
 const getItemName = (item?: MenuItem | null) => item?.name ?? item?.title ?? 'Unknown';
@@ -41,7 +41,7 @@ const coerceQuantity = (line: OrderItemLike) => {
 
 const extractItemId = (line: OrderItemLike) => line.item?.id ?? line.itemId ?? null;
 
-const getSelectedModifiers = (line: OrderItemLike): Record<string, string> => line.selectedModifiers ?? {};
+const getSelectedModifiers = (line: OrderItemLike): Record<string, string | string[]> => line.selectedModifiers ?? {};
 
 const resolveMenuItem = (line: OrderItemLike, lookup: Map<string, MenuItem>) => {
   const id = extractItemId(line);

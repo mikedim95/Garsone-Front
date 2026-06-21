@@ -620,53 +620,6 @@ export const ManagerMenuPanel = () => {
     }
   };
 
-  const organizeDrinksCategory = async () => {
-    const drinkCategories = categories
-      .map((category) => ({
-        category,
-        kind: resolveDrinkCategoryKind([category.titleEn, category.titleEl, category.title]),
-      }))
-      .filter((entry): entry is { category: MenuCategory; kind: DrinkCategoryKind } => Boolean(entry.kind));
-    if (drinkCategories.length === 0) {
-      toast({ title: 'No drink categories found', description: 'Create a Drinks category first.' });
-      return;
-    }
-    setLoadingIds((prev) => new Set(prev).add('taxonomy:drinks'));
-    try {
-      const existingDrinks = drinkCategories.find((entry) => entry.kind === 'drinks')?.category;
-      const drinksCategory =
-        existingDrinks ??
-        (
-          await api.createCategory('Drinks', 'Ποτά', 20)
-        ).category;
-      const categoryKindById = new Map(drinkCategories.map((entry) => [entry.category.id, entry.kind]));
-      const updates = items
-        .map((item) => {
-          const kind = item.categoryId ? categoryKindById.get(item.categoryId) : null;
-          if (!kind) return null;
-          const labels = drinkSubcategoryLabels[kind];
-          return api.updateItem(item.id, {
-            categoryId: drinksCategory.id,
-            subcategoryEn: labels.en,
-            subcategoryEl: labels.el,
-          });
-        })
-        .filter(Boolean);
-      await Promise.all(updates);
-      await load();
-      toast({ title: 'Drinks organized', description: 'Coffees, beers and drinks now sit under Drinks.' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not organize drinks';
-      toast({ title: 'Update failed', description: message });
-    } finally {
-      setLoadingIds((prev) => {
-        const next = new Set(prev);
-        next.delete('taxonomy:drinks');
-        return next;
-      });
-    }
-  };
-
   const togglePrintOnArrival = async () => {
     const enabled = !printOnArrival;
     setSavingPrintOnArrival(true);

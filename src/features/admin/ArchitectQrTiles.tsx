@@ -97,7 +97,8 @@ type StoreUserForm = {
 };
 
 const MAX_GENERATE_COUNT = 500;
-const QR_CODE_REGEX = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
+const QR_CODE_REGEX =
+  /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
 const UNBOUND_STORE_VALUE = "__unbound__";
 const ADD_STORE_VALUE = "__add_store__";
 
@@ -168,7 +169,7 @@ const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
 
 const normalizeRemoteNodeWifi = (
   wifi: Partial<RemoteNodeWifi>,
-  index: number
+  index: number,
 ): RemoteNodeWifi => ({
   id: wifi.id || `wifi-${index + 1}`,
   ssid: wifi.ssid || "",
@@ -180,7 +181,7 @@ const normalizeRemoteNodeWifi = (
 
 const normalizeRemoteNodePrinter = (
   printer: Partial<RemoteNodePrinter>,
-  index: number
+  index: number,
 ): RemoteNodePrinter => ({
   id: printer.id || `printer-${index + 1}`,
   type: printer.type === "80" ? "80" : "58",
@@ -221,7 +222,7 @@ const sparklinePath = (
   values: number[],
   width = 320,
   height = 80,
-  padding = 6
+  padding = 6,
 ) => {
   if (!values.length) return "";
   const max = Math.max(...values);
@@ -232,8 +233,7 @@ const sparklinePath = (
   return values
     .map((value, index) => {
       const x = padding + index * step;
-      const y =
-        padding + (1 - (value - min) / range) * (height - padding * 2);
+      const y = padding + (1 - (value - min) / range) * (height - padding * 2);
       return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
@@ -255,7 +255,9 @@ const getTileLifecycle = (tile: QRTile): TileLifecycle => {
   return "live";
 };
 
-const buildNodeConfigPayload = (nodeConfig: RemoteNodeConfig): RemoteNodeConfig => ({
+const buildNodeConfigPayload = (
+  nodeConfig: RemoteNodeConfig,
+): RemoteNodeConfig => ({
   ...nodeConfig,
   localHostname: nodeConfig.localHostname?.trim().toLowerCase(),
   tailscaleHostname: nodeConfig.tailscaleHostname?.trim().toLowerCase(),
@@ -278,17 +280,21 @@ const buildNodeConfigPayload = (nodeConfig: RemoteNodeConfig): RemoteNodeConfig 
 
 const pickPrimaryRemoteNode = (nodes: RemoteNode[] = []) => {
   if (!nodes.length) return null;
-  const withConfig = nodes.filter((node) => node.config && Object.keys(node.config).length > 0);
+  const withConfig = nodes.filter(
+    (node) => node.config && Object.keys(node.config).length > 0,
+  );
   const candidates = withConfig.length ? withConfig : nodes;
   return (
     candidates.find((node) => node.slug === "main") ??
-    candidates
-      .slice()
-      .sort((a, b) => {
-        const aTime = new Date(a.updatedAt ?? a.lastSeenAt ?? a.createdAt ?? 0).getTime();
-        const bTime = new Date(b.updatedAt ?? b.lastSeenAt ?? b.createdAt ?? 0).getTime();
-        return bTime - aTime;
-      })[0] ??
+    candidates.slice().sort((a, b) => {
+      const aTime = new Date(
+        a.updatedAt ?? a.lastSeenAt ?? a.createdAt ?? 0,
+      ).getTime();
+      const bTime = new Date(
+        b.updatedAt ?? b.lastSeenAt ?? b.createdAt ?? 0,
+      ).getTime();
+      return bTime - aTime;
+    })[0] ??
     null
   );
 };
@@ -312,7 +318,8 @@ const remoteNodeStatusCopy: Record<
   PENDING: {
     label: "Waiting for heartbeat",
     variant: "warning",
-    description: "The printer topic can work while the node agent is still pending.",
+    description:
+      "The printer topic can work while the node agent is still pending.",
   },
   ONLINE: {
     label: "Online",
@@ -351,10 +358,16 @@ function getRemoteNodeSummary(node: RemoteNode | null, printerCount: number) {
         printerCount > 0
           ? `${printerCount} printer topic${printerCount === 1 ? "" : "s"} configured; no node agent heartbeat yet.`
           : "No remote node has been configured for this venue.",
-    } satisfies { label: string; badgeLabel: string; variant: BadgeVariant; description: string };
+    } satisfies {
+      label: string;
+      badgeLabel: string;
+      variant: BadgeVariant;
+      description: string;
+    };
   }
 
-  const status = remoteNodeStatusCopy[node.status] ?? remoteNodeStatusCopy.PENDING;
+  const status =
+    remoteNodeStatusCopy[node.status] ?? remoteNodeStatusCopy.PENDING;
   if (node.status === "PENDING" && printerCount > 0) {
     return {
       ...status,
@@ -482,21 +495,25 @@ export default function ArchitectQrTiles() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [storeDialogOpen, setStoreDialogOpen] = useState(false);
   const [creatingStore, setCreatingStore] = useState(false);
-  const [storeOnboardForm, setStoreOnboardForm] =
-    useState<StoreOnboardForm>(() => defaultStoreOnboardForm());
+  const [storeOnboardForm, setStoreOnboardForm] = useState<StoreOnboardForm>(
+    () => defaultStoreOnboardForm(),
+  );
   const [storeUsers, setStoreUsers] = useState<ArchitectStoreUser[]>([]);
   const [loadingStoreUsers, setLoadingStoreUsers] = useState(false);
   const [savingStoreUser, setSavingStoreUser] = useState(false);
-  const [editingStoreUserId, setEditingStoreUserId] = useState<string | null>(null);
+  const [editingStoreUserId, setEditingStoreUserId] = useState<string | null>(
+    null,
+  );
   const [storeUserDialogOpen, setStoreUserDialogOpen] = useState(false);
   const [storeUserForm, setStoreUserForm] = useState<StoreUserForm>(() =>
-    defaultStoreUserForm()
+    defaultStoreUserForm(),
   );
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyConfirmation, setHistoryConfirmation] = useState("");
   const [purgingHistory, setPurgingHistory] = useState(false);
   const [generateScope, setGenerateScope] = useState<GenerateScope>("pool");
-  const [generateMethod, setGenerateMethod] = useState<GenerateMethod>("random");
+  const [generateMethod, setGenerateMethod] =
+    useState<GenerateMethod>("random");
   const [generateCount, setGenerateCount] = useState<number>(20);
   const [manualPublicCode, setManualPublicCode] = useState("");
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
@@ -519,32 +536,35 @@ export default function ArchitectQrTiles() {
   const [pendingNodes, setPendingNodes] = useState<PendingNodeAgent[]>([]);
   const [claimingNodeId, setClaimingNodeId] = useState<string | null>(null);
   const [nodeConfig, setNodeConfig] = useState<RemoteNodeConfig>(() =>
-    defaultRemoteNodeConfig()
+    defaultRemoteNodeConfig(),
   );
   const [loadingNode, setLoadingNode] = useState(false);
   const [savingNode, setSavingNode] = useState(false);
-  const [testingPrinterKey, setTestingPrinterKey] = useState<string | null>(null);
+  const [testingPrinterKey, setTestingPrinterKey] = useState<string | null>(
+    null,
+  );
   const isArchitect = user?.role === "architect";
   const selectedStore = useMemo(
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
-    [selectedStoreId, stores]
+    [selectedStoreId, stores],
   );
   const remoteNodeSummary = useMemo(
     () => getRemoteNodeSummary(remoteNode, printers.length),
-    [printers.length, remoteNode]
+    [printers.length, remoteNode],
   );
   const remoteNodeAgentStatus = remoteNode
-    ? remoteNodeStatusCopy[remoteNode.status] ?? remoteNodeStatusCopy.PENDING
+    ? (remoteNodeStatusCopy[remoteNode.status] ?? remoteNodeStatusCopy.PENDING)
     : null;
   const historyConfirmationPhrase = selectedStore
     ? `DELETE HISTORY ${selectedStore.slug}`
     : "";
   const normalizedManualCode = manualPublicCode.trim().toUpperCase();
-  const canGenerate = generateMethod === "manual"
-    ? QR_CODE_REGEX.test(normalizedManualCode)
-    : Number.isFinite(generateCount) &&
-      Math.trunc(generateCount) >= 1 &&
-      Math.trunc(generateCount) <= MAX_GENERATE_COUNT;
+  const canGenerate =
+    generateMethod === "manual"
+      ? QR_CODE_REGEX.test(normalizedManualCode)
+      : Number.isFinite(generateCount) &&
+        Math.trunc(generateCount) >= 1 &&
+        Math.trunc(generateCount) <= MAX_GENERATE_COUNT;
   const canCreateStore =
     storeOnboardForm.name.trim().length > 0 &&
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(storeOnboardForm.slug.trim()) &&
@@ -570,7 +590,7 @@ export default function ArchitectQrTiles() {
       const base = (publicResolverBase || fallback).replace(/\/$/, "");
       return `${base}/${code}`;
     },
-    [publicResolverBase]
+    [publicResolverBase],
   );
 
   const copyText = useCallback(
@@ -595,7 +615,7 @@ export default function ArchitectQrTiles() {
         return false;
       }
     },
-    [toast]
+    [toast],
   );
 
   const copyTileCode = useCallback(
@@ -603,7 +623,7 @@ export default function ArchitectQrTiles() {
       const ok = await copyText(code);
       if (ok) setCopied(code);
     },
-    [copyText, setCopied]
+    [copyText, setCopied],
   );
 
   const copyTileUrl = useCallback(
@@ -612,7 +632,7 @@ export default function ArchitectQrTiles() {
       const ok = await copyText(url);
       if (ok) setCopied(`url:${code}`);
     },
-    [buildPublicUrl, copyText, setCopied]
+    [buildPublicUrl, copyText, setCopied],
   );
 
   const copyRecentExport = useCallback(
@@ -627,14 +647,14 @@ export default function ArchitectQrTiles() {
                   tile.publicCode,
                   JSON.stringify(tile.storeName ?? ""),
                   JSON.stringify(tile.tableLabel ?? ""),
-                ].join(",")
+                ].join(","),
               ),
             ].join("\n")
           : recentTiles
               .map((tile) =>
                 [tile.publicCode, tile.tableLabel || ""]
                   .filter(Boolean)
-                  .join(" — ")
+                  .join(" — "),
               )
               .join("\n");
 
@@ -645,12 +665,15 @@ export default function ArchitectQrTiles() {
         });
       }
     },
-    [copyText, recentTiles, toast]
+    [copyText, recentTiles, toast],
   );
 
   const mergeTiles = useCallback((existing: QRTile[], incoming: QRTile[]) => {
     const incomingIds = new Set(incoming.map((tile) => tile.id));
-    return [...incoming, ...existing.filter((tile) => !incomingIds.has(tile.id))];
+    return [
+      ...incoming,
+      ...existing.filter((tile) => !incomingIds.has(tile.id)),
+    ];
   }, []);
 
   const syncTile = useCallback(
@@ -673,9 +696,8 @@ export default function ArchitectQrTiles() {
           ? current.filter((entry) => entry.id !== tile.id)
           : current;
       });
-
     },
-    [selectedStoreId]
+    [selectedStoreId],
   );
 
   const removeTileLocally = useCallback((tileId: string) => {
@@ -691,7 +713,8 @@ export default function ArchitectQrTiles() {
       const list = res.stores ?? [];
       setStores(list);
       setSelectedStoreId((current) => {
-        if (current && list.some((store) => store.id === current)) return current;
+        if (current && list.some((store) => store.id === current))
+          return current;
         return list[0]?.id ?? "";
       });
       return list;
@@ -715,19 +738,16 @@ export default function ArchitectQrTiles() {
     <K extends keyof StoreOnboardForm>(key: K, value: StoreOnboardForm[K]) => {
       setStoreOnboardForm((current) => ({ ...current, [key]: value }));
     },
-    []
+    [],
   );
 
-  const handleStoreNameChange = useCallback(
-    (value: string) => {
-      setStoreOnboardForm((current) => ({
-        ...current,
-        name: value,
-        slug: current.slug ? current.slug : slugifyStore(value),
-      }));
-    },
-    []
-  );
+  const handleStoreNameChange = useCallback((value: string) => {
+    setStoreOnboardForm((current) => ({
+      ...current,
+      name: value,
+      slug: current.slug ? current.slug : slugifyStore(value),
+    }));
+  }, []);
 
   const refreshPoolTiles = useCallback(
     async (showSpinner = false) => {
@@ -750,7 +770,7 @@ export default function ArchitectQrTiles() {
         if (showSpinner) setRefreshing(false);
       }
     },
-    [toast]
+    [toast],
   );
 
   const refreshStoreTiles = useCallback(
@@ -775,7 +795,7 @@ export default function ArchitectQrTiles() {
         if (showSpinner) setRefreshing(false);
       }
     },
-    [toast]
+    [toast],
   );
 
   const loadRemoteNode = useCallback(
@@ -787,19 +807,21 @@ export default function ArchitectQrTiles() {
         const node = pickPrimaryRemoteNode(res.nodes ?? []);
         setRemoteNode(node);
         if (node?.config) {
-          const configWifi =
-            node.config.wifiNetworks?.length
-              ? node.config.wifiNetworks.map(normalizeRemoteNodeWifi)
-              : node.config.wifiSsid
+          const configWifi = node.config.wifiNetworks?.length
+            ? node.config.wifiNetworks.map(normalizeRemoteNodeWifi)
+            : node.config.wifiSsid
               ? [
-                  normalizeRemoteNodeWifi({
-                    id: "wifi-1",
-                    ssid: node.config.wifiSsid,
-                    password: "",
-                    passwordSet: node.config.wifiPasswordSet,
-                    priority: 1,
-                    hidden: false,
-                  }, 0),
+                  normalizeRemoteNodeWifi(
+                    {
+                      id: "wifi-1",
+                      ssid: node.config.wifiSsid,
+                      password: "",
+                      passwordSet: node.config.wifiPasswordSet,
+                      priority: 1,
+                      hidden: false,
+                    },
+                    0,
+                  ),
                 ]
               : defaultRemoteNodeConfig().wifiNetworks;
           setNodeConfig({
@@ -820,18 +842,17 @@ export default function ArchitectQrTiles() {
         const selected = stores.find((store) => store.id === storeId);
         setNodeConfig({
           ...defaultRemoteNodeConfig(),
-          printers:
-            selected?.printers?.length
-              ? selected.printers.map((topic, index) => ({
-                  id: `printer-${index + 1}`,
-                  type: "58",
-                  ordinal: index + 1,
-                  mac: "",
-                  topicSuffix: topic,
-                  interface: `/dev/rfcomm${index}`,
-                  label: topic,
-                }))
-              : defaultRemoteNodeConfig().printers,
+          printers: selected?.printers?.length
+            ? selected.printers.map((topic, index) => ({
+                id: `printer-${index + 1}`,
+                type: "58",
+                ordinal: index + 1,
+                mac: "",
+                topicSuffix: topic,
+                interface: `/dev/rfcomm${index}`,
+                label: topic,
+              }))
+            : defaultRemoteNodeConfig().printers,
         });
       } catch (error) {
         console.error("Failed to load remote node", error);
@@ -845,7 +866,7 @@ export default function ArchitectQrTiles() {
         setLoadingNode(false);
       }
     },
-    [stores, toast]
+    [stores, toast],
   );
 
   const waitForRemoteNodeAck = useCallback(
@@ -862,14 +883,18 @@ export default function ArchitectQrTiles() {
           ack?.version === targetVersion
         ) {
           const hostnameFailure = Object.values(ack?.hostnames ?? {}).find(
-            (result) => result?.requested && !result.applied
+            (result) => result?.requested && !result.applied,
           );
           toast({
             variant:
-              ack?.status === "DEGRADED" || ack?.status === "ERROR" || hostnameFailure
+              ack?.status === "DEGRADED" ||
+              ack?.status === "ERROR" ||
+              hostnameFailure
                 ? "destructive"
                 : "default",
-            title: hostnameFailure ? "Pi could not apply a hostname" : "Pi acknowledged config",
+            title: hostnameFailure
+              ? "Pi could not apply a hostname"
+              : "Pi acknowledged config",
             description:
               hostnameFailure?.message ||
               ack?.message ||
@@ -879,7 +904,7 @@ export default function ArchitectQrTiles() {
         }
       }
     },
-    [toast]
+    [toast],
   );
 
   const loadPendingNodes = useCallback(async () => {
@@ -891,7 +916,8 @@ export default function ArchitectQrTiles() {
       toast({
         variant: "destructive",
         title: "Failed to load waiting Pis",
-        description: error instanceof ApiError ? error.message : "Please try again.",
+        description:
+          error instanceof ApiError ? error.message : "Please try again.",
       });
     }
   }, [toast]);
@@ -908,13 +934,14 @@ export default function ArchitectQrTiles() {
         toast({
           variant: "destructive",
           title: "Failed to load users",
-          description: error instanceof ApiError ? error.message : "Please try again.",
+          description:
+            error instanceof ApiError ? error.message : "Please try again.",
         });
       } finally {
         setLoadingStoreUsers(false);
       }
     },
-    [toast]
+    [toast],
   );
 
   const loadOverview = useCallback(async () => {
@@ -991,7 +1018,9 @@ export default function ArchitectQrTiles() {
   }, [loadOverview, loadStores, storeOnboardForm, toast]);
 
   useEffect(() => {
-    const baseEnv = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
+    const baseEnv = (
+      import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined
+    )?.trim();
     if (baseEnv) {
       setPublicResolverBase(baseEnv.replace(/\/$/, ""));
       return;
@@ -1046,19 +1075,16 @@ export default function ArchitectQrTiles() {
       try {
         setUpdatingTileId(tileId);
         const res = await api.adminUpdateQrTile(tileId, {
-          storeId:
-            Object.prototype.hasOwnProperty.call(payload, "storeId")
-              ? payload.storeId ?? null
-              : undefined,
-          tableId:
-            Object.prototype.hasOwnProperty.call(payload, "tableId")
-              ? payload.tableId ?? null
-              : undefined,
+          storeId: Object.prototype.hasOwnProperty.call(payload, "storeId")
+            ? (payload.storeId ?? null)
+            : undefined,
+          tableId: Object.prototype.hasOwnProperty.call(payload, "tableId")
+            ? (payload.tableId ?? null)
+            : undefined,
           isActive: payload.isActive,
-          label:
-            Object.prototype.hasOwnProperty.call(payload, "label")
-              ? payload.label ?? null
-              : undefined,
+          label: Object.prototype.hasOwnProperty.call(payload, "label")
+            ? (payload.label ?? null)
+            : undefined,
         });
         syncTile(res.tile);
         return true;
@@ -1077,7 +1103,7 @@ export default function ArchitectQrTiles() {
         setUpdatingTileId(null);
       }
     },
-    [syncTile, toast]
+    [syncTile, toast],
   );
 
   const handleVenueAssignment = useCallback(
@@ -1095,7 +1121,7 @@ export default function ArchitectQrTiles() {
           : `${tile.publicCode} is now unassigned and ready to use at another venue.`,
       });
     },
-    [handleUpdateTile, stores, toast]
+    [handleUpdateTile, stores, toast],
   );
 
   const handleDeleteTile = useCallback(
@@ -1117,7 +1143,7 @@ export default function ArchitectQrTiles() {
         setDeletingTileId(null);
       }
     },
-    [removeTileLocally, toast]
+    [removeTileLocally, toast],
   );
 
   const handleBulkCreate = useCallback(async () => {
@@ -1125,18 +1151,21 @@ export default function ArchitectQrTiles() {
     if (!canGenerate) {
       toast({
         variant: "destructive",
-        title: generateMethod === "manual" ? "Invalid QR code" : "Invalid count",
-        description: generateMethod === "manual"
-          ? "Use the format GT-XXXX-XXXX."
-          : `Choose a number between 1 and ${MAX_GENERATE_COUNT}.`,
+        title:
+          generateMethod === "manual" ? "Invalid QR code" : "Invalid count",
+        description:
+          generateMethod === "manual"
+            ? "Use the format GT-XXXX-XXXX."
+            : `Choose a number between 1 and ${MAX_GENERATE_COUNT}.`,
       });
       return;
     }
 
     try {
-      const payload = generateMethod === "manual"
-        ? { publicCodes: [normalizedManualCode] }
-        : { count };
+      const payload =
+        generateMethod === "manual"
+          ? { publicCodes: [normalizedManualCode] }
+          : { count };
       const res =
         generateScope === "pool"
           ? await api.adminGenerateGlobalQrTiles(payload)
@@ -1192,8 +1221,8 @@ export default function ArchitectQrTiles() {
             current.map((store) =>
               store.id === selectedStoreId
                 ? { ...store, orderingMode: next }
-                : store
-            )
+                : store,
+            ),
           );
           toast({
             title: "Venue mode updated",
@@ -1201,8 +1230,8 @@ export default function ArchitectQrTiles() {
               next === "waiter"
                 ? "Guests browse while staff submits orders."
                 : next === "hybrid"
-                ? "Guests and staff can both drive ordering."
-                : "Guests can order directly from the table flow.",
+                  ? "Guests and staff can both drive ordering."
+                  : "Guests can order directly from the table flow.",
           });
         })
         .catch((error) => {
@@ -1216,7 +1245,7 @@ export default function ArchitectQrTiles() {
         })
         .finally(() => setUpdatingMode(false));
     },
-    [selectedStoreId, toast]
+    [selectedStoreId, toast],
   );
 
   const startEditStoreUser = useCallback((storeUser: ArchitectStoreUser) => {
@@ -1249,7 +1278,8 @@ export default function ArchitectQrTiles() {
       toast({
         variant: "destructive",
         title: "User details required",
-        description: "Email, display name and password are required for new users.",
+        description:
+          "Email, display name and password are required for new users.",
       });
       return;
     }
@@ -1262,7 +1292,11 @@ export default function ArchitectQrTiles() {
         ...(password ? { password } : {}),
       };
       const res = editingStoreUserId
-        ? await api.adminUpdateStoreUser(selectedStoreId, editingStoreUserId, payload)
+        ? await api.adminUpdateStoreUser(
+            selectedStoreId,
+            editingStoreUserId,
+            payload,
+          )
         : await api.adminCreateStoreUser(selectedStoreId, {
             ...payload,
             password,
@@ -1285,21 +1319,34 @@ export default function ArchitectQrTiles() {
       toast({
         variant: "destructive",
         title: "User save failed",
-        description: error instanceof ApiError ? error.message : "Please try again.",
+        description:
+          error instanceof ApiError ? error.message : "Please try again.",
       });
     } finally {
       setSavingStoreUser(false);
     }
-  }, [editingStoreUserId, loadOverview, resetStoreUserForm, selectedStore?.name, selectedStoreId, storeUserForm, toast]);
+  }, [
+    editingStoreUserId,
+    loadOverview,
+    resetStoreUserForm,
+    selectedStore?.name,
+    selectedStoreId,
+    storeUserForm,
+    toast,
+  ]);
 
   const handleDeleteStoreUser = useCallback(
     async (storeUser: ArchitectStoreUser) => {
       if (!selectedStoreId) return;
-      const confirmed = window.confirm(`Delete ${storeUser.displayName || storeUser.email}?`);
+      const confirmed = window.confirm(
+        `Delete ${storeUser.displayName || storeUser.email}?`,
+      );
       if (!confirmed) return;
       try {
         await api.adminDeleteStoreUser(selectedStoreId, storeUser.id);
-        setStoreUsers((current) => current.filter((user) => user.id !== storeUser.id));
+        setStoreUsers((current) =>
+          current.filter((user) => user.id !== storeUser.id),
+        );
         if (editingStoreUserId === storeUser.id) resetStoreUserForm();
         toast({ title: "User deleted" });
         void loadOverview();
@@ -1308,32 +1355,37 @@ export default function ArchitectQrTiles() {
         toast({
           variant: "destructive",
           title: "User delete failed",
-          description: error instanceof ApiError ? error.message : "Please try again.",
+          description:
+            error instanceof ApiError ? error.message : "Please try again.",
         });
       }
     },
-    [editingStoreUserId, loadOverview, resetStoreUserForm, selectedStoreId, toast]
+    [
+      editingStoreUserId,
+      loadOverview,
+      resetStoreUserForm,
+      selectedStoreId,
+      toast,
+    ],
   );
 
   const handlePurgeHistory = useCallback(async () => {
-    if (!selectedStore || historyConfirmation !== historyConfirmationPhrase) return;
+    if (!selectedStore || historyConfirmation !== historyConfirmationPhrase)
+      return;
     setPurgingHistory(true);
     try {
       const res = await api.adminPurgeStoreHistory(
         selectedStore.id,
-        historyConfirmation
+        historyConfirmation,
       );
       setHistoryDialogOpen(false);
       setHistoryConfirmation("");
       setOverview((current) =>
         current.map((store) =>
-          store.id === selectedStore.id ? { ...store, ordersCount: 0 } : store
-        )
+          store.id === selectedStore.id ? { ...store, ordersCount: 0 } : store,
+        ),
       );
-      await Promise.all([
-        loadOverview(),
-        refreshStoreTiles(selectedStore.id),
-      ]);
+      await Promise.all([loadOverview(), refreshStoreTiles(selectedStore.id)]);
       const deletedOrders = res.deleted?.orders ?? 0;
       toast({
         title: "Venue history deleted",
@@ -1344,7 +1396,8 @@ export default function ArchitectQrTiles() {
       toast({
         variant: "destructive",
         title: "History deletion failed",
-        description: error instanceof ApiError ? error.message : "Please try again.",
+        description:
+          error instanceof ApiError ? error.message : "Please try again.",
       });
     } finally {
       setPurgingHistory(false);
@@ -1361,11 +1414,19 @@ export default function ArchitectQrTiles() {
   const handleResetStoreUserPassword = useCallback(
     async (storeUser: ArchitectStoreUser) => {
       if (!selectedStoreId) return;
-      const confirmed = window.confirm(`Reset ${storeUser.displayName || storeUser.email}'s password to 1234?`);
+      const confirmed = window.confirm(
+        `Reset ${storeUser.displayName || storeUser.email}'s password to 1234?`,
+      );
       if (!confirmed) return;
       try {
-        const res = await api.adminUpdateStoreUser(selectedStoreId, storeUser.id, { password: "1234" });
-        setStoreUsers((current) => current.map((user) => (user.id === res.user.id ? res.user : user)));
+        const res = await api.adminUpdateStoreUser(
+          selectedStoreId,
+          storeUser.id,
+          { password: "1234" },
+        );
+        setStoreUsers((current) =>
+          current.map((user) => (user.id === res.user.id ? res.user : user)),
+        );
         toast({
           title: "Password reset",
           description: `${storeUser.displayName || storeUser.email} must change it after signing in with 1234.`,
@@ -1375,18 +1436,19 @@ export default function ArchitectQrTiles() {
         toast({
           variant: "destructive",
           title: "Password reset failed",
-          description: error instanceof ApiError ? error.message : "Please try again.",
+          description:
+            error instanceof ApiError ? error.message : "Please try again.",
         });
       }
     },
-    [selectedStoreId, toast]
+    [selectedStoreId, toast],
   );
 
   const updateNodeField = useCallback(
     <K extends keyof RemoteNodeConfig>(key: K, value: RemoteNodeConfig[K]) => {
       setNodeConfig((current) => ({ ...current, [key]: value }));
     },
-    []
+    [],
   );
 
   const updateNodePrinter = useCallback(
@@ -1394,11 +1456,11 @@ export default function ArchitectQrTiles() {
       setNodeConfig((current) => ({
         ...current,
         printers: current.printers.map((printer, printerIndex) =>
-          printerIndex === index ? { ...printer, ...patch } : printer
+          printerIndex === index ? { ...printer, ...patch } : printer,
         ),
       }));
     },
-    []
+    [],
   );
 
   const updateWifiNetwork = useCallback(
@@ -1406,11 +1468,11 @@ export default function ArchitectQrTiles() {
       setNodeConfig((current) => ({
         ...current,
         wifiNetworks: (current.wifiNetworks ?? []).map((wifi, wifiIndex) =>
-          wifiIndex === index ? { ...wifi, ...patch } : wifi
+          wifiIndex === index ? { ...wifi, ...patch } : wifi,
         ),
       }));
     },
-    []
+    [],
   );
 
   const addWifiNetwork = useCallback(() => {
@@ -1437,7 +1499,7 @@ export default function ArchitectQrTiles() {
     setNodeConfig((current) => ({
       ...current,
       wifiNetworks: (current.wifiNetworks ?? []).filter(
-        (_, wifiIndex) => wifiIndex !== index
+        (_, wifiIndex) => wifiIndex !== index,
       ),
     }));
   }, []);
@@ -1466,7 +1528,9 @@ export default function ArchitectQrTiles() {
   const removeNodePrinter = useCallback((index: number) => {
     setNodeConfig((current) => ({
       ...current,
-      printers: current.printers.filter((_, printerIndex) => printerIndex !== index),
+      printers: current.printers.filter(
+        (_, printerIndex) => printerIndex !== index,
+      ),
     }));
   }, []);
 
@@ -1483,27 +1547,31 @@ export default function ArchitectQrTiles() {
       setPrinters(topics);
       setStores((current) =>
         current.map((store) =>
-          store.id === selectedStoreId ? { ...store, printers: topics } : store
-        )
+          store.id === selectedStoreId ? { ...store, printers: topics } : store,
+        ),
       );
       setNodeConfig({
         ...defaultRemoteNodeConfig(),
         ...(res.node.config as Partial<RemoteNodeConfig>),
         wifiPassword: "",
         mqttPass: "",
-        wifiNetworks:
-          (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
-            ?.length
-            ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(normalizeRemoteNodeWifi)
-            : payload.wifiNetworks?.length
+        wifiNetworks: (
+          res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined
+        )?.length
+          ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(
+              normalizeRemoteNodeWifi,
+            )
+          : payload.wifiNetworks?.length
             ? payload.wifiNetworks.map((wifi, index) =>
-                normalizeRemoteNodeWifi({ ...wifi, password: "" }, index)
+                normalizeRemoteNodeWifi({ ...wifi, password: "" }, index),
               )
             : defaultRemoteNodeConfig().wifiNetworks,
-        printers:
-          (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
-            ? (res.node.config?.printers as RemoteNodePrinter[]).map(normalizeRemoteNodePrinter)
-            : payload.printers.map(normalizeRemoteNodePrinter),
+        printers: (res.node.config?.printers as RemoteNodePrinter[] | undefined)
+          ?.length
+          ? (res.node.config?.printers as RemoteNodePrinter[]).map(
+              normalizeRemoteNodePrinter,
+            )
+          : payload.printers.map(normalizeRemoteNodePrinter),
       });
       toast({
         title: "Remote node saved",
@@ -1516,7 +1584,9 @@ export default function ArchitectQrTiles() {
         variant: "destructive",
         title: "Node save failed",
         description:
-          error instanceof ApiError ? error.message : "Please check required fields.",
+          error instanceof ApiError
+            ? error.message
+            : "Please check required fields.",
       });
     } finally {
       setSavingNode(false);
@@ -1532,7 +1602,7 @@ export default function ArchitectQrTiles() {
         const res = await api.adminClaimPendingNode(
           pendingNode.id,
           selectedStoreId,
-          payload
+          payload,
         );
         setRemoteNode(res.node);
         const topics = payload.printers
@@ -1541,8 +1611,10 @@ export default function ArchitectQrTiles() {
         setPrinters(topics);
         setStores((current) =>
           current.map((store) =>
-            store.id === selectedStoreId ? { ...store, printers: topics } : store
-          )
+            store.id === selectedStoreId
+              ? { ...store, printers: topics }
+              : store,
+          ),
         );
         setPendingNodes((current) =>
           current.map((node) =>
@@ -1553,33 +1625,41 @@ export default function ArchitectQrTiles() {
                   storeId: selectedStoreId,
                   claimedNodeId: res.node.id,
                 }
-              : node
-          )
+              : node,
+          ),
         );
         setNodeConfig({
           ...defaultRemoteNodeConfig(),
           ...(res.node.config as Partial<RemoteNodeConfig>),
           wifiPassword: "",
           mqttPass: "",
-          wifiNetworks:
-            (res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined)
-              ?.length
-              ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(normalizeRemoteNodeWifi)
-              : payload.wifiNetworks?.length
+          wifiNetworks: (
+            res.node.config?.wifiNetworks as RemoteNodeWifi[] | undefined
+          )?.length
+            ? (res.node.config?.wifiNetworks as RemoteNodeWifi[]).map(
+                normalizeRemoteNodeWifi,
+              )
+            : payload.wifiNetworks?.length
               ? payload.wifiNetworks.map((wifi, index) =>
-                  normalizeRemoteNodeWifi({ ...wifi, password: "" }, index)
+                  normalizeRemoteNodeWifi({ ...wifi, password: "" }, index),
                 )
               : defaultRemoteNodeConfig().wifiNetworks,
-          printers:
-            (res.node.config?.printers as RemoteNodePrinter[] | undefined)?.length
-              ? (res.node.config?.printers as RemoteNodePrinter[]).map(normalizeRemoteNodePrinter)
-              : payload.printers.map(normalizeRemoteNodePrinter),
+          printers: (
+            res.node.config?.printers as RemoteNodePrinter[] | undefined
+          )?.length
+            ? (res.node.config?.printers as RemoteNodePrinter[]).map(
+                normalizeRemoteNodePrinter,
+              )
+            : payload.printers.map(normalizeRemoteNodePrinter),
         });
         toast({
           title: "Pi associated",
           description: "Waiting for the Pi to acknowledge the MQTT config.",
         });
-        void waitForRemoteNodeAck(selectedStoreId, res.node.desiredConfigVersion);
+        void waitForRemoteNodeAck(
+          selectedStoreId,
+          res.node.desiredConfigVersion,
+        );
       } catch (error) {
         console.error("Failed to claim pending node", error);
         toast({
@@ -1592,7 +1672,7 @@ export default function ArchitectQrTiles() {
         setClaimingNodeId(null);
       }
     },
-    [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck]
+    [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck],
   );
 
   const handleRotateNodeToken = useCallback(async () => {
@@ -1610,7 +1690,8 @@ export default function ArchitectQrTiles() {
       toast({
         variant: "destructive",
         title: "Token rotation failed",
-        description: error instanceof ApiError ? error.message : "Please try again.",
+        description:
+          error instanceof ApiError ? error.message : "Please try again.",
       });
     } finally {
       setSavingNode(false);
@@ -1622,13 +1703,15 @@ export default function ArchitectQrTiles() {
       const suffix = (printer.topicSuffix || `printer_${index + 1}`).trim();
       return `${selectedStore?.slug || selectedStoreId || "store"}/orders/preparing/${suffix}`;
     },
-    [selectedStore?.slug, selectedStoreId]
+    [selectedStore?.slug, selectedStoreId],
   );
 
   const handleTestPrinter = useCallback(
     async (printer: RemoteNodePrinter, index: number) => {
       if (!selectedStoreId) return;
-      const topicSuffix = (printer.topicSuffix || `printer_${index + 1}`).trim();
+      const topicSuffix = (
+        printer.topicSuffix || `printer_${index + 1}`
+      ).trim();
       if (!topicSuffix) return;
       const key = printer.id || `${index}:${topicSuffix}`;
       setTestingPrinterKey(key);
@@ -1649,13 +1732,15 @@ export default function ArchitectQrTiles() {
           variant: "destructive",
           title: "Test print failed",
           description:
-            error instanceof ApiError ? error.message : "Please check the printer topic.",
+            error instanceof ApiError
+              ? error.message
+              : "Please check the printer topic.",
         });
       } finally {
         setTestingPrinterKey(null);
       }
     },
-    [selectedStoreId, toast]
+    [selectedStoreId, toast],
   );
 
   const handleRefresh = useCallback(() => {
@@ -1671,11 +1756,20 @@ export default function ArchitectQrTiles() {
       return;
     }
     void refreshPoolTiles(true);
-  }, [activeTab, loadOverview, loadPendingNodes, loadRemoteNode, loadStoreUsers, refreshPoolTiles, refreshStoreTiles, selectedStoreId]);
+  }, [
+    activeTab,
+    loadOverview,
+    loadPendingNodes,
+    loadRemoteNode,
+    loadStoreUsers,
+    refreshPoolTiles,
+    refreshStoreTiles,
+    selectedStoreId,
+  ]);
 
   const unassignedPoolTiles = useMemo(
     () => poolTiles.filter((tile) => !tile.storeId && !tile.tableId),
-    [poolTiles]
+    [poolTiles],
   );
 
   const poolStats = useMemo(() => {
@@ -1691,7 +1785,7 @@ export default function ArchitectQrTiles() {
         unbound: 0,
         venue: 0,
         live: 0,
-      }
+      },
     );
   }, [unassignedPoolTiles]);
 
@@ -1709,12 +1803,13 @@ export default function ArchitectQrTiles() {
         inactive: 0,
         unassigned: 0,
         live: 0,
-      }
+      },
     );
   }, [storeTiles]);
 
   const selectedStoreOverview = useMemo(() => {
-    const aggregate = overview.find((store) => store.id === selectedStoreId) ?? null;
+    const aggregate =
+      overview.find((store) => store.id === selectedStoreId) ?? null;
     if (!selectedStore) return aggregate;
     return {
       id: selectedStore.id,
@@ -1724,21 +1819,26 @@ export default function ArchitectQrTiles() {
       tilesCount: selectedStoreStats.total,
       ordersCount: aggregate?.ordersCount || 0,
     };
-  }, [overview, selectedStore, selectedStoreId, selectedStoreStats.total, storeUsers.length]);
+  }, [
+    overview,
+    selectedStore,
+    selectedStoreId,
+    selectedStoreStats.total,
+    storeUsers.length,
+  ]);
 
   const filteredPoolTiles = useMemo(() => {
     const term = poolSearch.trim().toLowerCase();
     const searchableTiles = term ? poolTiles : unassignedPoolTiles;
     return searchableTiles.filter((tile) => {
-      if (poolStatusFilter !== "all" && getTileLifecycle(tile) !== poolStatusFilter) {
+      if (
+        poolStatusFilter !== "all" &&
+        getTileLifecycle(tile) !== poolStatusFilter
+      ) {
         return false;
       }
       if (!term) return true;
-      return [
-        tile.publicCode,
-        tile.storeName,
-        tile.storeSlug,
-      ]
+      return [tile.publicCode, tile.storeName, tile.storeSlug]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
@@ -1750,7 +1850,7 @@ export default function ArchitectQrTiles() {
     return storeTiles.filter((tile) =>
       [tile.publicCode, tile.tableLabel]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term))
+        .some((value) => String(value).toLowerCase().includes(term)),
     );
   }, [storeSearch, storeTiles]);
 
@@ -1763,7 +1863,7 @@ export default function ArchitectQrTiles() {
         acc.orders += store.ordersCount;
         return acc;
       },
-      { stores: 0, users: 0, tiles: 0, orders: 0 }
+      { stores: 0, users: 0, tiles: 0, orders: 0 },
     );
   }, [overview]);
 
@@ -1771,10 +1871,10 @@ export default function ArchitectQrTiles() {
     activeTab === "overview"
       ? "Cross-venue usage, staffing and QR footprint."
       : activeTab === "pool"
-      ? "Unassigned QR inventory ready to bind to venues."
-      : selectedStore
-      ? `Managing ${selectedStore.name}`
-      : "Select a store to continue.";
+        ? "Unassigned QR inventory ready to bind to venues."
+        : selectedStore
+          ? `Managing ${selectedStore.name}`
+          : "Select a store to continue.";
 
   const openGenerateDialog = (scope: GenerateScope) => {
     if (scope === "store" && !selectedStoreId) {
@@ -1885,7 +1985,9 @@ export default function ArchitectQrTiles() {
                 size="sm"
                 onClick={() =>
                   openGenerateDialog(
-                    activeTab === "settings" && selectedStoreId ? "store" : "pool"
+                    activeTab === "settings" && selectedStoreId
+                      ? "store"
+                      : "pool",
                   )
                 }
               >
@@ -1925,9 +2027,10 @@ export default function ArchitectQrTiles() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Binding flow</CardTitle>
                 <CardDescription>
-                  This pool only shows QR codes with no venue or table assignment.
-                  Once a QR is bound to a venue, it moves into that venue's Store QR Tiles tab.
-                  Search by a printed code to find and move it even when it belongs to another venue.
+                  This pool only shows QR codes with no venue or table
+                  assignment. Once a QR is bound to a venue, it moves into that
+                  venue's Store QR Tiles tab. Search by a printed code to find
+                  and move it even when it belongs to another venue.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-3">
@@ -1946,7 +2049,8 @@ export default function ArchitectQrTiles() {
                 <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                   <Badge variant="success">3. Assign in venue</Badge>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Create tables and link QR codes from the venue's table editor.
+                    Create tables and link QR codes from the venue's table
+                    editor.
                   </p>
                 </div>
               </CardContent>
@@ -2013,7 +2117,10 @@ export default function ArchitectQrTiles() {
                     <p className="mt-1 text-sm text-muted-foreground/70">
                       Generate global QR codes to start the unassigned pool.
                     </p>
-                    <Button className="mt-4" onClick={() => openGenerateDialog("pool")}>
+                    <Button
+                      className="mt-4"
+                      onClick={() => openGenerateDialog("pool")}
+                    >
                       <Plus className="mr-2 h-4 w-4" />
                       Generate QR
                     </Button>
@@ -2025,7 +2132,9 @@ export default function ArchitectQrTiles() {
                         <TableHead>Code</TableHead>
                         <TableHead>Venue</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="hidden md:table-cell">QR</TableHead>
+                        <TableHead className="hidden md:table-cell">
+                          QR
+                        </TableHead>
                         <TableHead className="text-center">Active</TableHead>
                         <TableHead className="hidden lg:table-cell">
                           Updated
@@ -2036,7 +2145,8 @@ export default function ArchitectQrTiles() {
                     <TableBody>
                       {filteredPoolTiles.map((tile) => {
                         const isBusy =
-                          updatingTileId === tile.id || deletingTileId === tile.id;
+                          updatingTileId === tile.id ||
+                          deletingTileId === tile.id;
 
                         return (
                           <TableRow key={tile.id} className="align-top">
@@ -2050,7 +2160,9 @@ export default function ArchitectQrTiles() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7"
-                                    onClick={() => void copyTileCode(tile.publicCode)}
+                                    onClick={() =>
+                                      void copyTileCode(tile.publicCode)
+                                    }
                                   >
                                     {copiedKey === tile.publicCode ? (
                                       <Check className="h-3.5 w-3.5 text-primary" />
@@ -2062,7 +2174,9 @@ export default function ArchitectQrTiles() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7"
-                                    onClick={() => void copyTileUrl(tile.publicCode)}
+                                    onClick={() =>
+                                      void copyTileUrl(tile.publicCode)
+                                    }
                                   >
                                     {copiedKey === `url:${tile.publicCode}` ? (
                                       <Check className="h-3.5 w-3.5 text-primary" />
@@ -2079,7 +2193,9 @@ export default function ArchitectQrTiles() {
                                 onValueChange={(value) =>
                                   void handleVenueAssignment(
                                     tile,
-                                    value === UNBOUND_STORE_VALUE ? null : value
+                                    value === UNBOUND_STORE_VALUE
+                                      ? null
+                                      : value,
                                   )
                                 }
                                 disabled={isBusy}
@@ -2099,7 +2215,9 @@ export default function ArchitectQrTiles() {
                                 </SelectContent>
                               </Select>
                               <p className="mt-2 text-xs text-muted-foreground">
-                                {tile.storeSlug ? `${tile.storeSlug}.garsone` : "No venue yet"}
+                                {tile.storeSlug
+                                  ? `${tile.storeSlug}.garsone`
+                                  : "No venue yet"}
                               </p>
                             </TableCell>
                             <TableCell>
@@ -2109,10 +2227,10 @@ export default function ArchitectQrTiles() {
                                   {getTileLifecycle(tile) === "unbound"
                                     ? "Waiting for venue inventory."
                                     : getTileLifecycle(tile) === "venue"
-                                    ? "Assign tables from per-venue options."
-                                    : getTileLifecycle(tile) === "live"
-                                    ? "Assigned from venue settings."
-                                    : "Kept out of circulation."}
+                                      ? "Assign tables from per-venue options."
+                                      : getTileLifecycle(tile) === "live"
+                                        ? "Assigned from venue settings."
+                                        : "Kept out of circulation."}
                                 </p>
                               </div>
                             </TableCell>
@@ -2210,7 +2328,11 @@ export default function ArchitectQrTiles() {
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button variant="outline" size="sm" onClick={() => setStoreDialogOpen(true)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setStoreDialogOpen(true)}
+                    >
                       <Plus className="mr-1.5 h-4 w-4" />
                       Create store
                     </Button>
@@ -2245,7 +2367,10 @@ export default function ArchitectQrTiles() {
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <MetricCard
                       title="QR Tiles"
-                      value={selectedStoreOverview?.tilesCount ?? selectedStoreStats.total}
+                      value={
+                        selectedStoreOverview?.tilesCount ??
+                        selectedStoreStats.total
+                      }
                       description="Tiles linked to this store."
                     />
                     <MetricCard
@@ -2268,22 +2393,34 @@ export default function ArchitectQrTiles() {
                     <CardHeader>
                       <CardTitle>{selectedStore.name}</CardTitle>
                       <CardDescription>
-                        {selectedStore.slug ? `${selectedStore.slug}.garsone` : "No slug"}
+                        {selectedStore.slug
+                          ? `${selectedStore.slug}.garsone`
+                          : "No slug"}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-3 md:grid-cols-3">
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                        <p className="text-sm text-muted-foreground">Ordering mode</p>
-                        <p className="mt-2 font-medium capitalize">{storeOrderingMode}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Ordering mode
+                        </p>
+                        <p className="mt-2 font-medium capitalize">
+                          {storeOrderingMode}
+                        </p>
                       </div>
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                        <p className="text-sm text-muted-foreground">Printers</p>
+                        <p className="text-sm text-muted-foreground">
+                          Printers
+                        </p>
                         <p className="mt-2 font-medium">{printers.length}</p>
                       </div>
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                        <p className="text-sm text-muted-foreground">Remote node</p>
+                        <p className="text-sm text-muted-foreground">
+                          Remote node
+                        </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{remoteNodeSummary.label}</p>
+                          <p className="font-medium">
+                            {remoteNodeSummary.label}
+                          </p>
                           <Badge variant={remoteNodeSummary.variant} size="sm">
                             {remoteNodeSummary.badgeLabel}
                           </Badge>
@@ -2320,15 +2457,21 @@ export default function ArchitectQrTiles() {
                     />
                   </div>
 
-                  <Card interactive={false} className="border-primary/25 bg-primary/5">
+                  <Card
+                    interactive={false}
+                    className="border-primary/25 bg-primary/5"
+                  >
                     <CardContent className="flex gap-3 p-4">
                       <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                       <div>
-                        <p className="font-medium">Assign or move printed QR tiles here</p>
+                        <p className="font-medium">
+                          Assign or move printed QR tiles here
+                        </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Use the Venue assignment control on any row. Moving a QR changes
-                          where the same printed code opens and clears its old table. Removing
-                          it from the venue keeps the code reusable in the unassigned pool.
+                          Use the Venue assignment control on any row. Moving a
+                          QR changes where the same printed code opens and
+                          clears its old table. Removing it from the venue keeps
+                          the code reusable in the unassigned pool.
                         </p>
                       </div>
                     </CardContent>
@@ -2362,7 +2505,10 @@ export default function ArchitectQrTiles() {
                         )}
                         Refresh
                       </Button>
-                      <Button size="sm" onClick={() => openGenerateDialog("store")}>
+                      <Button
+                        size="sm"
+                        onClick={() => openGenerateDialog("store")}
+                      >
                         <Plus className="mr-2 h-4 w-4" />
                         Generate Store QR
                       </Button>
@@ -2387,11 +2533,17 @@ export default function ArchitectQrTiles() {
                       ) : filteredStoreTiles.length === 0 ? (
                         <div className="py-16 text-center">
                           <QrCode className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
-                          <p className="text-muted-foreground">No store QR tiles found.</p>
-                          <p className="mt-1 text-sm text-muted-foreground/70">
-                            Bind QR codes from the pool or generate venue-specific QR codes.
+                          <p className="text-muted-foreground">
+                            No store QR tiles found.
                           </p>
-                          <Button className="mt-4" onClick={() => openGenerateDialog("store")}>
+                          <p className="mt-1 text-sm text-muted-foreground/70">
+                            Bind QR codes from the pool or generate
+                            venue-specific QR codes.
+                          </p>
+                          <Button
+                            className="mt-4"
+                            onClick={() => openGenerateDialog("store")}
+                          >
                             <Plus className="mr-2 h-4 w-4" />
                             Generate Store QR
                           </Button>
@@ -2404,16 +2556,23 @@ export default function ArchitectQrTiles() {
                               <TableHead>Venue assignment</TableHead>
                               <TableHead>Table</TableHead>
                               <TableHead>Status</TableHead>
-                              <TableHead className="hidden md:table-cell">QR</TableHead>
-                              <TableHead className="text-center">Active</TableHead>
-                              <TableHead className="hidden lg:table-cell">Updated</TableHead>
+                              <TableHead className="hidden md:table-cell">
+                                QR
+                              </TableHead>
+                              <TableHead className="text-center">
+                                Active
+                              </TableHead>
+                              <TableHead className="hidden lg:table-cell">
+                                Updated
+                              </TableHead>
                               <TableHead className="w-12" />
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {filteredStoreTiles.map((tile) => {
                               const isBusy =
-                                updatingTileId === tile.id || deletingTileId === tile.id;
+                                updatingTileId === tile.id ||
+                                deletingTileId === tile.id;
 
                               return (
                                 <TableRow key={tile.id} className="align-top">
@@ -2427,7 +2586,9 @@ export default function ArchitectQrTiles() {
                                           variant="ghost"
                                           size="icon"
                                           className="h-7 w-7"
-                                          onClick={() => void copyTileCode(tile.publicCode)}
+                                          onClick={() =>
+                                            void copyTileCode(tile.publicCode)
+                                          }
                                         >
                                           {copiedKey === tile.publicCode ? (
                                             <Check className="h-3.5 w-3.5 text-primary" />
@@ -2439,9 +2600,12 @@ export default function ArchitectQrTiles() {
                                           variant="ghost"
                                           size="icon"
                                           className="h-7 w-7"
-                                          onClick={() => void copyTileUrl(tile.publicCode)}
+                                          onClick={() =>
+                                            void copyTileUrl(tile.publicCode)
+                                          }
                                         >
-                                          {copiedKey === `url:${tile.publicCode}` ? (
+                                          {copiedKey ===
+                                          `url:${tile.publicCode}` ? (
                                             <Check className="h-3.5 w-3.5 text-primary" />
                                           ) : (
                                             <LinkIcon className="h-3.5 w-3.5" />
@@ -2452,11 +2616,15 @@ export default function ArchitectQrTiles() {
                                   </TableCell>
                                   <TableCell className="min-w-[14rem]">
                                     <Select
-                                      value={tile.storeId ?? UNBOUND_STORE_VALUE}
+                                      value={
+                                        tile.storeId ?? UNBOUND_STORE_VALUE
+                                      }
                                       onValueChange={(value) =>
                                         void handleVenueAssignment(
                                           tile,
-                                          value === UNBOUND_STORE_VALUE ? null : value
+                                          value === UNBOUND_STORE_VALUE
+                                            ? null
+                                            : value,
                                         )
                                       }
                                       disabled={isBusy}
@@ -2469,14 +2637,18 @@ export default function ArchitectQrTiles() {
                                           Remove from venue (unassigned)
                                         </SelectItem>
                                         {stores.map((store) => (
-                                          <SelectItem key={store.id} value={store.id}>
+                                          <SelectItem
+                                            key={store.id}
+                                            value={store.id}
+                                          >
                                             {store.name}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
                                     <p className="mt-1.5 text-xs text-muted-foreground">
-                                      Move or remove this printed code without deleting it.
+                                      Move or remove this printed code without
+                                      deleting it.
                                     </p>
                                   </TableCell>
                                   <TableCell className="min-w-[12rem]">
@@ -2496,10 +2668,11 @@ export default function ArchitectQrTiles() {
                                         {getTileLifecycle(tile) === "venue"
                                           ? "Ready for table assignment."
                                           : getTileLifecycle(tile) === "live"
-                                          ? "Bound to a table."
-                                          : getTileLifecycle(tile) === "inactive"
-                                          ? "Kept out of circulation."
-                                          : "Not attached to a venue."}
+                                            ? "Bound to a table."
+                                            : getTileLifecycle(tile) ===
+                                                "inactive"
+                                              ? "Kept out of circulation."
+                                              : "Not attached to a venue."}
                                       </p>
                                     </div>
                                   </TableCell>
@@ -2535,14 +2708,18 @@ export default function ArchitectQrTiles() {
                                     />
                                   </TableCell>
                                   <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                                    {formatDate(tile.updatedAt || tile.createdAt)}
+                                    {formatDate(
+                                      tile.updatedAt || tile.createdAt,
+                                    )}
                                   </TableCell>
                                   <TableCell>
                                     <Button
                                       variant="ghost"
                                       size="icon"
                                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                      onClick={() => void handleDeleteTile(tile.id)}
+                                      onClick={() =>
+                                        void handleDeleteTile(tile.id)
+                                      }
                                       disabled={isBusy}
                                     >
                                       {deletingTileId === tile.id ? (
@@ -2563,565 +2740,831 @@ export default function ArchitectQrTiles() {
                 </TabsContent>
 
                 <TabsContent value="store-settings" className="space-y-5">
-                <Card>
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Settings className="h-4 w-4 text-primary" />
-                          Ordering Mode
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Control how guests interact with {selectedStore.name}.
-                        </CardDescription>
-                      </div>
-                      <Select
-                        value={storeOrderingMode || "qr"}
-                        onValueChange={handleModeChange}
-                        disabled={updatingMode}
-                      >
-                        <SelectTrigger className="w-full lg:w-56">
-                          <SelectValue placeholder="Select mode" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="qr">Self-order</SelectItem>
-                          <SelectItem value="waiter">Browse-only</SelectItem>
-                          <SelectItem value="hybrid">Hybrid</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 md:grid-cols-3">
-                    <div
-                      className={cn(
-                        "rounded-lg border p-4 transition-colors",
-                        storeOrderingMode === "qr"
-                          ? "border-primary/30 bg-primary/5"
-                          : "border-border/60 bg-muted/20"
-                      )}
-                    >
-                      <p className="font-medium">Self-order</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Guests scan and order directly from their phone.
-                      </p>
-                    </div>
-                    <div
-                      className={cn(
-                        "rounded-lg border p-4 transition-colors",
-                        storeOrderingMode === "waiter"
-                          ? "border-primary/30 bg-primary/5"
-                          : "border-border/60 bg-muted/20"
-                      )}
-                    >
-                      <p className="font-medium">Browse-only</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Guests browse, but waiters own order submission.
-                      </p>
-                    </div>
-                    <div
-                      className={cn(
-                        "rounded-lg border p-4 transition-colors",
-                        storeOrderingMode === "hybrid"
-                          ? "border-primary/30 bg-primary/5"
-                          : "border-border/60 bg-muted/20"
-                      )}
-                    >
-                      <p className="font-medium">Hybrid</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Run guest self-order and staff ordering in parallel.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Building2 className="h-4 w-4 text-primary" />
-                          Store Users
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Create, edit and remove staff access for {selectedStore.name}.
-                        </CardDescription>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={() => void loadStoreUsers(selectedStore.id)} disabled={loadingStoreUsers}>
-                          {loadingStoreUsers ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <RefreshCcw className="mr-2 h-4 w-4" />
-                          )}
-                          Refresh
-                        </Button>
-                        <Button size="sm" onClick={startCreateStoreUser}>
-                          <Plus className="mr-1.5 h-4 w-4" />
-                          Add User
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {storeUsers.length === 0 ? (
-                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                        No store users yet.
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Role</TableHead>
-                            <TableHead className="w-[230px] text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {storeUsers.map((storeUser) => (
-                            <TableRow key={storeUser.id}>
-                              <TableCell className="font-medium">{storeUser.displayName}</TableCell>
-                              <TableCell className="break-all">{storeUser.email}</TableCell>
-                              <TableCell>
-                                <Badge variant="secondary" className="capitalize">
-                                  {storeUser.role}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex justify-end gap-2">
-                                  <Button variant="outline" size="sm" onClick={() => startEditStoreUser(storeUser)}>
-                                    Edit
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => void handleResetStoreUserPassword(storeUser)}>
-                                    Reset pass
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-muted-foreground hover:text-destructive"
-                                    onClick={() => void handleDeleteStoreUser(storeUser)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {pendingNodes.some((node) => node.status === "PENDING") ? (
                   <Card>
                     <CardHeader className="pb-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <CardTitle className="flex items-center gap-2 text-base">
-                            <Wifi className="h-4 w-4 text-primary" />
-                            Waiting Pis
+                            <Settings className="h-4 w-4 text-primary" />
+                            Ordering Mode
                           </CardTitle>
                           <CardDescription className="mt-1">
-                            Fresh nodes that registered locally and are waiting for
-                            association with {selectedStore.name}.
+                            Control how guests interact with{" "}
+                            {selectedStore.name}.
                           </CardDescription>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => void loadPendingNodes()}>
-                          <RefreshCcw className="mr-2 h-4 w-4" />
-                          Refresh
+                        <Select
+                          value={storeOrderingMode || "qr"}
+                          onValueChange={handleModeChange}
+                          disabled={updatingMode}
+                        >
+                          <SelectTrigger className="w-full lg:w-56">
+                            <SelectValue placeholder="Select mode" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="qr">Self-order</SelectItem>
+                            <SelectItem value="waiter">Browse-only</SelectItem>
+                            <SelectItem value="hybrid">Hybrid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 md:grid-cols-3">
+                      <div
+                        className={cn(
+                          "rounded-lg border p-4 transition-colors",
+                          storeOrderingMode === "qr"
+                            ? "border-primary/30 bg-primary/5"
+                            : "border-border/60 bg-muted/20",
+                        )}
+                      >
+                        <p className="font-medium">Self-order</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Guests scan and order directly from their phone.
+                        </p>
+                      </div>
+                      <div
+                        className={cn(
+                          "rounded-lg border p-4 transition-colors",
+                          storeOrderingMode === "waiter"
+                            ? "border-primary/30 bg-primary/5"
+                            : "border-border/60 bg-muted/20",
+                        )}
+                      >
+                        <p className="font-medium">Browse-only</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Guests browse, but waiters own order submission.
+                        </p>
+                      </div>
+                      <div
+                        className={cn(
+                          "rounded-lg border p-4 transition-colors",
+                          storeOrderingMode === "hybrid"
+                            ? "border-primary/30 bg-primary/5"
+                            : "border-border/60 bg-muted/20",
+                        )}
+                      >
+                        <p className="font-medium">Hybrid</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Run guest self-order and staff ordering in parallel.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Building2 className="h-4 w-4 text-primary" />
+                            Store Users
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            Create, edit and remove staff access for{" "}
+                            {selectedStore.name}.
+                          </CardDescription>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              void loadStoreUsers(selectedStore.id)
+                            }
+                            disabled={loadingStoreUsers}
+                          >
+                            {loadingStoreUsers ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCcw className="mr-2 h-4 w-4" />
+                            )}
+                            Refresh
+                          </Button>
+                          <Button size="sm" onClick={startCreateStoreUser}>
+                            <Plus className="mr-1.5 h-4 w-4" />
+                            Add User
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {storeUsers.length === 0 ? (
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                          No store users yet.
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead>Role</TableHead>
+                              <TableHead className="w-[230px] text-right">
+                                Actions
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {storeUsers.map((storeUser) => (
+                              <TableRow key={storeUser.id}>
+                                <TableCell className="font-medium">
+                                  {storeUser.displayName}
+                                </TableCell>
+                                <TableCell className="break-all">
+                                  {storeUser.email}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant="secondary"
+                                    className="capitalize"
+                                  >
+                                    {storeUser.role}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        startEditStoreUser(storeUser)
+                                      }
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        void handleResetStoreUserPassword(
+                                          storeUser,
+                                        )
+                                      }
+                                    >
+                                      Reset pass
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-muted-foreground hover:text-destructive"
+                                      onClick={() =>
+                                        void handleDeleteStoreUser(storeUser)
+                                      }
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {pendingNodes.some((node) => node.status === "PENDING") ? (
+                    <Card>
+                      <CardHeader className="pb-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <Wifi className="h-4 w-4 text-primary" />
+                              Waiting Pis
+                            </CardTitle>
+                            <CardDescription className="mt-1">
+                              Fresh nodes that registered locally and are
+                              waiting for association with {selectedStore.name}.
+                            </CardDescription>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void loadPendingNodes()}
+                          >
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                            Refresh
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {pendingNodes
+                          .filter((node) => node.status === "PENDING")
+                          .map((node) => (
+                            <div
+                              key={node.id}
+                              className="grid gap-3 rounded-lg border border-border/60 p-4 lg:grid-cols-[1fr_auto]"
+                            >
+                              <div className="min-w-0 space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-medium">
+                                    {node.displayName ||
+                                      node.localHostname ||
+                                      "Pending Pi"}
+                                  </p>
+                                  <Badge variant="warning" size="sm">
+                                    Waiting
+                                  </Badge>
+                                </div>
+                                <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
+                                  <span>Host: {node.localHostname || "-"}</span>
+                                  <span>
+                                    Tailscale: {node.tailscaleHostname || "-"}
+                                  </span>
+                                  <span className="break-all">
+                                    MAC: {node.macAddresses.join(", ") || "-"}
+                                  </span>
+                                  <span className="break-all">
+                                    IP: {node.ipAddresses.join(", ") || "-"}
+                                  </span>
+                                  <span>
+                                    Last seen: {formatDate(node.lastSeenAt)}
+                                  </span>
+                                  <span className="break-all">
+                                    Key: {node.nodeKey}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-end">
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    void handleClaimPendingNode(node)
+                                  }
+                                  disabled={
+                                    claimingNodeId === node.id || savingNode
+                                  }
+                                >
+                                  {claimingNodeId === node.id ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Check className="mr-2 h-4 w-4" />
+                                  )}
+                                  Associate to store
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                      </CardContent>
+                    </Card>
+                  ) : null}
+
+                  <Card>
+                    <CardHeader className="pb-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <ServerCog className="h-4 w-4 text-primary" />
+                            Remote Node Pi
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            Per-venue config delivered to the central node
+                            container over MQTT.
+                          </CardDescription>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {remoteNode ? (
+                            <Badge
+                              variant={
+                                remoteNodeAgentStatus?.variant ?? "outline"
+                              }
+                            >
+                              {remoteNodeAgentStatus?.label ?? "Node agent"}
+                            </Badge>
+                          ) : null}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              void loadRemoteNode(selectedStore.id)
+                            }
+                            disabled={loadingNode}
+                          >
+                            {loadingNode ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCcw className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={handleSaveRemoteNode}
+                            disabled={savingNode}
+                          >
+                            {savingNode ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : null}
+                            Save node
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <Label>Display name</Label>
+                          <Input
+                            value={nodeConfig.displayName}
+                            onChange={(event) =>
+                              updateNodeField("displayName", event.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>Node slug</Label>
+                          <Input
+                            value={nodeConfig.nodeSlug}
+                            onChange={(event) =>
+                              updateNodeField("nodeSlug", event.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>Tailscale machine name</Label>
+                          <Input
+                            value={nodeConfig.tailscaleHostname || ""}
+                            maxLength={63}
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            onChange={(event) =>
+                              updateNodeField(
+                                "tailscaleHostname",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>LAN / router hostname</Label>
+                          <Input
+                            value={nodeConfig.localHostname || ""}
+                            maxLength={63}
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            onChange={(event) =>
+                              updateNodeField(
+                                "localHostname",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Saving applies these names on the Pi. Tailscale updates
+                        directly; the router may show the LAN name after its
+                        next DHCP lease refresh.
+                      </p>
+
+                      <Separator />
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="flex items-center gap-1.5">
+                            <Wifi className="h-3.5 w-3.5" />
+                            Local Wi-Fi connections
+                          </Label>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addWifiNetwork}
+                          >
+                            <Plus className="mr-1.5 h-4 w-4" />
+                            Add Wi-Fi
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Phone hotspots must use WPA2; WPA3-only networks are
+                          not compatible with the deployed Pi profile.
+                        </p>
+                        <div className="space-y-2">
+                          {(nodeConfig.wifiNetworks ?? []).map(
+                            (wifi, index) => (
+                              <div
+                                key={wifi.id || index}
+                                className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12"
+                              >
+                                <div className="md:col-span-4">
+                                  <Label>SSID</Label>
+                                  <Input
+                                    value={wifi.ssid}
+                                    onChange={(event) =>
+                                      updateWifiNetwork(index, {
+                                        ssid: event.target.value,
+                                      })
+                                    }
+                                    placeholder={`Venue Wi-Fi ${index + 1}`}
+                                  />
+                                </div>
+                                <div className="md:col-span-4">
+                                  <Label>
+                                    Password {wifi.passwordSet ? "(saved)" : ""}
+                                  </Label>
+                                  <Input
+                                    type="password"
+                                    value={wifi.password || ""}
+                                    onChange={(event) =>
+                                      updateWifiNetwork(index, {
+                                        password: event.target.value,
+                                      })
+                                    }
+                                    placeholder={
+                                      wifi.passwordSet
+                                        ? "Leave blank to keep existing"
+                                        : ""
+                                    }
+                                  />
+                                  {wifi.passwordSet ? (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      A password is saved; leave this blank to
+                                      keep it.
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="md:col-span-2">
+                                  <Label>Priority</Label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    value={wifi.priority ?? index + 1}
+                                    onChange={(event) =>
+                                      updateWifiNetwork(index, {
+                                        priority: Number(
+                                          event.target.value || index + 1,
+                                        ),
+                                      })
+                                    }
+                                  />
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    1 is primary; higher numbers are fallback
+                                    networks.
+                                  </p>
+                                </div>
+                                <div className="flex items-end gap-3 pb-2 md:col-span-1">
+                                  <label className="flex items-center gap-2 text-sm">
+                                    <Switch
+                                      checked={Boolean(wifi.hidden)}
+                                      onCheckedChange={(checked) =>
+                                        updateWifiNetwork(index, {
+                                          hidden: checked,
+                                        })
+                                      }
+                                    />
+                                    Hidden
+                                  </label>
+                                </div>
+                                <div className="flex items-end justify-end md:col-span-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={() => removeWifiNetwork(index)}
+                                    disabled={
+                                      (nodeConfig.wifiNetworks ?? []).length <=
+                                      1
+                                    }
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-4">
+                        <div className="md:col-span-2">
+                          <Label>MQTT host</Label>
+                          <Input
+                            value={nodeConfig.mqttHost}
+                            onChange={(event) =>
+                              updateNodeField("mqttHost", event.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>MQTT port</Label>
+                          <Input
+                            type="number"
+                            value={nodeConfig.mqttPort}
+                            onChange={(event) =>
+                              updateNodeField(
+                                "mqttPort",
+                                Number(event.target.value || 8883),
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="flex items-end gap-4 pb-2">
+                          <label className="flex items-center gap-2 text-sm">
+                            <Switch
+                              checked={nodeConfig.mqttTls}
+                              onCheckedChange={(checked) =>
+                                updateNodeField("mqttTls", checked)
+                              }
+                            />
+                            TLS
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <Switch
+                              checked={nodeConfig.mqttInsecure}
+                              onCheckedChange={(checked) =>
+                                updateNodeField("mqttInsecure", checked)
+                              }
+                            />
+                            Insecure
+                          </label>
+                        </div>
+                        <div>
+                          <Label>MQTT user</Label>
+                          <Input
+                            value={nodeConfig.mqttUser || ""}
+                            onChange={(event) =>
+                              updateNodeField("mqttUser", event.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>
+                            MQTT password{" "}
+                            {nodeConfig.mqttPassSet ? "(saved)" : ""}
+                          </Label>
+                          <Input
+                            type="password"
+                            value={nodeConfig.mqttPass || ""}
+                            onChange={(event) =>
+                              updateNodeField("mqttPass", event.target.value)
+                            }
+                            placeholder={
+                              nodeConfig.mqttPassSet
+                                ? "Leave blank to keep existing"
+                                : ""
+                            }
+                          />
+                          {nodeConfig.mqttPassSet ? (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              A password is saved; leave this blank to keep it.
+                            </p>
+                          ) : null}
+                        </div>
+                        <div>
+                          <Label>Status seconds</Label>
+                          <Input
+                            type="number"
+                            value={nodeConfig.pollSeconds || 30}
+                            onChange={(event) =>
+                              updateNodeField(
+                                "pollSeconds",
+                                Number(event.target.value || 30),
+                              )
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label>Timezone</Label>
+                          <Input
+                            value={nodeConfig.timezone || "Europe/Athens"}
+                            onChange={(event) =>
+                              updateNodeField("timezone", event.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label>Declared printer interfaces</Label>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addNodePrinter}
+                          >
+                            <Plus className="mr-1.5 h-4 w-4" />
+                            Add printer
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {nodeConfig.printers.map((printer, index) => (
+                            <div
+                              key={printer.id || index}
+                              className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12"
+                            >
+                              <div className="md:col-span-1">
+                                <Label>Type</Label>
+                                <Select
+                                  value={printer.type || "58"}
+                                  onValueChange={(value) =>
+                                    updateNodePrinter(index, {
+                                      type: value as "58" | "80",
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="58">58mm</SelectItem>
+                                    <SelectItem value="80">80mm</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="md:col-span-1">
+                                <Label>No.</Label>
+                                <Input
+                                  type="number"
+                                  value={printer.ordinal}
+                                  onChange={(event) =>
+                                    updateNodePrinter(index, {
+                                      ordinal: Number(
+                                        event.target.value || index + 1,
+                                      ),
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="md:col-span-3">
+                                <Label>Bluetooth MAC</Label>
+                                <Input
+                                  value={printer.mac}
+                                  onChange={(event) =>
+                                    updateNodePrinter(index, {
+                                      mac: event.target.value,
+                                    })
+                                  }
+                                  placeholder="AA:BB:CC:DD:EE:FF"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <Label>Interface</Label>
+                                <Input
+                                  value={printer.interface || ""}
+                                  onChange={(event) =>
+                                    updateNodePrinter(index, {
+                                      interface: event.target.value,
+                                    })
+                                  }
+                                  placeholder={`/dev/rfcomm${index}`}
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <Label>Topic suffix</Label>
+                                <Input
+                                  value={printer.topicSuffix}
+                                  onChange={(event) =>
+                                    updateNodePrinter(index, {
+                                      topicSuffix: event.target.value,
+                                    })
+                                  }
+                                  placeholder={`printer_${index + 1}`}
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <Label>Label</Label>
+                                <Input
+                                  value={printer.label || ""}
+                                  onChange={(event) =>
+                                    updateNodePrinter(index, {
+                                      label: event.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="flex items-end justify-end md:col-span-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeNodePrinter(index)}
+                                  disabled={nodeConfig.printers.length <= 1}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              <div className="flex flex-col gap-2 rounded-md bg-muted/25 p-2 md:col-span-12 md:flex-row md:items-center md:justify-between">
+                                <div className="min-w-0">
+                                  <Label className="text-xs text-muted-foreground">
+                                    MQTT topic this printer listens on
+                                  </Label>
+                                  <div className="mt-1 break-all font-mono text-xs text-primary">
+                                    {printerTopicFor(printer, index)}
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    void handleTestPrinter(printer, index)
+                                  }
+                                  disabled={
+                                    testingPrinterKey ===
+                                    (printer.id ||
+                                      `${index}:${printer.topicSuffix}`)
+                                  }
+                                >
+                                  {testingPrinterKey ===
+                                  (printer.id ||
+                                    `${index}:${printer.topicSuffix}`) ? (
+                                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Printer className="mr-1.5 h-4 w-4" />
+                                  )}
+                                  Test print
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {remoteNode ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+                          <span>
+                            Desired v{remoteNode.desiredConfigVersion} · Applied{" "}
+                            {remoteNode.lastAppliedVersion ?? "never"} · Last
+                            seen{" "}
+                            {formatDate(remoteNode.lastSeenAt || undefined)}
+                          </span>
+                          {remoteNode.statusMessage ? (
+                            <span
+                              className={
+                                remoteNode.status === "DEGRADED" ||
+                                remoteNode.status === "ERROR"
+                                  ? "text-destructive"
+                                  : "text-foreground"
+                              }
+                            >
+                              {remoteNode.statusMessage}
+                            </span>
+                          ) : null}
+                          {remoteNode.config?.lastConfigAck ? (
+                            <span className="text-foreground">
+                              {remoteNode.config.lastConfigAck.message ||
+                                "OK, got it."}{" "}
+                              - Received{" "}
+                              {formatDate(
+                                remoteNode.config.lastConfigAck.receivedAt,
+                              )}
+                            </span>
+                          ) : null}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRotateNodeToken}
+                            disabled={savingNode}
+                          >
+                            Rotate token
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+                          No saved remote-node config exists for this venue yet.
+                          Save node to create and publish one.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-destructive/30 bg-destructive/5">
+                    <CardHeader className="pb-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                            Danger Zone
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            Delete historical operational data for{" "}
+                            {selectedStore.name}.
+                          </CardDescription>
+                        </div>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setHistoryDialogOpen(true)}
+                          disabled={purgingHistory}
+                        >
+                          {purgingHistory ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Delete history
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                      {pendingNodes
-                        .filter((node) => node.status === "PENDING")
-                        .map((node) => (
-                          <div
-                            key={node.id}
-                            className="grid gap-3 rounded-lg border border-border/60 p-4 lg:grid-cols-[1fr_auto]"
-                          >
-                            <div className="min-w-0 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-medium">
-                                  {node.displayName || node.localHostname || "Pending Pi"}
-                                </p>
-                                <Badge variant="warning" size="sm">
-                                  Waiting
-                                </Badge>
-                              </div>
-                              <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
-                                <span>Host: {node.localHostname || "-"}</span>
-                                <span>Tailscale: {node.tailscaleHostname || "-"}</span>
-                                <span className="break-all">
-                                  MAC: {node.macAddresses.join(", ") || "-"}
-                                </span>
-                                <span className="break-all">
-                                  IP: {node.ipAddresses.join(", ") || "-"}
-                                </span>
-                                <span>Last seen: {formatDate(node.lastSeenAt)}</span>
-                                <span className="break-all">Key: {node.nodeKey}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-end">
-                              <Button
-                                size="sm"
-                                onClick={() => void handleClaimPendingNode(node)}
-                                disabled={claimingNodeId === node.id || savingNode}
-                              >
-                                {claimingNodeId === node.id ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Check className="mr-2 h-4 w-4" />
-                                )}
-                                Associate to store
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        Removes orders, order items, table visit history,
+                        locality approvals, waiter shifts, kitchen ticket
+                        counters, audit/event history, and node event history.
+                        Menu, staff accounts, tables, QR tiles, printers, and
+                        venue settings stay intact.
+                      </p>
                     </CardContent>
                   </Card>
-                ) : null}
-
-                <Card>
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <ServerCog className="h-4 w-4 text-primary" />
-                          Remote Node Pi
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Per-venue config delivered to the central node container over MQTT.
-                        </CardDescription>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {remoteNode ? (
-                          <Badge variant={remoteNodeAgentStatus?.variant ?? "outline"}>
-                            {remoteNodeAgentStatus?.label ?? "Node agent"}
-                          </Badge>
-                        ) : null}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void loadRemoteNode(selectedStore.id)}
-                          disabled={loadingNode}
-                        >
-                          {loadingNode ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <RefreshCcw className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button size="sm" onClick={handleSaveRemoteNode} disabled={savingNode}>
-                          {savingNode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Save node
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div>
-                        <Label>Display name</Label>
-                        <Input value={nodeConfig.displayName} onChange={(event) => updateNodeField("displayName", event.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Node slug</Label>
-                        <Input value={nodeConfig.nodeSlug} onChange={(event) => updateNodeField("nodeSlug", event.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Tailscale machine name</Label>
-                        <Input
-                          value={nodeConfig.tailscaleHostname || ""}
-                          maxLength={63}
-                          autoCapitalize="none"
-                          spellCheck={false}
-                          onChange={(event) => updateNodeField("tailscaleHostname", event.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label>LAN / router hostname</Label>
-                        <Input
-                          value={nodeConfig.localHostname || ""}
-                          maxLength={63}
-                          autoCapitalize="none"
-                          spellCheck={false}
-                          onChange={(event) => updateNodeField("localHostname", event.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Saving applies these names on the Pi. Tailscale updates directly; the router may show the LAN name after its next DHCP lease refresh.
-                    </p>
-
-                    <Separator />
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label className="flex items-center gap-1.5">
-                          <Wifi className="h-3.5 w-3.5" />
-                          Local Wi-Fi connections
-                        </Label>
-                        <Button variant="outline" size="sm" onClick={addWifiNetwork}>
-                          <Plus className="mr-1.5 h-4 w-4" />
-                          Add Wi-Fi
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Saving installs the profiles; acknowledgement does not mean every hotspot is currently detectable. Phone hotspots should use WPA2 and compatibility or 2.4 GHz mode.
-                      </p>
-                      <div className="space-y-2">
-                        {(nodeConfig.wifiNetworks ?? []).map((wifi, index) => (
-                          <div key={wifi.id || index} className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12">
-                            <div className="md:col-span-4">
-                              <Label>SSID</Label>
-                              <Input
-                                value={wifi.ssid}
-                                onChange={(event) => updateWifiNetwork(index, { ssid: event.target.value })}
-                                placeholder={`Venue Wi-Fi ${index + 1}`}
-                              />
-                            </div>
-                            <div className="md:col-span-4">
-                              <Label>Password {wifi.passwordSet ? "(saved)" : ""}</Label>
-                              <Input
-                                type="password"
-                                value={wifi.password || ""}
-                                onChange={(event) => updateWifiNetwork(index, { password: event.target.value })}
-                                placeholder={wifi.passwordSet ? "Leave blank to keep existing" : ""}
-                              />
-                              {wifi.passwordSet ? (
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  A password is saved; leave this blank to keep it.
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="md:col-span-2">
-                              <Label>Priority</Label>
-                              <Input
-                                type="number"
-                                min={1}
-                                max={20}
-                                value={wifi.priority ?? index + 1}
-                                onChange={(event) => updateWifiNetwork(index, { priority: Number(event.target.value || index + 1) })}
-                              />
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                1 is primary; higher numbers are fallback networks.
-                              </p>
-                            </div>
-                            <div className="flex items-end gap-3 pb-2 md:col-span-1">
-                              <label className="flex items-center gap-2 text-sm">
-                                <Switch
-                                  checked={Boolean(wifi.hidden)}
-                                  onCheckedChange={(checked) => updateWifiNetwork(index, { hidden: checked })}
-                                />
-                                Hidden
-                              </label>
-                            </div>
-                            <div className="flex items-end justify-end md:col-span-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-muted-foreground hover:text-destructive"
-                                onClick={() => removeWifiNetwork(index)}
-                                disabled={(nodeConfig.wifiNetworks ?? []).length <= 1}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-4">
-                      <div className="md:col-span-2">
-                        <Label>MQTT host</Label>
-                        <Input value={nodeConfig.mqttHost} onChange={(event) => updateNodeField("mqttHost", event.target.value)} />
-                      </div>
-                      <div>
-                        <Label>MQTT port</Label>
-                        <Input type="number" value={nodeConfig.mqttPort} onChange={(event) => updateNodeField("mqttPort", Number(event.target.value || 8883))} />
-                      </div>
-                      <div className="flex items-end gap-4 pb-2">
-                        <label className="flex items-center gap-2 text-sm">
-                          <Switch checked={nodeConfig.mqttTls} onCheckedChange={(checked) => updateNodeField("mqttTls", checked)} />
-                          TLS
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <Switch checked={nodeConfig.mqttInsecure} onCheckedChange={(checked) => updateNodeField("mqttInsecure", checked)} />
-                          Insecure
-                        </label>
-                      </div>
-                      <div>
-                        <Label>MQTT user</Label>
-                        <Input value={nodeConfig.mqttUser || ""} onChange={(event) => updateNodeField("mqttUser", event.target.value)} />
-                      </div>
-                      <div>
-                        <Label>MQTT password {nodeConfig.mqttPassSet ? "(saved)" : ""}</Label>
-                        <Input
-                          type="password"
-                          value={nodeConfig.mqttPass || ""}
-                          onChange={(event) => updateNodeField("mqttPass", event.target.value)}
-                          placeholder={nodeConfig.mqttPassSet ? "Leave blank to keep existing" : ""}
-                        />
-                        {nodeConfig.mqttPassSet ? (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            A password is saved; leave this blank to keep it.
-                          </p>
-                        ) : null}
-                      </div>
-                      <div>
-                        <Label>Status seconds</Label>
-                        <Input type="number" value={nodeConfig.pollSeconds || 30} onChange={(event) => updateNodeField("pollSeconds", Number(event.target.value || 30))} />
-                      </div>
-                      <div>
-                        <Label>Timezone</Label>
-                        <Input value={nodeConfig.timezone || "Europe/Athens"} onChange={(event) => updateNodeField("timezone", event.target.value)} />
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Declared printer interfaces</Label>
-                        <Button variant="outline" size="sm" onClick={addNodePrinter}>
-                          <Plus className="mr-1.5 h-4 w-4" />
-                          Add printer
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        {nodeConfig.printers.map((printer, index) => (
-                          <div key={printer.id || index} className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12">
-                            <div className="md:col-span-1">
-                              <Label>Type</Label>
-                              <Select value={printer.type || "58"} onValueChange={(value) => updateNodePrinter(index, { type: value as "58" | "80" })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="58">58mm</SelectItem>
-                                  <SelectItem value="80">80mm</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="md:col-span-1">
-                              <Label>No.</Label>
-                              <Input type="number" value={printer.ordinal} onChange={(event) => updateNodePrinter(index, { ordinal: Number(event.target.value || index + 1) })} />
-                            </div>
-                            <div className="md:col-span-3">
-                              <Label>Bluetooth MAC</Label>
-                              <Input value={printer.mac} onChange={(event) => updateNodePrinter(index, { mac: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                            </div>
-                            <div className="md:col-span-2">
-                              <Label>Interface</Label>
-                              <Input value={printer.interface || ""} onChange={(event) => updateNodePrinter(index, { interface: event.target.value })} placeholder={`/dev/rfcomm${index}`} />
-                            </div>
-                            <div className="md:col-span-2">
-                              <Label>Topic suffix</Label>
-                              <Input value={printer.topicSuffix} onChange={(event) => updateNodePrinter(index, { topicSuffix: event.target.value })} placeholder={`printer_${index + 1}`} />
-                            </div>
-                            <div className="md:col-span-2">
-                              <Label>Label</Label>
-                              <Input value={printer.label || ""} onChange={(event) => updateNodePrinter(index, { label: event.target.value })} />
-                            </div>
-                            <div className="flex items-end justify-end md:col-span-1">
-                              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => removeNodePrinter(index)} disabled={nodeConfig.printers.length <= 1}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="flex flex-col gap-2 rounded-md bg-muted/25 p-2 md:col-span-12 md:flex-row md:items-center md:justify-between">
-                              <div className="min-w-0">
-                                <Label className="text-xs text-muted-foreground">MQTT topic this printer listens on</Label>
-                                <div className="mt-1 break-all font-mono text-xs text-primary">
-                                  {printerTopicFor(printer, index)}
-                                </div>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void handleTestPrinter(printer, index)}
-                                disabled={testingPrinterKey === (printer.id || `${index}:${printer.topicSuffix}`)}
-                              >
-                                {testingPrinterKey === (printer.id || `${index}:${printer.topicSuffix}`) ? (
-                                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Printer className="mr-1.5 h-4 w-4" />
-                                )}
-                                Test print
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {remoteNode ? (
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
-                        <span>
-                          Desired v{remoteNode.desiredConfigVersion} · Applied {remoteNode.lastAppliedVersion ?? "never"} · Last seen {formatDate(remoteNode.lastSeenAt || undefined)}
-                        </span>
-                        {remoteNode.statusMessage ? (
-                          <span
-                            className={
-                              remoteNode.status === "DEGRADED" || remoteNode.status === "ERROR"
-                                ? "text-destructive"
-                                : "text-foreground"
-                            }
-                          >
-                            {remoteNode.statusMessage}
-                          </span>
-                        ) : null}
-                        {remoteNode.config?.lastConfigAck ? (
-                          <span className="text-foreground">
-                            {remoteNode.config.lastConfigAck.message || "OK, got it."} - Received {formatDate(remoteNode.config.lastConfigAck.receivedAt)}
-                          </span>
-                        ) : null}
-                        <Button variant="outline" size="sm" onClick={handleRotateNodeToken} disabled={savingNode}>
-                          Rotate token
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
-                        No saved remote-node config exists for this venue yet. Save node to create and publish one.
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="border-destructive/30 bg-destructive/5">
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2 text-base text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                          Danger Zone
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Delete historical operational data for {selectedStore.name}.
-                        </CardDescription>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setHistoryDialogOpen(true)}
-                        disabled={purgingHistory}
-                      >
-                        {purgingHistory ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="mr-2 h-4 w-4" />
-                        )}
-                        Delete history
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Removes orders, order items, table visit history, locality approvals,
-                      waiter shifts, kitchen ticket counters, audit/event history, and node
-                      event history. Menu, staff accounts, tables, QR tiles, printers, and
-                      venue settings stay intact.
-                    </p>
-                  </CardContent>
-                </Card>
                 </TabsContent>
               </Tabs>
             )}
@@ -3167,7 +3610,9 @@ export default function ArchitectQrTiles() {
                       <CardHeader className="pb-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
-                            <CardTitle className="text-xl">{store.name}</CardTitle>
+                            <CardTitle className="text-xl">
+                              {store.name}
+                            </CardTitle>
                             <CardDescription className="mt-1">
                               {store.slug ? `${store.slug}.garsone` : "No slug"}
                             </CardDescription>
@@ -3213,7 +3658,9 @@ export default function ArchitectQrTiles() {
                         </div>
                         <div className="rounded-lg border border-border/60 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-3">
                           <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-medium">Venue momentum</p>
+                            <p className="text-sm font-medium">
+                              Venue momentum
+                            </p>
                             <Badge variant="secondary" size="sm">
                               synthetic trend
                             </Badge>
@@ -3278,7 +3725,10 @@ export default function ArchitectQrTiles() {
                 id="store-slug"
                 value={storeOnboardForm.slug}
                 onChange={(event) =>
-                  updateStoreOnboardField("slug", slugifyStore(event.target.value))
+                  updateStoreOnboardField(
+                    "slug",
+                    slugifyStore(event.target.value),
+                  )
                 }
                 placeholder="noor"
               />
@@ -3305,7 +3755,7 @@ export default function ArchitectQrTiles() {
                 onChange={(event) =>
                   updateStoreOnboardField(
                     "tableCount",
-                    Number(event.target.value || 10)
+                    Number(event.target.value || 10),
                   )
                 }
               />
@@ -3405,7 +3855,9 @@ export default function ArchitectQrTiles() {
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingStoreUserId ? "Edit user" : "Add user"}</DialogTitle>
+            <DialogTitle>
+              {editingStoreUserId ? "Edit user" : "Add user"}
+            </DialogTitle>
             <DialogDescription>
               {editingStoreUserId
                 ? "Update staff details. Use Reset pass from the table to set password to 1234."
@@ -3418,7 +3870,10 @@ export default function ArchitectQrTiles() {
               <Input
                 value={storeUserForm.email}
                 onChange={(event) =>
-                  setStoreUserForm((current) => ({ ...current, email: event.target.value }))
+                  setStoreUserForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
                 }
                 placeholder="staff@example.com"
               />
@@ -3428,7 +3883,10 @@ export default function ArchitectQrTiles() {
               <Input
                 value={storeUserForm.displayName}
                 onChange={(event) =>
-                  setStoreUserForm((current) => ({ ...current, displayName: event.target.value }))
+                  setStoreUserForm((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
                 }
                 placeholder="Floor staff"
               />
@@ -3438,10 +3896,15 @@ export default function ArchitectQrTiles() {
               <Select
                 value={storeUserForm.role}
                 onValueChange={(value) =>
-                  setStoreUserForm((current) => ({ ...current, role: value as StoreUserRoleInput }))
+                  setStoreUserForm((current) => ({
+                    ...current,
+                    role: value as StoreUserRoleInput,
+                  }))
                 }
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="MANAGER">Manager</SelectItem>
                   <SelectItem value="WAITER">Waiter</SelectItem>
@@ -3457,7 +3920,10 @@ export default function ArchitectQrTiles() {
                   type="password"
                   value={storeUserForm.password}
                   onChange={(event) =>
-                    setStoreUserForm((current) => ({ ...current, password: event.target.value }))
+                    setStoreUserForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
                   }
                   placeholder="Required"
                 />
@@ -3465,11 +3931,20 @@ export default function ArchitectQrTiles() {
             ) : null}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStoreUserDialogOpen(false)} disabled={savingStoreUser}>
+            <Button
+              variant="outline"
+              onClick={() => setStoreUserDialogOpen(false)}
+              disabled={savingStoreUser}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void handleSaveStoreUser()} disabled={savingStoreUser}>
-              {savingStoreUser ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <Button
+              onClick={() => void handleSaveStoreUser()}
+              disabled={savingStoreUser}
+            >
+              {savingStoreUser ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
               {editingStoreUserId ? "Update user" : "Create user"}
             </Button>
           </DialogFooter>
@@ -3487,13 +3962,16 @@ export default function ArchitectQrTiles() {
           <DialogHeader>
             <DialogTitle>Delete venue history?</DialogTitle>
             <DialogDescription>
-              This permanently deletes historical data for {selectedStore?.name ?? "this venue"}.
-              Current setup, menu, staff, tables, QR tiles, printers, and node config are kept.
+              This permanently deletes historical data for{" "}
+              {selectedStore?.name ?? "this venue"}. Current setup, menu, staff,
+              tables, QR tiles, printers, and node config are kept.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
-              <p className="font-medium text-destructive">This cannot be undone.</p>
+              <p className="font-medium text-destructive">
+                This cannot be undone.
+              </p>
               <p className="mt-1 text-muted-foreground">
                 Type the exact phrase below to confirm:
               </p>
@@ -3567,7 +4045,9 @@ export default function ArchitectQrTiles() {
           <div className="space-y-4 py-2">
             <Tabs
               value={generateMethod}
-              onValueChange={(value) => setGenerateMethod(value as GenerateMethod)}
+              onValueChange={(value) =>
+                setGenerateMethod(value as GenerateMethod)
+              }
             >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="random">Random batch</TabsTrigger>
@@ -3595,13 +4075,16 @@ export default function ArchitectQrTiles() {
                 <Input
                   id="manual-public-code"
                   value={manualPublicCode}
-                  onChange={(event) => setManualPublicCode(event.target.value.toUpperCase())}
+                  onChange={(event) =>
+                    setManualPublicCode(event.target.value.toUpperCase())
+                  }
                   placeholder="GT-ABCD-1234"
                   className="font-mono uppercase"
                   autoComplete="off"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Enter the exact code printed on the QR tile. Format: GT-XXXX-XXXX.
+                  Enter the exact code printed on the QR tile. Format:
+                  GT-XXXX-XXXX.
                 </p>
               </TabsContent>
             </Tabs>
@@ -3617,7 +4100,10 @@ export default function ArchitectQrTiles() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void handleBulkCreate()} disabled={!canGenerate}>
+            <Button
+              onClick={() => void handleBulkCreate()}
+              disabled={!canGenerate}
+            >
               <Plus className="mr-2 h-4 w-4" />
               {generateMethod === "manual" ? "Create exact code" : "Generate"}
             </Button>

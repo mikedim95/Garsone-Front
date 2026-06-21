@@ -7,6 +7,7 @@
   useState,
 } from "react";
 import clsx from "clsx";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
@@ -43,6 +44,8 @@ import {
   UtensilsCrossed,
   RefreshCcw,
   ChefHat,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveStoreDisplayName } from "@/lib/storeSlug";
@@ -530,8 +533,7 @@ export default function ManagerDashboard() {
     return "basic";
   });
   const [activeTab, setActiveTab] = useState<ManagerTab>("economics");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [navExpanded, setNavExpanded] = useState(false);
   const [econRange, setEconRange] = useState<EconRange>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -2764,26 +2766,28 @@ export default function ManagerDashboard() {
     </div>
   );
 
-  const NavigatorButton = () =>
-    sidebarCollapsed ? (
-      <button
-        type="button"
-        onClick={() => {
-          if (window.matchMedia("(min-width: 640px)").matches) {
-            setSidebarCollapsed(false);
-          } else {
-            setMobileNavOpen(true);
-          }
-        }}
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-card/95 border border-border/50 shadow-lg backdrop-blur-sm text-sm font-medium text-foreground hover:bg-accent transition-colors"
-        aria-label={t("manager.expand_navigation", {
-          defaultValue: "Expand navigation",
-        })}
-      >
-        <BarChart2 className="h-4 w-4" />
-        <span>›</span>
-      </button>
-    ) : null;
+  const navItems = [
+    {
+      key: "economics" as ManagerTab,
+      label: t("manager.economics", { defaultValue: "Economics" }),
+      icon: BarChart2,
+    },
+    {
+      key: "orders" as ManagerTab,
+      label: t("waiter.orders", { defaultValue: "Orders" }),
+      icon: ListChecks,
+    },
+    {
+      key: "personnel" as ManagerTab,
+      label: t("manager.personnel", { defaultValue: "Personnel" }),
+      icon: Users,
+    },
+    {
+      key: "menu" as ManagerTab,
+      label: t("menu.title"),
+      icon: UtensilsCrossed,
+    },
+  ];
 
   return (
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
@@ -2851,152 +2855,120 @@ export default function ManagerDashboard() {
             value={activeTab}
             onValueChange={(value) => {
               setActiveTab(value as ManagerTab);
-              setSidebarCollapsed(true);
+              setNavExpanded(false);
             }}
             className="flex flex-1 min-h-0 relative"
           >
-            <aside
-              className={clsx(
-                "hidden sm:flex flex-col absolute z-40 left-4 top-4 rounded-2xl bg-card/95 border border-border/50 shadow-2xl backdrop-blur-sm transition-all duration-200 ease-out w-56",
-                sidebarCollapsed
-                  ? "-translate-x-[calc(100%+24px)] opacity-0 pointer-events-none"
-                  : "translate-x-0 opacity-100"
-              )}
+            {/* Desktop floating rail (sm+) */}
+            <motion.aside
+              initial={false}
+              animate={{ width: navExpanded ? 224 : 68 }}
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              onMouseEnter={() => setNavExpanded(true)}
+              onMouseLeave={() => setNavExpanded(false)}
+              className="hidden sm:flex flex-col absolute z-40 left-3 top-3 bottom-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden"
             >
-              <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                    {t("manager.nav_title", { defaultValue: "Dashboard" })}
-                  </p>
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {t("manager.analytics_overview", {
-                      defaultValue: "Analytics",
-                    })}
-                  </p>
-                </div>
+              <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-border/40">
+                <AnimatePresence initial={false}>
+                  {navExpanded && (
+                    <motion.div
+                      key="title"
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="min-w-0"
+                    >
+                      <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                        {t("manager.nav_title", { defaultValue: "Dashboard" })}
+                      </p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {t("manager.analytics_overview", { defaultValue: "Analytics" })}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <button
                   type="button"
-                  onClick={() => setSidebarCollapsed(true)}
-                  className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={t("manager.hide_navigation", {
-                    defaultValue: "Collapse",
-                  })}
+                  onClick={() => setNavExpanded((v) => !v)}
+                  className="ml-auto p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
                 >
-                  <span className="text-base leading-none block">‹</span>
+                  {navExpanded ? (
+                    <ChevronLeft className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
                 </button>
               </div>
               <div className="px-2 py-2">
-                <TabsList className="flex flex-col w-full gap-1 bg-transparent">
-                  {[
-                    {
-                      key: "economics",
-                      label: t("manager.economics", {
-                        defaultValue: "Economics",
-                      }),
-                      icon: <BarChart2 className="h-4 w-4 shrink-0" />,
-                    },
-                    {
-                      key: "orders",
-                      label: t("waiter.orders", { defaultValue: "Orders" }),
-                      icon: <ListChecks className="h-4 w-4 shrink-0" />,
-                    },
-                    {
-                      key: "personnel",
-                      label: t("manager.personnel", {
-                        defaultValue: "Personnel",
-                      }),
-                      icon: <Users className="h-4 w-4 shrink-0" />,
-                    },
-                    {
-                      key: "menu",
-                      label: t("menu.title"),
-                      icon: <UtensilsCrossed className="h-4 w-4 shrink-0" />,
-                    },
-                  ].map(({ key, label, icon }) => (
+                <TabsList className="flex flex-col w-full gap-1 bg-transparent h-auto">
+                  {navItems.map(({ key, label, icon: Icon }) => {
+                    const isActive = activeTab === key;
+                    return (
+                      <TabsTrigger
+                        key={key}
+                        value={key}
+                        title={label}
+                        className="group relative w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-colors overflow-hidden"
+                      >
+                        {isActive && (
+                          <motion.span
+                            layoutId="nav-active-pill"
+                            className="absolute inset-0 rounded-xl bg-primary -z-10"
+                            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                          />
+                        )}
+                        <Icon className="h-5 w-5 shrink-0 relative z-10" />
+                        <AnimatePresence initial={false}>
+                          {navExpanded && (
+                            <motion.span
+                              key="label"
+                              initial={{ opacity: 0, x: -6 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -6 }}
+                              transition={{ duration: 0.15 }}
+                              className="truncate relative z-10"
+                            >
+                              {label}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+              </div>
+            </motion.aside>
+
+            {/* Mobile bottom nav (<sm) */}
+            <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm">
+              <TabsList className="flex w-full gap-1 p-1.5 bg-transparent h-auto">
+                {navItems.map(({ key, label, icon: Icon }) => {
+                  const isActive = activeTab === key;
+                  return (
                     <TabsTrigger
                       key={key}
                       value={key}
-                      className="w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm transition-all duration-150"
+                      className="relative flex-1 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[10px] font-semibold text-muted-foreground hover:text-foreground data-[state=active]:text-primary-foreground transition-colors overflow-hidden"
                     >
-                      {icon}
-                      <span className="truncate">{label}</span>
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-active-pill-mobile"
+                          className="absolute inset-0 rounded-xl bg-primary -z-10"
+                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                        />
+                      )}
+                      <Icon className="h-5 w-5 relative z-10" />
+                      <span className="truncate w-full text-center relative z-10">{label}</span>
                     </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-            </aside>
-
-            {/* Mobile Navigation */}
-            <div className="sm:hidden">
-              <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-                <SheetContent
-                  side="left"
-                  className="w-[280px] bg-background text-foreground"
-                >
-                  <SheetHeader>
-                    <SheetTitle className="text-base font-semibold">
-                      {t("manager.analytics_overview", {
-                        defaultValue: "Analytics",
-                      })}
-                    </SheetTitle>
-                    <SheetDescription className="sr-only">
-                      {t("manager.navigation_menu_description", {
-                        defaultValue: "Manager dashboard navigation",
-                      })}
-                    </SheetDescription>
-                  </SheetHeader>
-                  <div className="mt-4 space-y-1">
-                    {[
-                      {
-                        key: "economics",
-                        label: t("manager.economics", {
-                          defaultValue: "Economics",
-                        }),
-                        icon: <BarChart2 className="h-4 w-4" />,
-                      },
-                      {
-                        key: "orders",
-                        label: t("waiter.orders", { defaultValue: "Orders" }),
-                        icon: <ListChecks className="h-4 w-4" />,
-                      },
-                      {
-                        key: "personnel",
-                        label: t("manager.personnel", {
-                          defaultValue: "Personnel",
-                        }),
-                        icon: <Users className="h-4 w-4" />,
-                      },
-                      {
-                        key: "menu",
-                        label: t("menu.title"),
-                        icon: <UtensilsCrossed className="h-4 w-4" />,
-                      },
-                    ].map(({ key, label, icon }) => (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          setActiveTab(key as ManagerTab);
-                          setSidebarCollapsed(true);
-                          setMobileNavOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                          activeTab === key
-                            ? "bg-primary text-primary-foreground"
-                            : "text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {icon}
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
+                  );
+                })}
+              </TabsList>
+            </nav>
 
             <div className="flex-1 w-full overflow-y-auto">
-              <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
-                <NavigatorButton />
+              <div className="w-full px-4 sm:pl-24 sm:pr-6 lg:pr-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
                 <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />

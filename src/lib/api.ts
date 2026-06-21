@@ -1036,7 +1036,7 @@ export const api = {
         }),
   adminDeleteStoreUser: (storeId: string, userId: string): Promise<OkResponse> =>
     isOffline()
-      ? Promise.resolve({ success: true })
+      ? Promise.resolve({ ok: true } as OkResponse)
       : fetchApi<OkResponse>(`/admin/stores/${storeId}/users/${userId}`, {
           method: "DELETE",
         }),
