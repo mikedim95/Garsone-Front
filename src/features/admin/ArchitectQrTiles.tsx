@@ -2868,6 +2868,9 @@ export default function ArchitectQrTiles() {
                           Add Wi-Fi
                         </Button>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Saving installs the profiles; acknowledgement does not mean every hotspot is currently detectable. Phone hotspots should use compatibility or 2.4 GHz mode.
+                      </p>
                       <div className="space-y-2">
                         {(nodeConfig.wifiNetworks ?? []).map((wifi, index) => (
                           <div key={wifi.id || index} className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-12">
@@ -2897,9 +2900,14 @@ export default function ArchitectQrTiles() {
                               <Label>Priority</Label>
                               <Input
                                 type="number"
+                                min={1}
+                                max={20}
                                 value={wifi.priority ?? index + 1}
                                 onChange={(event) => updateWifiNetwork(index, { priority: Number(event.target.value || index + 1) })}
                               />
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                1 is primary; higher numbers are fallback networks.
+                              </p>
                             </div>
                             <div className="flex items-end gap-3 pb-2 md:col-span-1">
                               <label className="flex items-center gap-2 text-sm">
