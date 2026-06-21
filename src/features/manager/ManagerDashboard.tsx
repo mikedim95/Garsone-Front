@@ -2862,11 +2862,14 @@ export default function ManagerDashboard() {
             {/* Desktop floating rail (sm+) */}
             <motion.aside
               initial={false}
-              animate={{ width: navExpanded ? 224 : 68 }}
+              animate={{ width: navExpanded ? 224 : 56 }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               onMouseEnter={() => setNavExpanded(true)}
               onMouseLeave={() => setNavExpanded(false)}
-              className="hidden sm:flex flex-col absolute z-40 left-3 top-3 bottom-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden"
+              className={clsx(
+                "hidden sm:flex flex-col absolute z-40 left-3 top-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden",
+                navExpanded ? "bottom-3" : "h-fit",
+              )}
             >
               <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-border/40">
                 <AnimatePresence initial={false}>
@@ -2968,7 +2971,7 @@ export default function ManagerDashboard() {
             </nav>
 
             <div className="flex-1 w-full overflow-y-auto">
-              <div className="w-full px-4 sm:pl-24 sm:pr-6 lg:pr-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
+              <div className="w-full px-4 sm:pl-20 sm:pr-6 lg:pr-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
                 <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />

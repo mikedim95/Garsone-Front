@@ -229,7 +229,11 @@ const saveFilter = <T,>(key: string, value: T) => {
   }
 };
 
-export default function WaiterDashboard() {
+interface WaiterDashboardProps {
+  embeddedHybrid?: boolean;
+}
+
+export default function WaiterDashboard({ embeddedHybrid = false }: WaiterDashboardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -418,10 +422,10 @@ export default function WaiterDashboard() {
       navigate('/login');
       return;
     }
-    if (user?.role === 'hybrid') {
-      navigate('/cook', { replace: true });
+    if (user?.role === 'hybrid' && !embeddedHybrid) {
+      navigate('/hybrid', { replace: true });
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [embeddedHybrid, isAuthenticated, user, navigate]);
 
   // Load assignments + store slug
   const fetchAssignments = useCallback(async () => {

@@ -83,7 +83,7 @@ export default function HybridDashboard() {
         <CookDashboard />
       </div>
       <div className={view === "service" ? "block" : "hidden"} aria-hidden={view !== "service"}>
-        <WaiterDashboard />
+        <WaiterDashboard embeddedHybrid />
       </div>
     </div>
   );
