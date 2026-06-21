@@ -871,7 +871,7 @@ export default function ArchitectQrTiles() {
 
   const waitForRemoteNodeAck = useCallback(
     async (storeId: string, targetVersion: number) => {
-      for (let attempt = 0; attempt < 10; attempt += 1) {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
         const res = await api.adminListStoreNodes(storeId);
         const node = pickPrimaryRemoteNode(res.nodes ?? []);
@@ -903,6 +903,11 @@ export default function ArchitectQrTiles() {
           return;
         }
       }
+      toast({
+        variant: "destructive",
+        title: "Pi acknowledgement delayed",
+        description: `Config v${targetVersion} is saved. The Pi will keep retrying its acknowledgement.`,
+      });
     },
     [toast],
   );
