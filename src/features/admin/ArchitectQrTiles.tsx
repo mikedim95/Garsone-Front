@@ -2869,7 +2869,7 @@ export default function ArchitectQrTiles() {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Saving installs the profiles; acknowledgement does not mean every hotspot is currently detectable. Phone hotspots should use compatibility or 2.4 GHz mode.
+                        Saving installs the profiles; acknowledgement does not mean every hotspot is currently detectable. Phone hotspots should use WPA2 and compatibility or 2.4 GHz mode.
                       </p>
                       <div className="space-y-2">
                         {(nodeConfig.wifiNetworks ?? []).map((wifi, index) => (
