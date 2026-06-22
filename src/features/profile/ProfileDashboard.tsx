@@ -217,7 +217,7 @@ export default function ProfileDashboard() {
 
   return (
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
-      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
           supertitle={profileLabel}
           title={title}

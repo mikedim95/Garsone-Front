@@ -301,6 +301,7 @@ export const CookProView = ({
                     isAccepting={accepting.has(order.id)}
                     isPrinting={printing.has(order.id)}
                     isActing={actingIds.has(`cancel:${order.id}`)}
+                    isCancelling={actingIds.has(`cancel:${order.id}`)}
                   />
                 </div>
               ))
@@ -352,6 +353,7 @@ export const CookProView = ({
                     isAccepting={accepting.has(order.id)}
                     isPrinting={printing.has(order.id)}
                     isActing={actingIds.has(`ready:${order.id}`)}
+                    isCancelling={actingIds.has(`cancel:${order.id}`)}
                   />
                 </div>
               ))
@@ -405,6 +407,7 @@ export const CookProView = ({
                       isAccepting={accepting.has(order.id)}
                       isPrinting={printing.has(order.id)}
                       isActing={actingIds.has(`served:${order.id}`)}
+                      isCancelling={actingIds.has(`cancel:${order.id}`)}
                     />
                   </div>
                 ))
@@ -459,6 +462,7 @@ export const CookProView = ({
                       isAccepting={accepting.has(order.id)}
                       isPrinting={printing.has(order.id)}
                       isActing={actingIds.has(`paid:${order.id}`)}
+                      isCancelling={actingIds.has(`cancel:${order.id}`)}
                     />
                   </div>
                 ))

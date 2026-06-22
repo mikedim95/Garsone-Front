@@ -42,6 +42,7 @@ interface CookOrderCardProps {
   isAccepting: boolean;
   isPrinting: boolean;
   isActing: boolean;
+  isCancelling?: boolean;
 }
 
 const getElapsedMinutes = (createdAt: string) => {
@@ -84,6 +85,7 @@ export const CookOrderCard = ({
   isAccepting,
   isPrinting,
   isActing,
+  isCancelling = false,
 }: CookOrderCardProps) => {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -433,15 +435,17 @@ export const CookOrderCard = ({
             <ListChecks className="h-4 w-4" />
           </Button>
 
-          {orderStatus === "PLACED" && (
+          {orderStatus !== "CANCELLED" && (
             <Button
               size="sm"
               variant="ghost"
               className="text-destructive hover:bg-destructive/10"
               onClick={() => onCancel(order.id)}
-              disabled={isActing}
+              disabled={isActing || isCancelling}
+              aria-label={t("actions.cancel", { defaultValue: "Cancel" })}
+              title={t("actions.cancel", { defaultValue: "Cancel" })}
             >
-              {isActing ? (
+              {isCancelling ? (
                 <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <XCircle className="h-4 w-4" />

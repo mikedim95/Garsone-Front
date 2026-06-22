@@ -906,7 +906,7 @@ export default function WaiterDashboard({ embeddedHybrid = false }: WaiterDashbo
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
-      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col overflow-x-hidden">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col overflow-x-hidden">
         <DashboardHeader
           supertitle={t('waiter.dashboard')}
           title={storeTitle}
@@ -1102,7 +1102,8 @@ export default function WaiterDashboard({ embeddedHybrid = false }: WaiterDashbo
                         actingIds.has(`PREPARING:${order.id}`) ||
                         actingIds.has(`READY:${order.id}`) ||
                         actingIds.has(`SERVED:${order.id}`) ||
-                        actingIds.has(`PAID:${order.id}`)
+                        actingIds.has(`PAID:${order.id}`) ||
+                        actingIds.has(`CANCELLED:${order.id}`)
                       }
                       highlighted={highlightedIds.has(order.id)}
                     />

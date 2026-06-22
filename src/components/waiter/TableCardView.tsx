@@ -184,17 +184,16 @@ export function TableCardView({
         key={tableId}
         layout
         initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: isInactive ? 0.5 : 1, scale: 1 }}
+        animate={{ opacity: isInactive ? 0.7 : 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.8 }}
-        whileHover={{ scale: isInactive ? 1 : 1.05 }}
-        whileTap={{ scale: isInactive ? 1 : 0.95 }}
-        onClick={() => !isInactive && setSelectedTable(tableId)}
-        disabled={isInactive}
+        whileHover={{ scale: isInactive ? 1.02 : 1.05 }}
+        whileTap={{ scale: isInactive ? 0.98 : 0.95 }}
+        onClick={() => setSelectedTable(tableId)}
         className={clsx(
           'relative aspect-square rounded-xl border-2 p-2 flex flex-col items-center justify-center gap-1',
           'transition-all duration-200 shadow-sm',
           isInactive ? [
-            'bg-muted/50 border-border/50 cursor-not-allowed opacity-50',
+            'bg-muted/50 border-border/50 cursor-pointer hover:shadow-md',
           ] : [
             'bg-card/80 backdrop-blur-sm cursor-pointer hover:shadow-md',
             // Stop infinite flashing: keep static highlight without pulse
@@ -481,7 +480,7 @@ export function TableCardView({
                             Mark Paid
                           </Button>
                         )}
-                        {!['PAID', 'CANCELLED'].includes(order.status) && (
+                        {order.status !== 'CANCELLED' && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -570,7 +569,7 @@ export function TableCardView({
                             <div className="text-xs italic text-muted-foreground bg-background/50 rounded px-2 py-1">"{order.note}"</div>
                           )}
                           <div className="flex flex-wrap gap-2 pt-1">
-                            {!['PAID', 'CANCELLED'].includes(order.status) && (
+                            {order.status !== 'CANCELLED' && (
                               <Button
                                 size="sm"
                                 variant="ghost"

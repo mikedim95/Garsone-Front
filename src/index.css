@@ -790,6 +790,20 @@ html body[data-scroll-locked]:not(:root) {
   display: none;
 }
 
+/* Dashboard panels remain scrollable without showing native browser chrome. */
+.dashboard-scrollbars-hidden,
+.dashboard-scrollbars-hidden * {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.dashboard-scrollbars-hidden::-webkit-scrollbar,
+.dashboard-scrollbars-hidden *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Keep the selected menu pane clipped to the viewport and avoid painting offscreen sections. */
 .menu-content-frame {
   position: relative;

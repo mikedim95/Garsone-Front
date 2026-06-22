@@ -19,7 +19,7 @@ import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
 import { CookOrderCard } from "@/components/cook/CookOrderCard";
 import { OrderModifiersDialog } from "@/components/cook/OrderModifiersDialog";
-import { LayoutGrid, List, ListChecks, RefreshCcw } from "lucide-react";
+import { LayoutGrid, List, ListChecks, RefreshCcw, XCircle } from "lucide-react";
 import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from "@/lib/storeSlug";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -1005,7 +1005,7 @@ export default function CookDashboard() {
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh min-w-0 overflow-x-hidden')}>
-      <div className="min-h-screen min-h-dvh min-w-0 dashboard-bg text-foreground flex flex-col">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh min-w-0 dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
           supertitle={t('cook.dashboard') || 'Cook Dashboard'}
           title={storeTitle}
@@ -1337,6 +1337,19 @@ export default function CookDashboard() {
                         >
                           <ListChecks className="h-4 w-4" />
                         </Button>
+                        <Button
+                          className="inline-flex items-center justify-center bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md"
+                          onClick={() => cancelOrder(o.id)}
+                          disabled={actingIds.has(`cancel:${o.id}`)}
+                          aria-label={cancelLabel}
+                          title={cancelLabel}
+                        >
+                          {actingIds.has(`cancel:${o.id}`) ? (
+                            <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <XCircle className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </Card>
                   );
@@ -1376,6 +1389,7 @@ export default function CookDashboard() {
                           isAccepting={accepting.has(order.id)}
                           isPrinting={printing.has(order.id)}
                           isActing={actingIds.has(`served:${order.id}`)}
+                          isCancelling={actingIds.has(`cancel:${order.id}`)}
                         />
                       ))}
                     </div>
@@ -1411,6 +1425,7 @@ export default function CookDashboard() {
                           isAccepting={accepting.has(order.id)}
                           isPrinting={printing.has(order.id)}
                           isActing={actingIds.has(`paid:${order.id}`)}
+                          isCancelling={actingIds.has(`cancel:${order.id}`)}
                         />
                       ))}
                     </div>

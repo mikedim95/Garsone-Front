@@ -2791,7 +2791,7 @@ export default function ManagerDashboard() {
 
   return (
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
-      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <DashboardHeader
           supertitle={t("manager.dashboard")}
           title={resolveStoreDisplayName(storeName, user?.storeSlug, t("manager.dashboard"))}
@@ -2862,16 +2862,18 @@ export default function ManagerDashboard() {
             {/* Desktop floating rail (sm+) */}
             <motion.aside
               initial={false}
-              animate={{ width: navExpanded ? 224 : 56 }}
+              animate={{ width: navExpanded ? 224 : 48 }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              onMouseEnter={() => setNavExpanded(true)}
-              onMouseLeave={() => setNavExpanded(false)}
-              className={clsx(
-                "hidden sm:flex flex-col absolute z-40 left-3 top-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden",
-                navExpanded ? "bottom-3" : "h-fit",
-              )}
+              className="hidden sm:flex h-fit flex-col absolute z-40 left-3 top-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden"
             >
-              <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-border/40">
+              <div
+                className={clsx(
+                  "flex items-center justify-between",
+                  navExpanded
+                    ? "gap-2 px-3 py-3 border-b border-border/40"
+                    : "p-2",
+                )}
+              >
                 <AnimatePresence initial={false}>
                   {navExpanded && (
                     <motion.div
@@ -2894,8 +2896,10 @@ export default function ManagerDashboard() {
                 <button
                   type="button"
                   onClick={() => setNavExpanded((v) => !v)}
-                  className="ml-auto p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                   aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
+                  aria-expanded={navExpanded}
+                  aria-controls="manager-desktop-navigation"
                 >
                   {navExpanded ? (
                     <ChevronLeft className="h-4 w-4" />
@@ -2904,44 +2908,47 @@ export default function ManagerDashboard() {
                   )}
                 </button>
               </div>
-              <div className="px-2 py-2">
-                <TabsList className="flex flex-col w-full gap-1 bg-transparent h-auto">
-                  {navItems.map(({ key, label, icon: Icon }) => {
-                    const isActive = activeTab === key;
-                    return (
-                      <TabsTrigger
-                        key={key}
-                        value={key}
-                        title={label}
-                        className="group relative w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-colors overflow-hidden"
-                      >
-                        {isActive && (
-                          <motion.span
-                            layoutId="nav-active-pill"
-                            className="absolute inset-0 rounded-xl bg-primary -z-10"
-                            transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                          />
-                        )}
-                        <Icon className="h-5 w-5 shrink-0 relative z-10" />
-                        <AnimatePresence initial={false}>
-                          {navExpanded && (
-                            <motion.span
-                              key="label"
-                              initial={{ opacity: 0, x: -6 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: -6 }}
-                              transition={{ duration: 0.15 }}
-                              className="truncate relative z-10"
+              <AnimatePresence initial={false}>
+                {navExpanded && (
+                  <motion.div
+                    id="manager-desktop-navigation"
+                    key="desktop-navigation"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-2 py-2">
+                      <TabsList className="flex flex-col w-full gap-1 bg-transparent h-auto">
+                        {navItems.map(({ key, label, icon: Icon }) => {
+                          const isActive = activeTab === key;
+                          return (
+                            <TabsTrigger
+                              key={key}
+                              value={key}
+                              title={label}
+                              className="group relative w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-colors overflow-hidden"
                             >
-                              {label}
-                            </motion.span>
-                          )}
-                        </AnimatePresence>
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-              </div>
+                              {isActive && (
+                                <motion.span
+                                  layoutId="nav-active-pill"
+                                  className="absolute inset-0 rounded-xl bg-primary -z-10"
+                                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                                />
+                              )}
+                              <Icon className="h-5 w-5 shrink-0 relative z-10" />
+                              <span className="truncate relative z-10">
+                                {label}
+                              </span>
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.aside>
 
             {/* Mobile bottom nav (<sm) */}
@@ -2971,7 +2978,7 @@ export default function ManagerDashboard() {
             </nav>
 
             <div className="flex-1 w-full overflow-y-auto">
-              <div className="w-full px-4 sm:pl-20 sm:pr-6 lg:pr-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
+              <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
                 <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />
