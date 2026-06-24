@@ -61,7 +61,7 @@ export const DashboardHeader = ({
           </div>
           <div className="min-w-0">
             {supertitle ? (
-              <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-0.5 truncate">
+              <p className="text-xs sm:text-sm font-medium normal-case tracking-normal text-muted-foreground mb-0.5 truncate">
                 {supertitle}
               </p>
             ) : null}

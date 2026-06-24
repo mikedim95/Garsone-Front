@@ -927,12 +927,15 @@ export default function WaiterDashboard({
     user?.storeSlug,
     t('waiter.dashboard')
   );
+  const headerSupertitle = embeddedHybrid
+    ? t('hybrid.dashboard', { defaultValue: 'Hybrid' })
+    : t('waiter.dashboard');
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
       <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col overflow-x-hidden">
         <DashboardHeader
-          supertitle={t('waiter.dashboard')}
+          supertitle={headerSupertitle}
           title={storeTitle}
           subtitle={undefined}
           icon="🍽️"

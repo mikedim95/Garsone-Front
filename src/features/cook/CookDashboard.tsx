@@ -291,7 +291,11 @@ const isOrderPlacedPayload = (payload: unknown): payload is {
 } =>
   isRecord(payload) && typeof payload.orderId === 'string';
 
-export default function CookDashboard() {
+interface CookDashboardProps {
+  embeddedHybrid?: boolean;
+}
+
+export default function CookDashboard({ embeddedHybrid = false }: CookDashboardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -1002,12 +1006,15 @@ export default function CookDashboard() {
     user?.storeSlug,
     t('cook.dashboard') || 'Cook Dashboard'
   );
+  const headerSupertitle = embeddedHybrid
+    ? t('hybrid.dashboard', { defaultValue: 'Hybrid' })
+    : t('cook.dashboard') || 'Cook Dashboard';
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh min-w-0 overflow-x-hidden')}>
       <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh min-w-0 dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
-          supertitle={t('cook.dashboard') || 'Cook Dashboard'}
+          supertitle={headerSupertitle}
           title={storeTitle}
           subtitle={undefined}
           rightContent={
