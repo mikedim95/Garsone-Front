@@ -7,6 +7,7 @@ import { useOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import { realtimeService } from "@/lib/realtime";
+import { registerStaffPush } from "@/lib/staffPush";
 import type { Order, CartItem, OrderItemStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -291,6 +292,15 @@ const isOrderPlacedPayload = (payload: unknown): payload is {
 } =>
   isRecord(payload) && typeof payload.orderId === 'string';
 
+const isWaiterCallPayload = (
+  payload: unknown
+): payload is {
+  tableId?: string;
+  tableLabel?: string;
+  message?: string;
+  printerTopics?: string[];
+} => isRecord(payload) && (payload as any).action === "called";
+
 interface CookDashboardProps {
   embeddedHybrid?: boolean;
 }
@@ -354,6 +364,14 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
       } catch {}
     }
   }, [isHybridUser]);
+
+  useEffect(() => {
+    if (!isAuthenticated() || (user?.role !== "cook" && user?.role !== "hybrid")) {
+      return;
+    }
+    void registerStaffPush({ storeSlug: user?.storeSlug });
+  }, [isAuthenticated, user?.id, user?.role, user?.storeSlug]);
+
   useEffect(() => {
     if (
       !isAuthenticated() ||
@@ -405,6 +423,7 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
       ? `${storeSlug}/orders/placed/${normalizedCookTopic}`
       : `${storeSlug}/orders/placed`;
     const itemTopic = `${storeSlug}/orders/items`;
+    const waiterCallTopic = `${storeSlug}/waiter/call`;
     const statusTopics = [
       `${storeSlug}/orders/preparing`,
       `${storeSlug}/orders/ready`,
@@ -456,20 +475,45 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
       const normalized = normalizeOrder(rawOrder, Date.now(), cookPrinterTopic);
       if (normalized) upsertOrder(normalized);
     };
+    const handleWaiterCall = (payload: unknown) => {
+      if (!isWaiterCallPayload(payload)) return;
+      const normalizedCookTopic = normalizePrinterTopicValue(cookPrinterTopic);
+      const payloadTopics = Array.isArray(payload.printerTopics)
+        ? payload.printerTopics.map(normalizePrinterTopicValue).filter(Boolean)
+        : [];
+      if (
+        normalizedCookTopic &&
+        payloadTopics.length > 0 &&
+        !payloadTopics.includes(normalizedCookTopic)
+      ) {
+        return;
+      }
+      const tableText = payload.tableLabel || payload.tableId || "";
+      toast({
+        title: t("toasts.waiter_called", { defaultValue: "Bell ring" }),
+        description:
+          payload.message ||
+          (tableText
+            ? `Table ${tableText} needs assistance.`
+            : "A table needs assistance."),
+      });
+    };
     realtimeService.connect();
     realtimeService.subscribe(topic, handler);
     realtimeService.subscribe(itemTopic, handleItemStatus);
+    realtimeService.subscribe(waiterCallTopic, handleWaiterCall);
     statusTopics.forEach((statusTopic) => {
       realtimeService.subscribe(statusTopic, handleStatusOrder);
     });
     return () => {
       realtimeService.unsubscribe(topic, handler);
       realtimeService.unsubscribe(itemTopic, handleItemStatus);
+      realtimeService.unsubscribe(waiterCallTopic, handleWaiterCall);
       statusTopics.forEach((statusTopic) => {
         realtimeService.unsubscribe(statusTopic, handleStatusOrder);
       });
     };
-  }, [storeSlug, cookPrinterTopic, upsertOrder]);
+  }, [storeSlug, cookPrinterTopic, upsertOrder, toast, t]);
 
   // Incoming orders: priority based on createdAt (older first => priority 1)
   const incoming = useMemo(
