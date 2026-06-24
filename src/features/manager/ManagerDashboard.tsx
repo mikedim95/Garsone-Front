@@ -2928,12 +2928,12 @@ export default function ManagerDashboard() {
                               key={key}
                               value={key}
                               title={label}
-                              className="group relative w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-colors overflow-hidden"
+                              className="group relative w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 data-[state=active]:!bg-transparent data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-colors overflow-hidden"
                             >
                               {isActive && (
                                 <motion.span
                                   layoutId="nav-active-pill"
-                                  className="absolute inset-0 rounded-xl bg-primary -z-10"
+                                  className="absolute inset-0 rounded-xl bg-primary"
                                   transition={{ type: "spring", stiffness: 380, damping: 32 }}
                                 />
                               )}
@@ -2960,12 +2960,12 @@ export default function ManagerDashboard() {
                     <TabsTrigger
                       key={key}
                       value={key}
-                      className="relative flex-1 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[10px] font-semibold text-muted-foreground hover:text-foreground data-[state=active]:text-primary-foreground transition-colors overflow-hidden"
+                      className="relative flex-1 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[10px] font-semibold text-muted-foreground hover:text-foreground data-[state=active]:!bg-transparent data-[state=active]:text-primary-foreground transition-colors overflow-hidden"
                     >
                       {isActive && (
                         <motion.span
                           layoutId="nav-active-pill-mobile"
-                          className="absolute inset-0 rounded-xl bg-primary -z-10"
+                          className="absolute inset-0 rounded-xl bg-primary"
                           transition={{ type: "spring", stiffness: 380, damping: 32 }}
                         />
                       )}
