@@ -576,6 +576,7 @@ export function WaiterMenuTab({
                 autoOpenCart={false}
                 showCartButton={true}
                 floatingCartPosition="none"
+                cartBottomOffset="raised"
               />
             </motion.div>
           )}

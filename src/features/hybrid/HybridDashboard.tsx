@@ -138,7 +138,7 @@ export default function HybridDashboard() {
         </div>
       </div>
 
-      <nav className="sm:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-[60] rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm">
+      <nav className="sm:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm">
         <div className="flex w-full gap-1 p-1.5">
           {options.map((option) => renderSelectorItem(option, true))}
         </div>

@@ -36,6 +36,7 @@ interface Props {
   autoOpenCart?: boolean;
   showCartButton?: boolean;
   floatingCartPosition?: 'right' | 'none';
+  cartBottomOffset?: 'default' | 'raised';
 }
 
 export const ElegantMenuView = ({
@@ -57,6 +58,7 @@ export const ElegantMenuView = ({
   autoOpenCart = false,
   showCartButton = true,
   floatingCartPosition = 'right',
+  cartBottomOffset = 'default',
   primaryCtaLabel,
   secondaryCtaLabel,
 }: Props) => {
@@ -607,7 +609,13 @@ export const ElegantMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
+              <div
+                className={`shrink-0 p-3 ${
+                  cartBottomOffset === 'raised'
+                    ? 'pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:pb-4'
+                    : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-4'
+                } sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10`}
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-foreground">
                     {t('menu.total', { defaultValue: 'Total' })}
