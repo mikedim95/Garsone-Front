@@ -37,3 +37,25 @@ export function setStoredStoreSlug(slug: string | null | undefined) {
 export function clearStoredStoreSlug() {
   setStoredStoreSlug(null);
 }
+
+export function formatStoreSlugLabel(slug: string | null | undefined) {
+  const normalized = (slug || "").trim();
+  if (!normalized) return "";
+  return normalized
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function resolveStoreDisplayName(
+  storedName: string | null | undefined,
+  storeSlug: string | null | undefined,
+  fallback: string
+) {
+  const name = (storedName || "").trim();
+  const slugLabel = formatStoreSlugLabel(storeSlug);
+  // Offline demo names are local-only placeholders and should not win over an authenticated store.
+  const isOfflinePlaceholder = /\boffline\b|\bdemo\b/i.test(name);
+  if (name && !(storeSlug && isOfflinePlaceholder)) return name;
+  return slugLabel || fallback;
+}

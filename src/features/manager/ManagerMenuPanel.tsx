@@ -1,19 +1,45 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption, StaffType } from '@/types';
+import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 type CustomOption = { id?: string; titleEn: string; titleEl: string; price: string };
-type CustomModifier = { id?: string; titleEn: string; titleEl: string; required: boolean; isAvailable: boolean; options: CustomOption[]; originalOptionIds?: string[] };
+type CustomModifier = {
+  id?: string;
+  titleEn: string;
+  titleEl: string;
+  required: boolean;
+  selectionMode: 'single' | 'multiple';
+  isAvailable: boolean;
+  options: CustomOption[];
+  originalOptionIds?: string[];
+};
+type CategoryForm = { titleEn: string; titleEl: string; sortOrder: string; imageUrl: string };
+type SubcategorySummary = {
+  key: string;
+  categoryId: string;
+  titleEn: string;
+  titleEl: string;
+  itemCount: number;
+  items: ManagerItemSummary[];
+};
+type SubcategoryForm = {
+  categoryId: string;
+  titleEn: string;
+  titleEl: string;
+};
 type ItemForm = {
   titleEn: string;
   titleEl: string;
+  subcategoryEn: string;
+  subcategoryEl: string;
   descriptionEn: string;
   descriptionEl: string;
   imageUrl: string;
@@ -24,15 +50,21 @@ type ItemForm = {
   printerTopic: string;
 };
 
+const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
+
 export const ManagerMenuPanel = () => {
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
+  const activeLanguage = (i18n.resolvedLanguage || i18n.language || 'el').toLowerCase();
+  const preferGreek = activeLanguage.startsWith('el');
 
   const [items, setItems] = useState<ManagerItemSummary[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
 
   const [storeSlug, setStoreSlug] = useState<string>('');
-  const [cookTypes, setCookTypes] = useState<StaffType[]>([]);
-  const [waiterTypes, setWaiterTypes] = useState<StaffType[]>([]);
+  const [printerTopics, setPrinterTopics] = useState<string[]>([]);
+  const [printOnArrival, setPrintOnArrival] = useState(false);
+  const [savingPrintOnArrival, setSavingPrintOnArrival] = useState(false);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,6 +72,8 @@ export const ManagerMenuPanel = () => {
   const [form, setForm] = useState<ItemForm>({
     titleEn: '',
     titleEl: '',
+    subcategoryEn: '',
+    subcategoryEl: '',
     descriptionEn: '',
     descriptionEl: '',
     imageUrl: '',
@@ -62,63 +96,87 @@ export const ManagerMenuPanel = () => {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [imageUploadStatus, setImageUploadStatus] = useState('');
 
   // Category edit modal
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
-  const [categoryForm, setCategoryForm] = useState<{ title: string }>({
-    title: '',
+  const [categoryForm, setCategoryForm] = useState<CategoryForm>({
+    titleEn: '',
+    titleEl: '',
+    sortOrder: '0',
+    imageUrl: '',
   });
+  const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
+  const [categoryImagePreview, setCategoryImagePreview] = useState('');
+  const [categoryImageUploadStatus, setCategoryImageUploadStatus] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
   const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('edit');
+  const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
+  const [subcategoryDialogMode, setSubcategoryDialogMode] = useState<'create' | 'edit'>('edit');
+  const [editingSubcategory, setEditingSubcategory] = useState<SubcategorySummary | null>(null);
+  const [subcategoryForm, setSubcategoryForm] = useState<SubcategoryForm>({
+    categoryId: '',
+    titleEn: '',
+    titleEl: '',
+  });
+  const [draftSubcategories, setDraftSubcategories] = useState<SubcategorySummary[]>([]);
+  const [savingSubcategory, setSavingSubcategory] = useState(false);
 
   const normalizePrinterTopicValue = (value?: string | null) =>
     typeof value === 'string' ? value.trim().toLowerCase() : '';
 
-  type CookTypeOption = { id: string; title: string; printerTopic: string };
-  const cookTypeOptions = useMemo(() => {
-    return cookTypes
-      .map((type) => {
-        const printerTopic = normalizePrinterTopicValue(type.printerTopic);
-        if (!printerTopic) return null;
-        const title = (type.title || type.slug || printerTopic).trim();
-        return { id: type.id, title, printerTopic };
-      })
-      .filter((opt): opt is CookTypeOption => Boolean(opt));
-  }, [cookTypes]);
-
   const resolveItemPrinter = (value?: string | null) => {
     const trimmed = normalizePrinterTopicValue(value);
     if (trimmed) return trimmed;
-    return cookTypeOptions[0]?.printerTopic ?? '';
+    return printerTopics[0] ?? '';
   };
 
   const selectedPrinterTopic = normalizePrinterTopicValue(form.printerTopic);
-  const cookTypeTopics = useMemo(
-    () => new Set(cookTypeOptions.map((opt) => opt.printerTopic)),
-    [cookTypeOptions]
+  const printerTopicSet = useMemo(
+    () => new Set(printerTopics),
+    [printerTopics]
   );
   const showLegacyPrinter =
-    selectedPrinterTopic.length > 0 && !cookTypeTopics.has(selectedPrinterTopic);
-  const displayCookTypeOptions = showLegacyPrinter
+    selectedPrinterTopic.length > 0 && !printerTopicSet.has(selectedPrinterTopic);
+  const displayPrinterOptions = showLegacyPrinter
     ? [
         {
           id: 'legacy-printer',
           title: `Unassigned (${selectedPrinterTopic})`,
           printerTopic: selectedPrinterTopic,
         },
-        ...cookTypeOptions,
+        ...printerTopics.map((topic) => ({ id: topic, title: topic, printerTopic: topic })),
       ]
-    : cookTypeOptions;
+    : printerTopics.map((topic) => ({ id: topic, title: topic, printerTopic: topic }));
+
+  const localizedCategoryTitle = (category?: MenuCategory | null) => {
+    if (!category) return '';
+    const en = category.titleEn?.trim();
+    const el = category.titleEl?.trim();
+    const fallback = category.title?.trim() || en || el || '';
+    return preferGreek ? el || fallback : en || fallback;
+  };
+
+  const localizedSubcategoryTitle = (subcategory?: Pick<SubcategorySummary, 'titleEn' | 'titleEl'> | null) => {
+    if (!subcategory) return '';
+    const en = subcategory.titleEn?.trim();
+    const el = subcategory.titleEl?.trim();
+    return preferGreek ? el || en || '' : en || el || '';
+  };
+
+  const subcategoryKey = (categoryId: string, en?: string | null, el?: string | null) =>
+    `${categoryId}|${(en || '').trim().toLowerCase()}|${(el || '').trim().toLowerCase()}`;
+
+  const itemMatchesCategory = (item: ManagerItemSummary, category: MenuCategory) =>
+    item.categoryId === category.id || item.category === category.title || item.category === category.titleEn || item.category === category.titleEl;
 
   const load = useCallback(async () => {
     try {
-      const [itemsRes, categoriesRes, storeRes, cookTypesRes, waiterTypesRes] = await Promise.all([
+      const [itemsRes, categoriesRes, storeRes] = await Promise.all([
         api.listItems(),
         api.listCategories(),
         api.getStore(),
-        api.listCookTypes(),
-        api.listWaiterTypes(),
       ]);
       setItems(itemsRes.items ?? []);
       setCategories(
@@ -127,9 +185,31 @@ export const ManagerMenuPanel = () => {
           title: c.title || c.titleEn || c.titleEl || '',
         }))
       );
-      setCookTypes(cookTypesRes.types ?? []);
-      setWaiterTypes(waiterTypesRes.types ?? []);
       if (storeRes?.store?.slug) setStoreSlug(storeRes.store.slug);
+      setPrintOnArrival(
+        storeRes?.store?.printOnArrival === true ||
+          storeRes?.store?.settings?.printOnArrival === true
+      );
+      const rawPrinters =
+        (storeRes as any)?.store?.settings?.printers ??
+        (storeRes as any)?.store?.settingsJson?.printers ??
+        (storeRes as any)?.store?.printers ??
+        [];
+      setPrinterTopics(
+        Array.isArray(rawPrinters)
+          ? Array.from(
+              new Set(
+                rawPrinters
+                  .map((printer) =>
+                    typeof printer === 'string'
+                      ? normalizePrinterTopicValue(printer)
+                      : ''
+                  )
+                  .filter(Boolean)
+              )
+            )
+          : []
+      );
     } catch (error) {
       console.error('Failed to load menu data', error);
       toast({ title: 'Load failed', description: 'Could not load menu data' });
@@ -158,8 +238,57 @@ export const ManagerMenuPanel = () => {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!imagePreview.startsWith('blob:')) return undefined;
+    return () => URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
+
+  const selectImageFile = (file: File | null) => {
+    if (!file) {
+      setImageFile(null);
+      setImagePreview(form.imageUrl || '');
+      setImageUploadStatus('');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Upload failed', description: 'Choose an image file.' });
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      toast({ title: 'Upload failed', description: 'Image must be 8 MB or smaller.' });
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setImageUploadStatus('Ready to upload');
+  };
+
+  const withFreshImageVersion = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return trimmed;
+    return `${trimmed}${trimmed.includes('?') ? '&' : '?'}v=${Date.now()}`;
+  };
+
+  const handleCategoryImageFile = (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Upload failed', description: 'Choose an image file.' });
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      toast({ title: 'Upload failed', description: 'Image must be 8 MB or smaller.' });
+      return;
+    }
+    setCategoryImageFile(file);
+    setCategoryImagePreview(URL.createObjectURL(file));
+    setCategoryImageUploadStatus('Ready to upload');
+  };
+
   const openCategoryCreate = () => {
-    setCategoryForm({ title: '' });
+    setCategoryForm({ titleEn: '', titleEl: '', sortOrder: String(categories.length * 10), imageUrl: '' });
+    setCategoryImageFile(null);
+    setCategoryImagePreview('');
+    setCategoryImageUploadStatus('');
     setEditingCategory(null);
     setCategoryDialogMode('create');
     setCategoryDialogOpen(true);
@@ -167,35 +296,56 @@ export const ManagerMenuPanel = () => {
 
   const openCategoryEdit = (cat: MenuCategory) => {
     setCategoryForm({
-      title: cat.title || '',
+      titleEn: cat.titleEn || cat.title || '',
+      titleEl: cat.titleEl || cat.title || cat.titleEn || '',
+      sortOrder: String(cat.sortOrder ?? 0),
+      imageUrl: cat.imageUrl || '',
     });
+    setCategoryImageFile(null);
+    setCategoryImagePreview(cat.imageUrl || '');
+    setCategoryImageUploadStatus('');
     setEditingCategory(cat);
     setCategoryDialogMode('edit');
     setCategoryDialogOpen(true);
   };
 
   const saveCategoryEdit = async () => {
-    const fallbackTitle = editingCategory?.title || '';
-    const title = categoryForm.title.trim() || fallbackTitle;
-    if (!title) {
-      toast({ title: 'Title required', description: 'Category title cannot be empty' });
+    const fallbackEn = editingCategory?.titleEn || editingCategory?.title || '';
+    const fallbackEl = editingCategory?.titleEl || editingCategory?.title || fallbackEn;
+    const titleEn = categoryForm.titleEn.trim() || fallbackEn;
+    const titleEl = categoryForm.titleEl.trim() || fallbackEl || titleEn;
+    const sortOrder = Number.parseInt(categoryForm.sortOrder, 10);
+    let imageUrl = categoryForm.imageUrl.trim();
+    if (!titleEn || !titleEl) {
+      toast({ title: 'Title required', description: 'Both English and Greek category names are required.' });
       return;
     }
     setSavingCategory(true);
     try {
+      if (categoryImageFile) {
+        setCategoryImageUploadStatus('Uploading image...');
+        const uploaded = await api.managerUploadImage(categoryImageFile, { storeSlug });
+        imageUrl = withFreshImageVersion(uploaded.publicUrl);
+        setCategoryImageUploadStatus('Image uploaded');
+      }
       if (categoryDialogMode === 'create') {
-        await api.createCategory(title, title, undefined);
-        toast({ title: 'Category added', description: title });
+        await api.createCategory(titleEn, titleEl, Number.isFinite(sortOrder) ? sortOrder : undefined, undefined, imageUrl || null);
+        toast({ title: 'Category added', description: titleEn });
       } else if (editingCategory) {
         await api.updateCategory(editingCategory.id, {
-          titleEn: title,
-          titleEl: title,
+          titleEn,
+          titleEl,
+          imageUrl: imageUrl || null,
+          ...(Number.isFinite(sortOrder) ? { sortOrder } : {}),
         });
-        toast({ title: 'Category updated', description: title });
+        toast({ title: 'Category updated', description: titleEn });
       }
       await load();
       setCategoryDialogOpen(false);
       setEditingCategory(null);
+      setCategoryImageFile(null);
+      setCategoryImagePreview('');
+      setCategoryImageUploadStatus('');
       setCategoryDialogMode('edit');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update category';
@@ -212,6 +362,8 @@ export const ManagerMenuPanel = () => {
     setForm({
       titleEn: '',
       titleEl: '',
+      subcategoryEn: '',
+      subcategoryEl: '',
       descriptionEn: '',
       descriptionEl: '',
       imageUrl: '',
@@ -221,6 +373,9 @@ export const ManagerMenuPanel = () => {
       isAvailable: true,
       printerTopic: resolveItemPrinter(),
     });
+    setImageFile(null);
+    setImagePreview('');
+    setImageUploadStatus('');
     setCustomMods([]);
     setOriginalModifierIds(new Set());
     setModalOpen(true);
@@ -232,6 +387,8 @@ export const ManagerMenuPanel = () => {
     setForm({
       titleEn: item.titleEn ?? item.title ?? item.name ?? '',
       titleEl: item.titleEl ?? item.title ?? item.name ?? '',
+      subcategoryEn: item.subcategoryEn ?? item.subcategory ?? '',
+      subcategoryEl: item.subcategoryEl ?? item.subcategory ?? '',
       descriptionEn: item.descriptionEn ?? item.description ?? '',
       descriptionEl: item.descriptionEl ?? item.description ?? '',
       // Prefer the backend URL so images load directly via /menu response.
@@ -242,6 +399,9 @@ export const ManagerMenuPanel = () => {
       isAvailable: item.isAvailable ?? true,
       printerTopic: selectedPrinter,
     });
+    setImageFile(null);
+    setImagePreview(item.imageUrl ?? item.image ?? '');
+    setImageUploadStatus('');
     try {
       const detail = await api.getItemDetail(item.id);
       const links = detail.links || [];
@@ -253,6 +413,7 @@ export const ManagerMenuPanel = () => {
           titleEn: mod.titleEn || mod.title || '',
           titleEl: mod.titleEl || mod.title || '',
           required: links.find((l) => l.modifierId === mod.id)?.isRequired ?? mod.minSelect > 0,
+          selectionMode: mod.maxSelect === 1 ? 'single' : 'multiple',
           isAvailable: mod.isAvailable ?? true,
           options: (mod.options || (mod as any).modifierOptions || []).map((opt: any) => ({
             id: opt.id,
@@ -273,20 +434,245 @@ export const ManagerMenuPanel = () => {
     setModalOpen(true);
   };
 
-  const grouped = categories.map((category) => ({
-    cat: category,
-    items: items
-      .filter((item) => item.categoryId === category.id || item.category === category.title)
-      .filter((item) => (showDisabled ? true : item.isAvailable !== false)),
-  }));
+  const taxonomyGroups = useMemo(() => {
+    return categories.map((category) => {
+      const allItems = items.filter((item) => itemMatchesCategory(item, category));
+      const visibleItems = allItems.filter((item) => (showDisabled ? true : item.isAvailable !== false));
+      const subcategoryMap = new Map<string, SubcategorySummary>();
+      for (const item of allItems) {
+        const titleEn = (item.subcategoryEn || item.subcategory || '').trim();
+        const titleEl = (item.subcategoryEl || item.subcategory || '').trim();
+        if (!titleEn && !titleEl) continue;
+        const key = subcategoryKey(category.id, titleEn, titleEl);
+        const group =
+          subcategoryMap.get(key) ?? {
+            key,
+            categoryId: category.id,
+            titleEn,
+            titleEl,
+            itemCount: 0,
+            items: [],
+          };
+        group.itemCount += 1;
+        group.items.push(item);
+        subcategoryMap.set(key, group);
+      }
+      for (const draft of draftSubcategories.filter((draft) => draft.categoryId === category.id)) {
+        if (!subcategoryMap.has(draft.key)) subcategoryMap.set(draft.key, draft);
+      }
+      const subcategories = Array.from(subcategoryMap.values()).sort((a, b) =>
+        localizedSubcategoryTitle(a).localeCompare(localizedSubcategoryTitle(b))
+      );
+      return {
+        cat: category,
+        items: visibleItems,
+        allItems,
+        subcategories,
+      };
+    });
+  }, [categories, draftSubcategories, items, showDisabled, preferGreek]);
+
+  const subcategoryOptions = useMemo(() => {
+    const byCategory = new Map<string, SubcategorySummary[]>();
+    for (const group of taxonomyGroups) {
+      byCategory.set(group.cat.id, group.subcategories);
+    }
+    return byCategory;
+  }, [taxonomyGroups]);
+  const selectedSubcategoryOptions = subcategoryOptions.get(form.categoryId) ?? [];
+  const selectedSubcategoryKey =
+    form.subcategoryEn.trim() || form.subcategoryEl.trim()
+      ? subcategoryKey(form.categoryId, form.subcategoryEn, form.subcategoryEl)
+      : '';
+  const selectedCategoryTitle = localizedCategoryTitle(categories.find((category) => category.id === form.categoryId));
+
+  const groupItemsBySubcategory = (categoryId: string, categoryItems: ManagerItemSummary[]) => {
+    const groups = new Map<string, { key: string; label: string; items: ManagerItemSummary[] }>();
+    const uncategorizedLabel = t('manager.uncategorized', { defaultValue: 'Uncategorized' });
+    for (const item of categoryItems) {
+      const titleEn = (item.subcategoryEn || item.subcategory || '').trim();
+      const titleEl = (item.subcategoryEl || item.subcategory || '').trim();
+      const key = titleEn || titleEl ? subcategoryKey(categoryId, titleEn, titleEl) : `${categoryId}|__none__`;
+      const label = titleEn || titleEl ? localizedSubcategoryTitle({ titleEn, titleEl }) : uncategorizedLabel;
+      const group = groups.get(key) ?? { key, label, items: [] };
+      group.items.push(item);
+      groups.set(key, group);
+    }
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.label === uncategorizedLabel) return 1;
+      if (b.label === uncategorizedLabel) return -1;
+      return a.label.localeCompare(b.label);
+    });
+  };
+
+  const openSubcategoryCreate = (categoryId: string) => {
+    setSubcategoryDialogMode('create');
+    setEditingSubcategory(null);
+    setSubcategoryForm({ categoryId, titleEn: '', titleEl: '' });
+    setSubcategoryDialogOpen(true);
+  };
+
+  const openSubcategoryEdit = (subcategory: SubcategorySummary) => {
+    setSubcategoryDialogMode('edit');
+    setEditingSubcategory(subcategory);
+    setSubcategoryForm({
+      categoryId: subcategory.categoryId,
+      titleEn: subcategory.titleEn,
+      titleEl: subcategory.titleEl,
+    });
+    setSubcategoryDialogOpen(true);
+  };
+
+  const saveSubcategoryEdit = async () => {
+    const categoryId = subcategoryForm.categoryId;
+    const titleEn = subcategoryForm.titleEn.trim();
+    const titleEl = subcategoryForm.titleEl.trim() || titleEn;
+    if (!categoryId || !titleEn || !titleEl) {
+      toast({ title: 'Title required', description: 'Both English and Greek subcategory names are required.' });
+      return;
+    }
+    setSavingSubcategory(true);
+    try {
+      const key = subcategoryKey(categoryId, titleEn, titleEl);
+      if (subcategoryDialogMode === 'create') {
+        const draft: SubcategorySummary = {
+          key,
+          categoryId,
+          titleEn,
+          titleEl,
+          itemCount: 0,
+          items: [],
+        };
+        setDraftSubcategories((prev) => [
+          ...prev.filter((item) => item.key !== key),
+          draft,
+        ]);
+        setSubcategoryDialogOpen(false);
+        openAdd(categoryId);
+        setForm((prev) => ({ ...prev, categoryId, subcategoryEn: titleEn, subcategoryEl: titleEl }));
+        toast({
+          title: 'Subcategory ready',
+          description: 'Save an item under it to persist it.',
+        });
+        return;
+      }
+
+      if (editingSubcategory) {
+        if (editingSubcategory.itemCount === 0) {
+          setDraftSubcategories((prev) =>
+            prev.map((draft) =>
+              draft.key === editingSubcategory.key
+                ? { ...draft, key, titleEn, titleEl }
+                : draft
+            )
+          );
+        } else {
+          await Promise.all(
+            editingSubcategory.items.map((item) =>
+              api.updateItem(item.id, {
+                subcategoryEn: titleEn,
+                subcategoryEl: titleEl,
+              })
+            )
+          );
+        }
+        await load();
+        setSubcategoryDialogOpen(false);
+        setEditingSubcategory(null);
+        toast({ title: 'Subcategory updated', description: titleEn });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update subcategory';
+      toast({ title: 'Update failed', description: message });
+    } finally {
+      setSavingSubcategory(false);
+    }
+  };
+
+  const deleteSubcategory = async (subcategory: SubcategorySummary) => {
+    if (subcategory.itemCount === 0) {
+      setDraftSubcategories((prev) => prev.filter((draft) => draft.key !== subcategory.key));
+      return;
+    }
+    const yes = window.confirm('Remove this subcategory from all items in it?');
+    if (!yes) return;
+    setLoadingIds((prev) => new Set(prev).add(`sub:${subcategory.key}`));
+    try {
+      await Promise.all(
+        subcategory.items.map((item) =>
+          api.updateItem(item.id, {
+            subcategoryEn: null,
+            subcategoryEl: null,
+          })
+        )
+      );
+      await load();
+      toast({ title: 'Subcategory removed', description: localizedSubcategoryTitle(subcategory) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not remove subcategory';
+      toast({ title: 'Delete failed', description: message });
+    } finally {
+      setLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(`sub:${subcategory.key}`);
+        return next;
+      });
+    }
+  };
+
+  const togglePrintOnArrival = async () => {
+    const enabled = !printOnArrival;
+    setSavingPrintOnArrival(true);
+    try {
+      await api.updatePrintOnArrival(enabled);
+      setPrintOnArrival(enabled);
+      toast({
+        title: preferGreek ? 'Η εκτύπωση ενημερώθηκε' : 'Printing updated',
+        description: enabled
+          ? preferGreek
+            ? 'Οι παραγγελίες θα εκτυπώνονται μόλις φτάνουν.'
+            : 'Orders will print as soon as they arrive.'
+          : preferGreek
+            ? 'Οι παραγγελίες θα εκτυπώνονται κατά την αποδοχή.'
+            : 'Orders will print when accepted.',
+      });
+    } catch (error) {
+      toast({
+        title: preferGreek ? 'Η ενημέρωση απέτυχε' : 'Update failed',
+        description: error instanceof Error ? error.message : 'Could not update printer setting',
+      });
+    } finally {
+      setSavingPrintOnArrival(false);
+    }
+  };
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Manage Menu Items</h2>
-        <div className="flex gap-2">
-          <Button size="sm" className="gap-2" onClick={openCategoryCreate}>
-            <Plus className="h-4 w-4" /> Add Category
+    <Card className="p-4 sm:p-6">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-xl font-semibold">
+          {t("manager.manage_menu_items", {
+            defaultValue: "Manage Menu Items",
+          })}
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={printOnArrival ? 'default' : 'outline'}
+            className="gap-2 w-full sm:w-auto"
+            onClick={togglePrintOnArrival}
+            disabled={savingPrintOnArrival}
+            aria-pressed={printOnArrival}
+          >
+            {savingPrintOnArrival ? (
+              <span className="h-4 w-4 rounded-full border-2 border-current/60 border-t-transparent animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            {preferGreek ? 'Εκτύπωση στην άφιξη' : 'Print on arrival'}: {printOnArrival ? 'ON' : 'OFF'}
+          </Button>
+          <Button size="sm" className="gap-2 w-full sm:w-auto" onClick={openCategoryCreate}>
+            <Plus className="h-4 w-4" />{" "}
+            {t("manager.add_category", { defaultValue: "Add Category" })}
           </Button>
           <Button
             variant="ghost"
@@ -300,20 +686,35 @@ export const ManagerMenuPanel = () => {
       </div>
       {panelOpen && (
         <>
-      <div className="flex items-center gap-2 mb-4 text-sm">
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showDisabled} onChange={(e)=>setShowDisabled(e.target.checked)} />
-          Show disabled items
+          {t("manager.show_disabled_items", {
+            defaultValue: "Show disabled items",
+          })}
         </label>
       </div>
 
       <div className="space-y-8">
-        {grouped.map(({cat, items}) => (
+        {taxonomyGroups.map(({cat, items, allItems, subcategories}) => (
           <section key={cat.id}>
-            <div className="flex items-center gap-3 mb-3">
-              <h3 className="text-lg font-semibold text-foreground flex-1">{cat.title}</h3>
-              <div className="flex items-center gap-1">
-                <Button size="sm" variant="outline" className="gap-1" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/> Item</Button>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold text-foreground">{localizedCategoryTitle(cat)}</h3>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {allItems.length} {t("manager.items_count_short", { defaultValue: "items" })}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  EN: {cat.titleEn || cat.title || '-'} · EL: {cat.titleEl || cat.title || '-'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openAdd(cat.id)}><Plus className="h-4 w-4"/>{t("manager.item", { defaultValue: "Item" })}</Button>
+                <Button size="sm" variant="outline" className="gap-1 w-full sm:w-auto" onClick={()=> openSubcategoryCreate(cat.id)}>
+                  <Plus className="h-4 w-4"/>{t("manager.subcategory", { defaultValue: "Subcategory" })}
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => openCategoryEdit(cat)}><Pencil className="h-4 w-4"/></Button>
                 <Button size="sm" variant="ghost" onClick={async ()=>{
                   const yes = window.confirm('Delete this category? Items will remain but may appear uncategorized.');
@@ -329,12 +730,55 @@ export const ManagerMenuPanel = () => {
                 }}><Trash2 className="h-4 w-4"/></Button>
               </div>
             </div>
+            <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {subcategories.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                  {t("manager.no_subcategories", { defaultValue: "No subcategories yet." })}
+                </div>
+              ) : subcategories.map((subcategory) => (
+                <div key={subcategory.key} className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-card/40 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {localizedSubcategoryTitle(subcategory)}
+                    </div>
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      EN: {subcategory.titleEn || '-'} · EL: {subcategory.titleEl || '-'} · {subcategory.itemCount}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openSubcategoryEdit(subcategory)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => deleteSubcategory(subcategory)}
+                      disabled={loadingIds.has(`sub:${subcategory.key}`)}
+                    >
+                      {loadingIds.has(`sub:${subcategory.key}`) ? (
+                        <span className="h-3.5 w-3.5 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
             <div className="space-y-2">
               {items.length === 0 ? (
-                <div className="text-xs text-muted-foreground">No items in this category.</div>
-              ) : items.map((item)=> (
-                <div key={item.id} className={`flex items-center justify-between border rounded-lg p-3 ${item.isAvailable === false ? 'opacity-60' : ''}`}>
-                  <div>
+                <div className="text-xs text-muted-foreground">
+                  {t("manager.no_items_in_category", {
+                    defaultValue: "No items in this category.",
+                  })}
+                </div>
+              ) : groupItemsBySubcategory(cat.id, items).map((group) => (
+                <div key={group.key} className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">{group.label}</div>
+                  {group.items.map((item)=> (
+                <div key={item.id} className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between ${item.isAvailable === false ? 'opacity-60' : ''}`}>
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium">
                       {item.titleEn || item.titleEl || item.title || item.name}
                       <span className="text-xs text-muted-foreground">
@@ -343,7 +787,7 @@ export const ManagerMenuPanel = () => {
                     </div>
                     <div className="text-xs text-muted-foreground">{item.descriptionEn || item.descriptionEl || item.description || '—'}</div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
                     <Button
                       variant="outline"
                       size="sm"
@@ -373,7 +817,9 @@ export const ManagerMenuPanel = () => {
                       {item.id && loadingIds.has(`toggle:${item.id}`) && (
                         <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
                       )}
-                      {item.isAvailable ? 'Disable' : 'Enable'}
+                      {item.isAvailable
+                        ? t("manager.disable", { defaultValue: "Disable" })
+                        : t("manager.enable", { defaultValue: "Enable" })}
                     </Button>
                     <Button variant="outline" size="sm" className="gap-1" onClick={() => openEdit(item)}>
                       <Pencil className="h-4 w-4" /> Edit
@@ -426,9 +872,11 @@ export const ManagerMenuPanel = () => {
                       {item.id && loadingIds.has(`del:${item.id}`) && (
                         <span className="h-4 w-4 mr-1 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
                       )}
-                      <Trash2 className="h-4 w-4" /> Delete
+                      <Trash2 className="h-4 w-4" /> {t("actions.delete")}
                     </Button>
                   </div>
+                </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -445,32 +893,193 @@ export const ManagerMenuPanel = () => {
           setCategoryDialogOpen(open);
           if (!open) {
             setEditingCategory(null);
-            setCategoryForm({ title: '' });
+            setCategoryForm({ titleEn: '', titleEl: '', sortOrder: '0', imageUrl: '' });
+            setCategoryImageFile(null);
+            setCategoryImagePreview('');
+            setCategoryImageUploadStatus('');
             setCategoryDialogMode('edit');
           }
         }}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{categoryDialogMode === 'create' ? 'Add category' : 'Edit category'}</DialogTitle>
+            <DialogTitle>
+              {categoryDialogMode === 'create'
+                ? t("manager.add_category", { defaultValue: "Add Category" })
+                : t("manager.edit_category", { defaultValue: "Edit Category" })}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              placeholder="Category title"
-              value={categoryForm.title}
-              onChange={(e) => setCategoryForm((prev) => ({ ...prev, title: e.target.value }))}
-            />
-            <p className="text-xs text-muted-foreground">Set the category name.</p>
+          <div className="space-y-4">
+            {editingCategory ? (
+              <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                {taxonomyGroups.find((group) => group.cat.id === editingCategory.id)?.allItems.length ?? 0}{' '}
+                {t("manager.items_in_category", { defaultValue: "items in this category" })}
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EN)</span>
+                <Input
+                  placeholder="Drinks"
+                  value={categoryForm.titleEn}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, titleEn: e.target.value }))}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EL)</span>
+                <Input
+                  placeholder="Ποτά"
+                  value={categoryForm.titleEl}
+                  onChange={(e) => setCategoryForm((prev) => ({ ...prev, titleEl: e.target.value }))}
+                />
+              </label>
+            </div>
+            <label className="space-y-2">
+              <span className="text-sm font-medium">Sort order</span>
+              <Input
+                type="number"
+                step={1}
+                value={categoryForm.sortOrder}
+                onChange={(e) => setCategoryForm((prev) => ({ ...prev, sortOrder: e.target.value }))}
+              />
+            </label>
+            <div className="space-y-3">
+              <div>
+                <span className="text-sm font-medium">Category image</span>
+                <p className="text-xs text-muted-foreground">
+                  Choose one image from your computer. It uploads when you save.
+                </p>
+              </div>
+              {categoryImagePreview || categoryForm.imageUrl ? (
+                <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+                  <img
+                    src={categoryImagePreview || categoryForm.imageUrl}
+                    alt=""
+                    className="h-40 w-full object-cover"
+                  />
+                </div>
+              ) : null}
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-4 text-sm font-medium transition hover:border-primary/60 hover:bg-primary/5">
+                <ImagePlus className="h-4 w-4" />
+                Upload category image
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    handleCategoryImageFile(event.target.files?.[0]);
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </label>
+              {categoryImageUploadStatus ? (
+                <p className="text-xs text-muted-foreground">{categoryImageUploadStatus}</p>
+              ) : null}
+              {categoryImagePreview || categoryForm.imageUrl ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-0"
+                  onClick={() => {
+                    setCategoryForm((prev) => ({ ...prev, imageUrl: '' }));
+                    setCategoryImageFile(null);
+                    setCategoryImagePreview('');
+                    setCategoryImageUploadStatus('');
+                  }}
+                >
+                  Clear image
+                </Button>
+              ) : null}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setCategoryDialogOpen(false); setEditingCategory(null); }}>
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button onClick={saveCategoryEdit} disabled={savingCategory}>
               {savingCategory && (
                 <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
               )}
-              {categoryDialogMode === 'create' ? 'Create' : 'Save'}
+              {categoryDialogMode === 'create'
+                ? t("manager.create", { defaultValue: "Create" })
+                : t("actions.save_changes", { defaultValue: "Save" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Subcategory */}
+      <Dialog
+        open={subcategoryDialogOpen}
+        onOpenChange={(open) => {
+          setSubcategoryDialogOpen(open);
+          if (!open) {
+            setEditingSubcategory(null);
+            setSubcategoryForm({ categoryId: '', titleEn: '', titleEl: '' });
+            setSubcategoryDialogMode('edit');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {subcategoryDialogMode === 'create'
+                ? t("manager.add_subcategory", { defaultValue: "Add subcategory" })
+                : t("manager.edit_subcategory", { defaultValue: "Edit subcategory" })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="space-y-2">
+              <span className="text-sm font-medium">{t("manager.category", { defaultValue: "Category" })}</span>
+              <select
+                className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                value={subcategoryForm.categoryId}
+                onChange={(e) => setSubcategoryForm((prev) => ({ ...prev, categoryId: e.target.value }))}
+                disabled={subcategoryDialogMode === 'edit'}
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {localizedCategoryTitle(category)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {editingSubcategory ? (
+              <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                {editingSubcategory.itemCount} {t("manager.items_in_subcategory", { defaultValue: "items in this subcategory" })}
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EN)</span>
+                <Input
+                  placeholder="Coffees"
+                  value={subcategoryForm.titleEn}
+                  onChange={(e) => setSubcategoryForm((prev) => ({ ...prev, titleEn: e.target.value }))}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Name (EL)</span>
+                <Input
+                  placeholder="Καφέδες"
+                  value={subcategoryForm.titleEl}
+                  onChange={(e) => setSubcategoryForm((prev) => ({ ...prev, titleEl: e.target.value }))}
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSubcategoryDialogOpen(false)}>
+              {t("actions.cancel")}
+            </Button>
+            <Button onClick={saveSubcategoryEdit} disabled={savingSubcategory}>
+              {savingSubcategory && (
+                <span className="h-4 w-4 mr-2 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+              )}
+              {subcategoryDialogMode === 'create'
+                ? t("manager.create", { defaultValue: "Create" })
+                : t("actions.save_changes", { defaultValue: "Save" })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -478,85 +1087,243 @@ export const ManagerMenuPanel = () => {
 
       {/* Add/Edit Item */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-3xl lg:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Item' : 'Add Item'}</DialogTitle>
+            <DialogTitle>
+              {editing
+                ? t("manager.edit_item", { defaultValue: "Edit item" })
+                : t("manager.add_item", { defaultValue: "Add item" })}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Title (EN)" value={form.titleEn} onChange={(e)=>setForm({...form, titleEn: e.target.value})}/>
-              <Input placeholder="Title (EL)" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Textarea placeholder="Description (EN)" value={form.descriptionEn} onChange={(e)=>setForm({...form, descriptionEn: e.target.value})}/>
-              <Textarea placeholder="Description (EL)" value={form.descriptionEl} onChange={(e)=>setForm({...form, descriptionEl: e.target.value})}/>
-            </div>
-            <Input placeholder="Image URL (https://...)" value={form.imageUrl} onChange={(e)=>setForm({ ...form, imageUrl: e.target.value })} />
-            <div className="text-xs text-muted-foreground">
-              Or upload an image: <input type="file" accept="image/*" onChange={(e)=>{
-                const f = e.target.files?.[0] || null;
-                setImageFile(f);
-                setImagePreview(f ? URL.createObjectURL(f) : form.imageUrl || '');
-              }} />
-              {imagePreview && (
-                <div className="mt-2">
-                  <img src={imagePreview} alt="preview" className="h-24 w-24 object-cover rounded border" />
+          <div className="max-h-[70vh] space-y-5 overflow-y-auto pr-1">
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold">
+                  {t("manager.item_details", {
+                    defaultValue: "Item details",
+                  })}
+                </h3>
+                <p className="text-sm text-muted-foreground">Name, category, description and pricing.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Name (EN)</span>
+                  <Input placeholder="Pita Pork" value={form.titleEn} onChange={(e)=>setForm({...form, titleEn: e.target.value})}/>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Name (EL)</span>
+                  <Input placeholder="Pita Pork" value={form.titleEl} onChange={(e)=>setForm({...form, titleEl: e.target.value})}/>
+                </label>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Category</span>
+                  <select
+                    className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    value={form.categoryId}
+                    onChange={(e)=>setForm({...form, categoryId: e.target.value, subcategoryEn: '', subcategoryEl: ''})}
+                  >
+                    {categories.map((category)=>(
+                      <option key={category.id} value={category.id}>
+                        {localizedCategoryTitle(category)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedCategoryTitle || t("manager.no_category_selected", { defaultValue: "No category selected" })}
+                  </p>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Price</span>
+                  <Input placeholder="3.50" type="number" min={0} step={0.01} value={form.price} onChange={(e)=>setForm({...form, price: e.target.value})}/>
+                </label>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Subcategory</span>
+                  <select
+                    className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+                    value={selectedSubcategoryKey}
+                    onChange={(e) => {
+                      const option = selectedSubcategoryOptions.find((candidate) => candidate.key === e.target.value);
+                      if (!option) {
+                        setForm({ ...form, subcategoryEn: '', subcategoryEl: '' });
+                        return;
+                      }
+                      setForm({ ...form, subcategoryEn: option.titleEn, subcategoryEl: option.titleEl });
+                    }}
+                  >
+                    <option value="">
+                      {t("manager.no_subcategory", { defaultValue: "No subcategory" })}
+                    </option>
+                    {selectedSubcategoryOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {localizedSubcategoryTitle(option)}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedSubcategoryOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("manager.create_subcategory_first", { defaultValue: "Create subcategories from the category editor first." })}
+                    </p>
+                  ) : null}
+                </label>
+                <div className="flex min-h-11 items-center rounded-md border border-border bg-muted/25 px-3 text-sm text-muted-foreground">
+                  {form.subcategoryEn || form.subcategoryEl
+                    ? `${form.subcategoryEn || '-'} / ${form.subcategoryEl || '-'}`
+                    : t("manager.no_subcategory_selected", { defaultValue: "No subcategory selected" })}
                 </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2 items-center">
-            <Input placeholder="Price (€)" type="number" min={0} step={0.01} value={form.price} onChange={(e)=>setForm({...form, price: e.target.value})}/>
-              {editing ? (
-                <select
-                  className="border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={form.categoryId}
-                  onChange={(e)=>setForm({...form, categoryId: e.target.value})}
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Description (EN)</span>
+                  <Textarea className="min-h-28 resize-y" placeholder="Short menu description" value={form.descriptionEn} onChange={(e)=>setForm({...form, descriptionEn: e.target.value})}/>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Description (EL)</span>
+                  <Textarea className="min-h-28 resize-y" placeholder="Short menu description" value={form.descriptionEl} onChange={(e)=>setForm({...form, descriptionEl: e.target.value})}/>
+                </label>
+              </div>
+            </section>
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold">
+                  {t("manager.image", { defaultValue: "Image" })}
+                </h3>
+                <p className="text-sm text-muted-foreground">Paste an image URL or upload a replacement.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-[1fr_160px]">
+                <div className="space-y-4">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium">Image URL</span>
+                    <Input
+                      placeholder="https://..."
+                      value={form.imageUrl}
+                      onChange={(e)=>{
+                        const imageUrl = e.target.value;
+                        setForm({ ...form, imageUrl });
+                        if (!imageFile) setImagePreview(imageUrl);
+                      }}
+                    />
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
+                      <ImagePlus className="h-4 w-4" />
+                      {t("manager.upload_image", {
+                        defaultValue: "Upload image",
+                      })}
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e)=>{
+                          selectImageFile(e.target.files?.[0] || null);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                    {imageFile ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => selectImageFile(null)}
+                        aria-label="Remove selected image"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                  {imageFile ? <p className="text-xs text-muted-foreground">{imageFile.name}</p> : null}
+                  {imageUploadStatus ? (
+                    <p className="text-xs font-medium text-primary">{imageUploadStatus}</p>
+                  ) : null}
+                </div>
+                <div
+                  className="flex h-40 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/20"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    selectImageFile(event.dataTransfer.files?.[0] || null);
+                  }}
                 >
-                  {categories.map((category)=>(<option key={category.id} value={category.id}>{category.title}</option>))}
-                </select>
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  Category: <span className="font-medium text-foreground">{categories.find((category)=>category.id===form.categoryId)?.title || '—'}</span>
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Item preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="px-4 text-center text-sm text-muted-foreground">
+                      {t("manager.no_image_preview", {
+                        defaultValue: "No image preview",
+                      })}
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Cook type</label>
-              <select
-                className="w-full border border-border rounded p-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                value={form.printerTopic}
-                onChange={(e)=>setForm({...form, printerTopic: normalizePrinterTopicValue(e.target.value)})}
-              >
-                {displayCookTypeOptions.length === 0 ? (
-                  <option value="">No cook types configured</option>
-                ) : null}
-                {displayCookTypeOptions.map((opt) => (
-                  <option key={opt.id} value={opt.printerTopic}>
-                    {opt.id === 'legacy-printer'
-                      ? opt.title
-                      : `${opt.title} (${opt.printerTopic})`}
-                  </option>
-                ))}
-              </select>
-              {displayCookTypeOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Add cook types with printer topics first.</p>
-              ) : null}
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.isAvailable} onChange={(e)=>setForm({...form, isAvailable: e.target.checked})}/>
-              Available
-            </label>
+              </div>
+            </section>
 
-            {/* Modifiers builder */}
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-medium">Modifiers</div>
-                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, isAvailable:true, options:[] }])}>+ Add modifier</Button>
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">
+                    {t("manager.printer_label", { defaultValue: "Printer" })}
+                  </span>
+                  <select
+                    className="h-11 w-full rounded-md border border-border bg-card px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    value={form.printerTopic}
+                    onChange={(e)=>setForm({...form, printerTopic: normalizePrinterTopicValue(e.target.value)})}
+                  >
+                    {displayPrinterOptions.length === 0 ? (
+                      <option value="">
+                        {t("manager.no_printers_configured", {
+                          defaultValue: "No printers configured",
+                        })}
+                      </option>
+                    ) : null}
+                    {displayPrinterOptions.map((opt) => (
+                      <option key={opt.id} value={opt.printerTopic}>
+                        {opt.id === 'legacy-printer'
+                          ? opt.title
+                          : opt.title}
+                      </option>
+                    ))}
+                  </select>
+                  {displayPrinterOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("manager.configure_printers_first", {
+                        defaultValue: "Configure printers in store settings first.",
+                      })}
+                    </p>
+                  ) : null}
+                </label>
+                <label className="flex h-11 items-center gap-3 rounded-md border border-border bg-card px-4 text-sm font-medium">
+                  <input type="checkbox" checked={form.isAvailable} onChange={(e)=>setForm({...form, isAvailable: e.target.checked})}/>
+                  {t("manager.available", { defaultValue: "Available" })}
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-border/70 bg-card/30 p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold">
+                    {t("manager.modifiers", { defaultValue: "Modifiers" })}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("manager.modifiers_description", {
+                      defaultValue: "Extras, choices and add-ons shown to guests.",
+                    })}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>[...mods, { titleEn:'', titleEl:'', required:false, selectionMode:'single', isAvailable:true, options:[] }])}>
+                  <Plus className="mr-2 h-4 w-4" />{" "}
+                  {t("manager.add_modifier", {
+                    defaultValue: "Add modifier",
+                  })}
+                </Button>
               </div>
               <div className="space-y-4">
                 {customMods.map((cm, idx) => (
-                  <div key={idx} className="border rounded p-3">
-                    <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div key={idx} className="rounded-md border border-border bg-background/40 p-4">
+                    <div className="mb-3 grid gap-3 md:grid-cols-2">
                       <Input placeholder="Modifier title (EN)" value={cm.titleEn} onChange={(e)=>{
                         const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, titleEn: v}: m));
                       }}/>
@@ -564,26 +1331,43 @@ export const ManagerMenuPanel = () => {
                         const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, titleEl: v}: m));
                       }}/>
                     </div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <label className="flex items-center gap-2 text-sm">
+                    <div className="mb-3 flex flex-wrap items-center gap-3">
+                      <div className="flex rounded-md border border-border bg-card p-1 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, selectionMode: 'single' }: m))}
+                          className={`rounded px-3 py-1.5 transition-colors ${cm.selectionMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          {t("manager.modifier_max_one", { defaultValue: "Max 1" })}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, selectionMode: 'multiple' }: m))}
+                          className={`rounded px-3 py-1.5 transition-colors ${cm.selectionMode === 'multiple' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          {t("manager.modifier_more_than_one", { defaultValue: "More than 1" })}
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.required} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, required: v}: m));
                         }}/>
-                        required
+                        {t("manager.required", { defaultValue: "Required" })}
                       </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                         <input type="checkbox" checked={cm.isAvailable} onChange={(e)=>{
                           const v=e.target.checked; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, isAvailable: v}: m));
                         }}/>
-                        Available
+                        {t("manager.available", { defaultValue: "Available" })}
                       </label>
                       <Button variant="ghost" size="sm" onClick={()=> setCustomMods(mods=>mods.filter((_,i)=> i!==idx))}>
-                        <Trash2 className="h-4 w-4 mr-1" /> Remove
+                        <Trash2 className="h-4 w-4 mr-1" />{" "}
+                        {t("manager.remove", { defaultValue: "Remove" })}
                       </Button>
                     </div>
                     <div className="space-y-2">
                       {cm.options.map((opt, oi) => (
-                        <div key={oi} className="grid grid-cols-3 gap-2">
+                        <div key={oi} className="grid gap-2 md:grid-cols-[1fr_1fr_140px]">
                           <Input placeholder="Option label EN (e.g., Oat)" value={opt.titleEn} onChange={(e)=>{
                             const v=e.target.value; setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: m.options.map((o,j)=> j===oi? { ...o, titleEn: v}: o)}: m));
                           }}/>
@@ -597,15 +1381,22 @@ export const ManagerMenuPanel = () => {
                       ))}
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { titleEn:'', titleEl:'', price:''}] }: m))}>+ Option</Button>
+                      <Button size="sm" variant="outline" onClick={()=> setCustomMods(mods=>mods.map((m,i)=> i===idx? { ...m, options: [...m.options, { titleEn:'', titleEl:'', price:''}] }: m))}>
+                        <Plus className="mr-2 h-4 w-4" />{" "}
+                        {t("manager.add_option", {
+                          defaultValue: "Add option",
+                        })}
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={()=>setModalOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={()=>setModalOpen(false)}>
+              {t("actions.cancel")}
+            </Button>
             {(() => {
               const priceNum = parseFloat(form.price || '');
               const modifierMissingTitle = customMods.some((cm) => cm.options.length > 0 && (!cm.titleEn.trim() || !cm.titleEl.trim()));
@@ -626,6 +1417,8 @@ export const ManagerMenuPanel = () => {
                       const payload: ManagerItemPayload = {
                         titleEn: form.titleEn.trim(),
                         titleEl: form.titleEl.trim(),
+                        subcategoryEn: form.subcategoryEn.trim() || null,
+                        subcategoryEl: form.subcategoryEl.trim() || null,
                         descriptionEn: form.descriptionEn,
                         descriptionEl: form.descriptionEl,
                         priceCents: Math.round((parseFloat(form.price || '0') || 0) * 100),
@@ -634,40 +1427,64 @@ export const ManagerMenuPanel = () => {
                         imageUrl: form.imageUrl.trim() || undefined,
                         printerTopic: form.printerTopic.trim() || null,
                       };
-                      const typedImageUrl = form.imageUrl.trim();
+                      const typedImageUrl = imageFile ? '' : form.imageUrl.trim();
 
                       let itemId = editing?.id;
                       let finalImageUrl: string | null = typedImageUrl.length > 0 ? typedImageUrl : null;
+                      const uploadSelectedImage = async (id: string) => {
+                        setImageUploadStatus('Optimizing image...');
+                        console.info('[manager:image-upload] preparing selected image', {
+                          itemId: id,
+                          fileName: imageFile?.name,
+                          fileSize: imageFile?.size,
+                          storeSlug,
+                        });
+                        const res = await api.managerUploadImage(imageFile!, { itemId: id, storeSlug });
+                        const freshUrl = withFreshImageVersion(res.publicUrl);
+                        setImageUploadStatus('Image uploaded');
+                        console.info('[manager:image-upload] uploaded selected image', {
+                          itemId: id,
+                          path: res.path,
+                          publicUrl: freshUrl,
+                        });
+                        return freshUrl;
+                      };
 
                       if (editing) {
                         if (imageFile) {
                           try {
-                            const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
-                            const res = await api.managerUploadImage(imageFile, { itemId: editing.id, storeSlug });
-                            finalImageUrl = res.publicUrl;
+                            finalImageUrl = await uploadSelectedImage(editing.id);
                           } catch (error) {
                             const message = error instanceof Error ? error.message : 'Could not upload image';
+                            setImageUploadStatus('Upload failed');
                             toast({ title: 'Upload failed', description: message });
+                            return;
                           }
                         }
-                        await api.updateItem(editing.id, { ...payload, imageUrl: finalImageUrl ?? undefined });
+                        await api.updateItem(editing.id, {
+                          ...payload,
+                          imageUrl: finalImageUrl ?? undefined,
+                        });
                         itemId = editing.id;
                       } else {
-                        const created = await api.createItem(payload);
+                        const created = await api.createItem({
+                          ...payload,
+                          imageUrl: finalImageUrl ?? undefined,
+                        });
                         itemId = created.item?.id;
                         if (itemId && (imageFile || finalImageUrl)) {
                           try {
                             if (imageFile) {
-                              const safeName = `${Date.now()}-${imageFile.name.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
-                              const res2 = await api.managerUploadImage(imageFile, { itemId, storeSlug });
-                              finalImageUrl = res2.publicUrl;
+                              finalImageUrl = await uploadSelectedImage(itemId);
                             }
                             if (finalImageUrl) {
                               await api.updateItem(itemId, { imageUrl: finalImageUrl });
                             }
                           } catch (error) {
                             const message = error instanceof Error ? error.message : 'Could not upload image';
+                            setImageUploadStatus('Upload failed');
                             toast({ title: 'Upload failed', description: message });
+                            return;
                           }
                         }
                       }
@@ -675,12 +1492,14 @@ export const ManagerMenuPanel = () => {
                         const seenModifiers = new Set<string>();
                         for (const cm of customMods) {
                           if (!cm.titleEn.trim() && !cm.titleEl.trim()) continue;
+                          const maxSelect = cm.selectionMode === 'single' ? 1 : Math.max(1, cm.options.length);
                           let modifierId = cm.id;
                           if (modifierId) {
                             await api.updateModifier(modifierId, {
                               titleEn: cm.titleEn.trim(),
                               titleEl: cm.titleEl.trim(),
                               minSelect: cm.required ? 1 : 0,
+                              maxSelect,
                               isAvailable: cm.isAvailable,
                             });
                           } else {
@@ -688,6 +1507,7 @@ export const ManagerMenuPanel = () => {
                               titleEn: cm.titleEn.trim(),
                               titleEl: cm.titleEl.trim(),
                               minSelect: cm.required ? 1 : 0,
+                              maxSelect,
                               isAvailable: cm.isAvailable,
                             });
                             modifierId = createdModifier.modifier.id;
@@ -736,6 +1556,8 @@ export const ManagerMenuPanel = () => {
                         });
                       }
                       await load();
+                      setImageFile(null);
+                      setImageUploadStatus('');
                       setModalOpen(false);
                     } finally {
                       setSavingItem(false);
@@ -745,7 +1567,7 @@ export const ManagerMenuPanel = () => {
                   className="inline-flex items-center gap-2"
                 >
               {savingItem && <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin"/>}
-                  Save
+                  {t("actions.save_changes")}
                 </Button>
               );
             })()}

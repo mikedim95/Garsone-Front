@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { Order, OrderItemStatus, OrderStatus } from '@/types';
 import { formatTableLabel } from '@/lib/formatTableLabel';
-import { Loader2, Check, ChefHat, UtensilsCrossed, CreditCard } from 'lucide-react';
+import { Loader2, Check, ChefHat, UtensilsCrossed, CreditCard, XCircle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface Props {
@@ -179,7 +179,7 @@ export function OrderCardPro({
           disabled={isBusy}
           className={clsx(buttonBase, 'bg-secondary text-secondary-foreground hover:bg-secondary/80 flex-1')}
         >
-          {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ChefHat className="w-4 h-4" /><span>Start</span></>}
+          {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ChefHat className="w-4 h-4" /><span>Accept</span></>}
         </motion.button>
       );
     }
@@ -315,10 +315,27 @@ export function OrderCardPro({
         )}
       </div>
       
-      {/* Action button */}
-      {renderActionButton() && (
-        <div className="px-4 pb-4">
+      {/* Order actions */}
+      {order.status !== 'CANCELLED' && (
+        <div className="flex gap-2 px-4 pb-4">
           {renderActionButton()}
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleAction('CANCELLED')}
+            disabled={isBusy}
+            className="flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+            aria-label="Cancel order"
+            title="Cancel order"
+          >
+            {isBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <XCircle className="h-4 w-4" />
+                <span>Cancel</span>
+              </>
+            )}
+          </motion.button>
         </div>
       )}
     </motion.div>

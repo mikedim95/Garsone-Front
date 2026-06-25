@@ -29,6 +29,8 @@ interface CookOrderCardProps {
   onAcceptWithPrint: (order: Order) => void;
   onCancel: (id: string) => void;
   onMarkAllReady: (id: string) => void;
+  onMarkServed?: (id: string) => void;
+  onMarkPaid?: (id: string) => void;
   onViewModifiers: (order: Order) => void;
   onUpdateItemStatus: (
     orderId: string,
@@ -40,12 +42,18 @@ interface CookOrderCardProps {
   isAccepting: boolean;
   isPrinting: boolean;
   isActing: boolean;
+  isCancelling?: boolean;
 }
 
 const getElapsedMinutes = (createdAt: string) => {
   const created = new Date(createdAt).getTime();
   const now = Date.now();
   return Math.floor((now - created) / 60000);
+};
+
+const getCompactTableLabel = (label?: string | null) => {
+  const normalized = (label || "").trim();
+  return normalized.replace(/^table\s*/i, "") || normalized;
 };
 
 const getUrgencyLevel = (minutes: number): "normal" | "warning" | "critical" => {
@@ -68,6 +76,8 @@ export const CookOrderCard = ({
   onAcceptWithPrint,
   onCancel,
   onMarkAllReady,
+  onMarkServed,
+  onMarkPaid,
   onViewModifiers,
   onUpdateItemStatus,
   selectedItems = {},
@@ -75,19 +85,23 @@ export const CookOrderCard = ({
   isAccepting,
   isPrinting,
   isActing,
+  isCancelling = false,
 }: CookOrderCardProps) => {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const orderStatus = order.status as "PLACED" | "PREPARING";
+  const orderStatus = order.status;
   const elapsed = getElapsedMinutes(order.createdAt);
   const urgency = getUrgencyLevel(elapsed);
 
   // Filter out served items; keep accepted/pending visible.
   const visibleItems = useMemo(() => {
     const items = order.items ?? [];
+    if (order.status === "READY" || order.status === "SERVED" || order.status === "PAID") {
+      return items;
+    }
     return items.filter((item) => item.status !== "SERVED");
-  }, [order.items]);
+  }, [order.items, order.status]);
 
   // Progress calculation
   const totalItems = order.items?.length ?? 0;
@@ -109,6 +123,7 @@ export const CookOrderCard = ({
   const readyShortLabel = t("cook.ready_short", { defaultValue: "ready" });
   const itemsLabel = t("cook.items", { defaultValue: "items" });
   const progressLabel = t("cook.progress", { defaultValue: "Progress" });
+  const tablePrefix = t("manager.table", { defaultValue: "Table" });
   const readyRatioLabel = t("cook.ready_ratio", {
     defaultValue: "{{served}}/{{total}} ready",
     served: servedItems,
@@ -129,7 +144,7 @@ export const CookOrderCard = ({
       exit={{ opacity: 0, scale: 0.95, y: -20 }}
       transition={{ duration: 0.3 }}
       className={clsx(
-        "bg-card border rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl",
+        "w-full min-w-0 max-w-full bg-card border rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl",
         highlighted && "ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(245,158,11,0.35)] animate-pulse",
         urgency === "critical" && "border-destructive/50 ring-1 ring-destructive/20",
         urgency === "warning" && "border-amber-500/50 ring-1 ring-amber-500/20",
@@ -139,28 +154,32 @@ export const CookOrderCard = ({
       {/* Header */}
       <div
         className={clsx(
-          "p-4 border-b border-border/50 cursor-pointer select-none",
+          "p-3 min-[360px]:p-4 border-b border-border/50 cursor-pointer select-none",
           urgency === "critical" && "bg-destructive/5",
           urgency === "warning" && "bg-amber-500/5"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 min-[360px]:gap-3">
             <div
               className={clsx(
-                "h-12 w-12 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg",
+                "h-11 w-11 min-[360px]:h-12 min-[360px]:w-12 shrink-0 overflow-hidden rounded-xl px-1 text-center flex items-center justify-center font-bold text-sm min-[360px]:text-lg leading-tight shadow-lg",
                 orderStatus === "PLACED"
                   ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
-                  : "bg-gradient-to-br from-amber-500 to-amber-600 text-white"
+                  : orderStatus === "PREPARING"
+                    ? "bg-gradient-to-br from-amber-500 to-amber-600 text-white"
+                    : orderStatus === "READY"
+                      ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white"
+                      : "bg-gradient-to-br from-slate-500 to-slate-600 text-white"
               )}
             >
-              {order.tableLabel}
+              {getCompactTableLabel(order.tableLabel)}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-foreground">
-                  {formatTableLabel(order.tableLabel)}
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-1 min-[360px]:gap-2">
+                <span className="min-w-0 truncate font-semibold text-foreground">
+                  {formatTableLabel(order.tableLabel, tablePrefix)}
                 </span>
                 {queuePosition && (
                   <Badge variant="outline" className="text-[10px] px-1.5">
@@ -176,7 +195,7 @@ export const CookOrderCard = ({
                   />
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <div className="flex min-w-0 items-center gap-1 min-[360px]:gap-2 text-xs text-muted-foreground mt-0.5">
                 <Timer className="h-3 w-3" />
                 <span>{formatTime(order.createdAt)}</span>
                 <span
@@ -192,7 +211,7 @@ export const CookOrderCard = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-1 min-[360px]:gap-3">
             {/* Progress indicator */}
             <div className="hidden sm:flex flex-col items-end gap-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -204,10 +223,14 @@ export const CookOrderCard = ({
 
             <Badge
               className={clsx(
-                "border-0",
+                "border-0 max-[359px]:hidden",
                 orderStatus === "PLACED"
                   ? "bg-primary/20 text-primary"
-                  : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                  : orderStatus === "PREPARING"
+                    ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                    : orderStatus === "READY"
+                      ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                      : "bg-slate-500/20 text-slate-600 dark:text-slate-400"
               )}
             >
               {visibleItems.length} {itemsLabel}
@@ -215,7 +238,7 @@ export const CookOrderCard = ({
 
             <button
               type="button"
-              className="p-1 rounded-lg hover:bg-muted transition-colors"
+            className="shrink-0 p-1 rounded-lg hover:bg-muted transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 setIsExpanded(!isExpanded);
@@ -242,10 +265,10 @@ export const CookOrderCard = ({
 
       {/* Note */}
       {order.note && (
-        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
+        <div className="px-3 min-[360px]:px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
           <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
             <span>📝</span>
-            <span>{order.note}</span>
+            <span className="min-w-0 break-words">{order.note}</span>
           </p>
         </div>
       )}
@@ -260,7 +283,7 @@ export const CookOrderCard = ({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
+            <div className="p-3 min-[360px]:p-4 space-y-2 max-h-[400px] overflow-y-auto">
               <AnimatePresence mode="popLayout">
                 {visibleItems.map((item: CartItem) => {
                   const orderItemId = item.orderItemId;
@@ -314,13 +337,13 @@ export const CookOrderCard = ({
       </AnimatePresence>
 
       {/* Footer Actions */}
-      <div className="p-4 border-t border-border/50 bg-muted/30">
+      <div className="p-3 min-[360px]:p-4 border-t border-border/50 bg-muted/30">
         <div className="flex flex-wrap gap-2">
           {orderStatus === "PLACED" && hasPendingItems && (
             <>
               <Button
                 size="sm"
-                className="flex-1 min-w-[100px]"
+                className="flex-1 min-w-[100px] max-[359px]:basis-full"
                 onClick={() => onAcceptAll(order.id)}
                 disabled={isAccepting}
               >
@@ -367,6 +390,42 @@ export const CookOrderCard = ({
             </Button>
           )}
 
+          {orderStatus === "READY" && onMarkServed && (
+            <Button
+              size="sm"
+              className="flex-1 min-w-[100px] bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => onMarkServed(order.id)}
+              disabled={isActing}
+            >
+              {isActing ? (
+                <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  {t("actions.mark_served", { defaultValue: "Mark Served" })}
+                </>
+              )}
+            </Button>
+          )}
+
+          {orderStatus === "SERVED" && onMarkPaid && (
+            <Button
+              size="sm"
+              className="flex-1 min-w-[100px] bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onMarkPaid(order.id)}
+              disabled={isActing}
+            >
+              {isActing ? (
+                <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  {t("actions.mark_paid", { defaultValue: "Mark Paid" })}
+                </>
+              )}
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="outline"
@@ -376,15 +435,17 @@ export const CookOrderCard = ({
             <ListChecks className="h-4 w-4" />
           </Button>
 
-          {orderStatus === "PLACED" && (
+          {orderStatus !== "CANCELLED" && (
             <Button
               size="sm"
               variant="ghost"
               className="text-destructive hover:bg-destructive/10"
               onClick={() => onCancel(order.id)}
-              disabled={isActing}
+              disabled={isActing || isCancelling}
+              aria-label={t("actions.cancel", { defaultValue: "Cancel" })}
+              title={t("actions.cancel", { defaultValue: "Cancel" })}
             >
-              {isActing ? (
+              {isCancelling ? (
                 <span className="h-4 w-4 border-2 border-current/40 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <XCircle className="h-4 w-4" />

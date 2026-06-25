@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
-import useEmblaCarousel from 'embla-carousel-react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
+import { flushSync } from 'react-dom';
+import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion';
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Bell, Loader2, X, CreditCard, Zap, Pencil, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { ScrollArea } from '../ui/scroll-area';
@@ -11,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dia
 import { Textarea } from '../ui/textarea';
 import { useCartStore } from '@/store/cartStore';
 import { ModifierDialog } from './ModifierDialog';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +39,8 @@ interface Props {
   onCheckout: (note?: string) => void | Promise<any>;
   onImmediateCheckout?: (note?: string) => void | Promise<any>;
   showPaymentButton?: boolean;
+  showBackButton?: boolean;
+  showAllCategory?: boolean;
   primaryCtaLabel?: string;
   secondaryCtaLabel?: string;
   callButtonLabel?: string | null;
@@ -42,7 +51,147 @@ interface Props {
   openCartSignal?: number;
   orderPlacedSignal?: number;
   showCartButton?: boolean;
+  cartBottomOffset?: 'default' | 'raised';
 }
+
+interface ItemGridProps {
+  items: MenuItem[];
+  onAdd: (item: MenuItem) => void;
+  formatPrice: (n: number) => string;
+  getPrice: (item: MenuItem) => number;
+  fallbackLabel: string;
+  addItemLabel: string;
+  active?: boolean;
+  showPrices?: boolean;
+  selectedQuantities: Map<string, number>;
+}
+
+const MENU_CARD_IMAGE_SIZES = '(min-width: 1024px) 220px, (min-width: 640px) 33vw, 50vw';
+const SWIPE_DISTANCE_PX = 68;
+const SWIPE_VELOCITY_PX = 900;
+const SWIPE_INTENT_DEADZONE_PX = 28;
+const SWIPE_REVERSAL_GUARD_PX = 8;
+const CART_MINIMIZE_DISTANCE_PX = 86;
+const CART_MINIMIZE_VELOCITY_PX = 650;
+const CART_MINIMIZE_ANIMATION_MS = 180;
+const MENU_SWIPE_SETTLE_MS = 460;
+const MENU_SWIPE_TRANSITION = {
+  duration: MENU_SWIPE_SETTLE_MS / 1000,
+  ease: [0.32, 0.72, 0, 1] as const,
+};
+
+const getCategorySwipeOffset = (info: PanInfo): -1 | 0 | 1 => {
+  const offsetX = info.offset.x;
+  const velocityX = info.velocity.x;
+
+  if (Math.abs(offsetX) >= SWIPE_DISTANCE_PX) {
+    return offsetX < 0 ? 1 : -1;
+  }
+
+  if (Math.abs(offsetX) >= SWIPE_INTENT_DEADZONE_PX) {
+    return 0;
+  }
+
+  if (Math.abs(velocityX) < SWIPE_VELOCITY_PX) {
+    return 0;
+  }
+
+  if (
+    Math.abs(offsetX) >= SWIPE_REVERSAL_GUARD_PX &&
+    Math.sign(offsetX) !== Math.sign(velocityX)
+  ) {
+    return 0;
+  }
+
+  return velocityX < 0 ? 1 : -1;
+};
+
+const ItemGrid = ({
+  items,
+  onAdd,
+  formatPrice,
+  getPrice,
+  fallbackLabel,
+  addItemLabel,
+  active = false,
+  showPrices = true,
+  selectedQuantities,
+}: ItemGridProps) => (
+  <div className="grid grid-cols-2 gap-3 sm:gap-4">
+    {items.map((item, index) => {
+      const price = getPrice(item);
+      const displayName =
+        item.displayName ?? item.name ?? item.title ?? fallbackLabel;
+      const description = item.displayDescription ?? item.description ?? "";
+      const unavailable = item.available === false;
+      const eagerImage = active && index < 4;
+      const selectedQuantity = selectedQuantities.get(item.id) ?? 0;
+      const isSelected = selectedQuantity > 0;
+      return (
+        <Card
+          key={item.id}
+          interactive={false}
+          className={`menu-item-card group relative overflow-hidden rounded-xl border bg-card shadow-sm transition-all duration-300 ${
+            isSelected ? 'border-primary ring-2 ring-primary/50 shadow-primary/15' : 'border-border/30'
+          } ${
+            unavailable ? 'opacity-50' : 'hover:border-primary/30'
+          }`}
+          style={{ contain: 'layout paint style' }}
+        >
+          <button
+            type="button"
+            className="block h-full w-full text-left disabled:cursor-not-allowed"
+            onClick={() => onAdd(item)}
+            disabled={unavailable}
+            aria-label={`${addItemLabel}: ${displayName}`}
+          >
+            <div className="relative aspect-[4/3] overflow-hidden bg-black">
+              {item.image ? (
+                <img
+                  src={item.image}
+                  alt={displayName}
+                  width={320}
+                  height={400}
+                  sizes={MENU_CARD_IMAGE_SIZES}
+                  loading={eagerImage ? 'eager' : 'lazy'}
+                  decoding="async"
+                  {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
+                  draggable={false}
+                  className={`menu-card-image h-full w-full object-contain transition-all duration-500 ${
+                    isSelected ? 'brightness-110 saturate-125' : ''
+                  }`}
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-muted/60 to-muted/20" />
+              )}
+              {isSelected && (
+                <div className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground shadow-lg">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {selectedQuantity}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1 px-3 py-3">
+              <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight text-foreground sm:text-sm">
+                {displayName}
+              </h3>
+              {description ? (
+                <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                  {description}
+                </p>
+              ) : null}
+              {showPrices ? (
+                <span className="block text-base font-semibold tabular-nums text-foreground sm:text-lg">
+                  {formatPrice(price)}
+                </span>
+              ) : null}
+            </div>
+          </button>
+        </Card>
+      );
+    })}
+  </div>
+);
 
 export const SwipeableMenuView = ({
   categories,
@@ -59,78 +208,149 @@ export const SwipeableMenuView = ({
   openCartSignal = 0,
   orderPlacedSignal = 0,
   showPaymentButton = true,
+  showBackButton = true,
+  showAllCategory = true,
   showCartButton = true,
+  cartBottomOffset = 'default',
   primaryCtaLabel,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
-  const removeItem = useCartStore((state) => state.removeItem);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
-  const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
+  const removeItemAt = useCartStore((state) => state.removeItemAt);
+  const updateQuantityAt = useCartStore((state) => state.updateQuantityAt);
+  const updateItemAt = useCartStore((state) => state.updateItemAt);
   
   const [cartOpen, setCartOpen] = useState(false);
+  const [cartSheetMinimizing, setCartSheetMinimizing] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [isRinging, setIsRinging] = useState(false);
   const [bellDialogOpen, setBellDialogOpen] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState(1);
   
   // Ref for category tabs container to scroll active tab into view
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const suppressClickAfterSwipeRef = useRef(false);
+  const cartDragControls = useDragControls();
+  const cartMinimizeTimerRef = useRef<number | null>(null);
   
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
 
-  // Category tabs with "All" prepended
+  const selectedQuantities = useMemo(() => {
+    const quantities = new Map<string, number>();
+    for (const cartItem of cartItems) {
+      quantities.set(
+        cartItem.item.id,
+        (quantities.get(cartItem.item.id) ?? 0) + cartItem.quantity
+      );
+    }
+    return quantities;
+  }, [cartItems]);
+
+  const itemCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) counts.set(category.id, 0);
+    for (const item of items) {
+      if (item.categoryId && counts.has(item.categoryId)) {
+        counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1);
+        continue;
+      }
+      const categoryByTitle = categories.find((category) => category.title === item.category);
+      if (categoryByTitle) {
+        counts.set(categoryByTitle.id, (counts.get(categoryByTitle.id) ?? 0) + 1);
+      }
+    }
+    counts.set('all', items.length);
+    return counts;
+  }, [categories, items]);
+
+  const selectedCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const category of categories) counts.set(category.id, 0);
+
+    for (const cartItem of cartItems) {
+      const quantity = cartItem.quantity ?? 1;
+      const item = cartItem.item;
+      if (item.categoryId && counts.has(item.categoryId)) {
+        counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + quantity);
+        continue;
+      }
+      const categoryByTitle = categories.find((category) => category.title === item.category);
+      if (categoryByTitle) {
+        counts.set(categoryByTitle.id, (counts.get(categoryByTitle.id) ?? 0) + quantity);
+      }
+    }
+
+    counts.set('all', cartItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0));
+    return counts;
+  }, [cartItems, categories]);
+
+  // Category tabs with optional "All" prepended
   const allCategories = useMemo(
-    () => [{ id: 'all', title: t('menu.category_all', { defaultValue: 'All' }) }, ...categories],
-    [categories, t]
+    () => [
+      ...(showAllCategory
+        ? [
+            {
+              id: 'all',
+              title: t('menu.category_all', { defaultValue: 'All' }),
+              count: itemCountByCategory.get('all') ?? items.length,
+            },
+          ]
+        : []),
+      ...categories.map((category) => ({
+        ...category,
+        count: itemCountByCategory.get(category.id) ?? 0,
+      })),
+    ],
+    [categories, itemCountByCategory, items.length, showAllCategory, t]
   );
   const selectedIndex = allCategories.findIndex(c => c.id === selectedCategory);
   const safeSelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
-  const initialEmblaIndexRef = useRef(safeSelectedIndex);
-  const carouselOptions = useMemo(
-    () => ({
-      startIndex: initialEmblaIndexRef.current,
-      loop: false,
-      // Allow a more natural settle instead of forcing a hard snap.
-      skipSnaps: true,
-      // Slow down snap animation slightly for smoother feel on release.
-      duration: 34,
-    }),
-    []
-  );
 
-  // Content carousel for swipeable menu pages
-  const [contentEmblaRef, contentEmblaApi] = useEmblaCarousel(carouselOptions);
+  const handleCategorySelect = (categoryId: string) => {
+    if (categoryId === selectedCategory) return;
 
-  // Sync category selection with carousel
-  useEffect(() => {
-    if (!contentEmblaApi) return;
-    
-    const onSettle = () => {
-      const index = contentEmblaApi.selectedScrollSnap();
-      if (allCategories[index] && allCategories[index].id !== selectedCategory) {
-        onCategoryChange(allCategories[index].id);
-      }
-    };
-
-    contentEmblaApi.on('settle', onSettle);
-    contentEmblaApi.on('reInit', onSettle);
-    onSettle();
-    return () => {
-      contentEmblaApi.off('settle', onSettle);
-      contentEmblaApi.off('reInit', onSettle);
-    };
-  }, [contentEmblaApi, allCategories, selectedCategory, onCategoryChange]);
-
-  // Scroll carousel when category tab is clicked
-  useEffect(() => {
-    if (!contentEmblaApi) return;
-    const targetIndex = allCategories.findIndex(c => c.id === selectedCategory);
-    if (targetIndex >= 0 && contentEmblaApi.selectedScrollSnap() !== targetIndex) {
-      contentEmblaApi.scrollTo(targetIndex);
+    const nextIndex = allCategories.findIndex((category) => category.id === categoryId);
+    if (nextIndex >= 0 && nextIndex !== safeSelectedIndex) {
+      flushSync(() => {
+        setSwipeDirection(nextIndex > safeSelectedIndex ? 1 : -1);
+      });
     }
-  }, [selectedCategory, contentEmblaApi, allCategories]);
+    onCategoryChange(categoryId);
+  };
+
+  const handleSwipeCategory = (offset: -1 | 1) => {
+    const nextCategory = allCategories[safeSelectedIndex + offset];
+    if (!nextCategory) return false;
+
+    flushSync(() => {
+      setSwipeDirection(offset);
+    });
+    onCategoryChange(nextCategory.id);
+    return true;
+  };
+
+  const handleContentDragStart = () => {
+    suppressClickAfterSwipeRef.current = true;
+  };
+
+  const handleContentDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const categoryOffset = getCategorySwipeOffset(info);
+    const changedCategory =
+      categoryOffset !== 0 ? handleSwipeCategory(categoryOffset) : false;
+
+    window.setTimeout(() => {
+      suppressClickAfterSwipeRef.current = false;
+    }, changedCategory ? MENU_SWIPE_SETTLE_MS : 0);
+  };
+
+  const handleContentClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressClickAfterSwipeRef.current) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   // Scroll active tab into view when category changes
   useEffect(() => {
@@ -164,6 +384,13 @@ export const SwipeableMenuView = ({
       : 0;
   };
 
+  const getSharedPriceLabel = (list: MenuItem[]) => {
+    if (list.length === 0) return null;
+    const firstPrice = getPrice(list[0]);
+    const allSamePrice = list.every((item) => Math.abs(getPrice(item) - firstPrice) < 0.001);
+    return allSamePrice ? formatPrice(firstPrice) : null;
+  };
+
   const getModifierOptionPriceDelta = (
     option: NonNullable<CartItem['item']['modifiers']>[number]['options'][number]
   ) => {
@@ -174,11 +401,13 @@ export const SwipeableMenuView = ({
 
   const getSelectedModifiersTotal = (cartItem: CartItem) => {
     if (!cartItem.selectedModifiers) return 0;
-    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
-      const option = cartItem.item.modifiers
-        ?.find((modifier) => modifier.id === modifierId)
-        ?.options.find((opt) => opt.id === optionId);
-      return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionIds]) => {
+      const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+      const modifierOptions = cartItem.item.modifiers?.find((modifier) => modifier.id === modifierId)?.options ?? [];
+      return sum + ids.reduce((optionSum, optionId) => {
+        const option = modifierOptions.find((opt) => opt.id === optionId);
+        return optionSum + (option ? getModifierOptionPriceDelta(option) : 0);
+      }, 0);
     }, 0);
   };
 
@@ -188,6 +417,10 @@ export const SwipeableMenuView = ({
   const cartTotal = cartItems.reduce((sum, item) => {
     return sum + getCartItemUnitPrice(item) * item.quantity;
   }, 0);
+  const itemCountLabel =
+    cartItems.length === 1
+      ? t('menu.item_count_one', { count: cartItems.length, defaultValue: '{{count}} item' })
+      : t('menu.item_count_other', { count: cartItems.length, defaultValue: '{{count}} items' });
 
   const handleCheckout = async () => {
     if (checkoutBusy) return;
@@ -209,12 +442,12 @@ export const SwipeableMenuView = ({
     setEditingItemIndex(index);
   };
 
-  const handleConfirmEditModifiers = (selectedModifiers: Record<string, string>, qty: number) => {
+  const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
     if (editingItemIndex !== null) {
-      updateItemModifiers(editingItemIndex, selectedModifiers);
-      if (qty !== cartItems[editingItemIndex].quantity) {
-        updateQuantity(cartItems[editingItemIndex].item.id, qty);
-      }
+      updateItemAt(editingItemIndex, {
+        quantity: Math.max(1, qty || 1),
+        selectedModifiers,
+      });
     }
     setEditingItemIndex(null);
   };
@@ -224,19 +457,67 @@ export const SwipeableMenuView = ({
     onAddItem(item);
   };
 
+  const minimizeCartSheet = () => {
+    if (typeof window === 'undefined') {
+      setCartOpen(false);
+      return;
+    }
+
+    if (cartMinimizeTimerRef.current !== null) {
+      window.clearTimeout(cartMinimizeTimerRef.current);
+    }
+
+    setCartSheetMinimizing(true);
+    cartMinimizeTimerRef.current = window.setTimeout(() => {
+      setCartOpen(false);
+      setCartSheetMinimizing(false);
+      cartMinimizeTimerRef.current = null;
+    }, CART_MINIMIZE_ANIMATION_MS);
+  };
+
+  const handleCartOpenChange = (open: boolean) => {
+    if (open) {
+      setCartSheetMinimizing(false);
+      setCartOpen(true);
+      return;
+    }
+    minimizeCartSheet();
+  };
+
+  const handleCartSheetDragEnd = (
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    const draggedDown = info.offset.y >= CART_MINIMIZE_DISTANCE_PX;
+    const flungDown = info.velocity.y >= CART_MINIMIZE_VELOCITY_PX;
+    if (draggedDown || flungDown) {
+      minimizeCartSheet();
+    }
+  };
+
   useEffect(() => {
     if (openCartSignal > 0) {
+      setCartSheetMinimizing(false);
       setCartOpen(true);
     }
   }, [openCartSignal]);
 
   useEffect(() => {
     if (orderPlacedSignal > 0) {
+      setCartSheetMinimizing(false);
       setCartOpen(false);
       setOrderNote('');
       setEditingItemIndex(null);
     }
   }, [orderPlacedSignal]);
+
+  useEffect(() => {
+    return () => {
+      if (cartMinimizeTimerRef.current !== null) {
+        window.clearTimeout(cartMinimizeTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleBellClick = () => {
     setBellDialogOpen(true);
@@ -271,6 +552,23 @@ export const SwipeableMenuView = ({
     return mapped;
   }, [categories, items]);
 
+  // Build subcategory groups for a given list of items.
+  // Reads an optional `subcategory` field; falls back to "" (no subcategory).
+  const buildSubgroups = (list: MenuItem[]) => {
+    const groups = new Map<string, MenuItem[]>();
+    for (const it of list) {
+      const sub =
+        ((it as unknown as { subcategory?: string; subCategory?: string }).subcategory ??
+          (it as unknown as { subCategory?: string }).subCategory ??
+          '') ||
+        '';
+      const key = sub.trim();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(it);
+    }
+    return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
+  };
+
   const groupedByCategoryId = useMemo(() => {
     const grouped = new Map<string, Array<{ category: Pick<MenuCategory, 'id' | 'title'>; items: MenuItem[] }>>();
     grouped.set(
@@ -293,208 +591,304 @@ export const SwipeableMenuView = ({
     return grouped;
   }, [categories, itemsByCategory]);
 
+  const activeCategoryId = allCategories[safeSelectedIndex]?.id ?? categories[0]?.id ?? 'all';
+  const visibleGroupedItems = groupedByCategoryId.get(activeCategoryId) ?? [];
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const urls = new Set(
+      visibleGroupedItems
+        .flatMap((group) => group.items)
+        .map((item) => item.image)
+        .filter((url): url is string => Boolean(url))
+        .slice(0, 6)
+    );
+
+    if (urls.size === 0) return;
+
+    const timeoutId = window.setTimeout(() => {
+      for (const url of urls) {
+        const image = new Image();
+        image.decoding = 'async';
+        image.src = url;
+        image.decode?.().catch(() => undefined);
+      }
+    }, 160);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [visibleGroupedItems]);
+
   return (
     <>
-      {/* Luxury Category Navigation */}
+      {/* Category Navigation */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="relative mb-6"
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        className="sticky top-0 z-30 mb-4 -mx-4 border-b border-border/35 bg-background/95 px-0 py-2 backdrop-blur sm:mx-0 sm:px-3"
       >
-        <div 
-          ref={tabsContainerRef}
-          className="relative flex gap-2 overflow-x-auto pb-2 items-center scrollbar-hide scroll-smooth"
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            className="shrink-0 h-10 w-10 rounded-full bg-card/80 backdrop-blur-md border border-border/20 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300"
+        <div className="relative flex items-center overflow-hidden">
+          <div
+            ref={tabsContainerRef}
+            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-4 sm:px-0"
           >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          
-          {allCategories.map((cat, idx) => (
-            <motion.div
-              key={cat.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.03, duration: 0.25 }}
-            >
-              <Button
-                ref={(el) => {
-                  if (el) tabRefs.current.set(cat.id, el);
-                }}
-                variant={selectedCategory === cat.id ? "default" : "ghost"}
-                onClick={() => onCategoryChange(cat.id)}
-                className={`shrink-0 rounded-full h-9 px-5 text-sm tracking-wide transition-all duration-300 whitespace-nowrap ${
-                  selectedCategory === cat.id
-                    ? 'shadow-md shadow-primary/20 font-medium'
-                    : 'bg-card/60 backdrop-blur-md border border-border/15 hover:bg-card/80 hover:border-primary/20 font-normal text-muted-foreground'
-                }`}
-              >
-                {cat.title}
-              </Button>
-            </motion.div>
-          ))}
+            {allCategories.map((cat) => {
+              const isActive = selectedCategory === cat.id;
+              const selectedCount = selectedCountByCategory.get(cat.id) ?? 0;
+              const hasSelectedItems = selectedCount > 0;
+              return (
+                <motion.button
+                  key={cat.id}
+                  ref={(el) => {
+                    if (el) tabRefs.current.set(cat.id, el);
+                  }}
+                  type="button"
+                  onClick={() => handleCategorySelect(cat.id)}
+                  whileTap={{ scale: 0.97 }}
+                  className={`relative h-10 min-w-[88px] shrink-0 rounded-full border px-3 text-center transition-colors duration-200 ${
+                    isActive
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : hasSelectedItems
+                        ? 'border-primary/45 bg-primary/10 text-foreground'
+                        : 'border-border/45 bg-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="active-category-pill"
+                      className="absolute inset-0 rounded-full bg-primary"
+                      transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.8 }}
+                    />
+                  )}
+                  {hasSelectedItems && !isActive && (
+                    <span
+                      className="absolute right-1 top-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground"
+                    >
+                      {selectedCount}
+                    </span>
+                  )}
+                  <span className="relative z-10 flex h-full items-center justify-center">
+                    <span className="max-w-[132px] truncate text-center text-[13px] font-semibold leading-4 tracking-normal">
+                      {cat.title}
+                    </span>
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
         </div>
       </motion.div>
 
-      {/* Swipeable Content Carousel */}
-      <div className="overflow-hidden pb-32" ref={contentEmblaRef}>
-        <div className="flex">
-          {allCategories.map((cat, catIdx) => {
-            const shouldRenderSlide = Math.abs(catIdx - safeSelectedIndex) <= 2;
-            const groupedItems = shouldRenderSlide
-              ? groupedByCategoryId.get(cat.id) ?? []
-              : [];
-            
-            return (
-              <div
-                key={cat.id}
-                className="flex-[0_0_100%] min-w-0 px-1"
-              >
-                {!shouldRenderSlide ? (
-                  <div className="min-h-[50vh]" aria-hidden="true" />
-                ) : (
-                  groupedItems.map((group) => (
-                    <div key={group.category.id}>
-                      {cat.id === 'all' && (
-                        <div className="relative flex items-center gap-4 my-8">
-                          {/* Elegant category divider */}
-                          <div className="flex-1 flex items-center gap-2">
-                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-border/30" />
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                          </div>
-                          <h2 className="text-lg font-semibold text-foreground tracking-wide uppercase px-2">
-                            {group.category.title}
-                          </h2>
-                          <div className="flex-1 flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                            <div className="h-px flex-1 bg-gradient-to-l from-transparent via-border to-border/30" />
-                          </div>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
-                        {group.items.map((item) => {
-                          const price = getPrice(item);
-                          const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+      {/* Selected category content */}
+      <div
+        className="menu-content-frame overflow-x-hidden pb-32"
+        onClickCapture={handleContentClickCapture}
+      >
+        <div className="grid min-w-0">
+        <AnimatePresence initial={false} custom={swipeDirection}>
+          <motion.div
+            key={activeCategoryId}
+            custom={swipeDirection}
+            drag="x"
+            dragDirectionLock
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.2}
+            dragMomentum={false}
+            dragSnapToOrigin
+            onDragStart={handleContentDragStart}
+            onDragEnd={handleContentDragEnd}
+            variants={{
+              enter: (direction: number) => ({ x: direction > 0 ? '100%' : '-100%' }),
+              center: { x: 0 },
+              exit: (direction: number) => ({ x: direction > 0 ? '-100%' : '100%' }),
+            }}
+            initial="enter"
+            animate={{ x: 0 }}
+            exit="exit"
+            transition={MENU_SWIPE_TRANSITION}
+            className="menu-swipe-pane col-start-1 row-start-1 min-w-0 cursor-grab touch-pan-y active:cursor-grabbing"
+          >
+            {visibleGroupedItems.map((group) => {
+              const subgroups = buildSubgroups(group.items);
+              const hasNamedSubgroups = subgroups.some((s) => s.title);
 
+              return (
+                <section key={group.category.id} className="menu-section mb-10">
+                  {activeCategoryId === 'all' && (
+                    <header className="flex items-baseline justify-between mb-5 px-1">
+                      <h2 className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
+                        {group.category.title}
+                      </h2>
+                      <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                        {group.items.length}
+                      </span>
+                    </header>
+                  )}
+
+                  {hasNamedSubgroups ? (
+                    <Accordion
+                      type="multiple"
+                      defaultValue={subgroups
+                        .filter((s) => s.title)
+                        .map((s) => s.title)}
+                      className="space-y-2"
+                    >
+                      {subgroups
+                        .filter((s) => !s.title)
+                        .map((s) => (
+                          <ItemGrid
+                            key="__no-sub__"
+                            items={s.items}
+                            onAdd={handleAddItemClick}
+                            formatPrice={formatPrice}
+                            getPrice={getPrice}
+                            fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                            addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+                            active
+                            selectedQuantities={selectedQuantities}
+                          />
+                        ))}
+                      {subgroups
+                        .filter((s) => s.title)
+                        .map((s) => {
+                          const sharedPriceLabel = getSharedPriceLabel(s.items);
                           return (
-                            <Card
-                              key={item.id}
-                              className="group relative overflow-hidden rounded-2xl border-0 bg-card/40 backdrop-blur-sm hover:bg-card/60 transition-all duration-500 cursor-pointer shadow-lg hover:shadow-2xl hover:-translate-y-1"
-                              onClick={() => handleAddItemClick(item)}
+                            <AccordionItem
+                              key={s.title}
+                              value={s.title}
+                              className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
                             >
-                              {/* Image container with luxury overlay */}
-                              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl">
-                                <img
-                                  src={item.image}
-                                  alt={displayName}
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                                />
-                                
-                                {/* Premium gradient overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10 pointer-events-none" />
-                                
-                                {/* Subtle top shine */}
-                                <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                                
-                                {/* Content overlay at bottom */}
-                                <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
-                                  {/* Title with elegant typography */}
-                                  <h3 className="font-semibold text-sm sm:text-base text-white drop-shadow-lg leading-tight mb-2 line-clamp-2 tracking-tight">
-                                    {displayName}
-                                  </h3>
-                                  
-                                  {/* Price with luxury styling */}
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-lg sm:text-xl font-bold text-white drop-shadow-lg tracking-tight">
-                                      {formatPrice(price)}
+                              <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                <div className="flex items-center gap-3">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                                  <span className="text-sm font-medium text-foreground tracking-wide">
+                                    {s.title}
+                                  </span>
+                                  {sharedPriceLabel ? (
+                                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+                                      {sharedPriceLabel}
                                     </span>
-                                    
-                                    {/* Subtle add indicator */}
-                                    <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:scale-110">
-                                      <span className="text-white text-lg font-light">+</span>
-                                    </div>
-                                  </div>
+                                  ) : null}
+                                  <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                                    {s.items.length}
+                                  </span>
                                 </div>
-                                
-                                {/* Corner accent */}
-                                <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg">
-                                  <span className="text-primary-foreground text-xs font-bold">+</span>
-                                </div>
-                              </div>
-                            </Card>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-3 pb-4 pt-0">
+                                <ItemGrid
+                                  items={s.items}
+                                  onAdd={handleAddItemClick}
+                                  formatPrice={formatPrice}
+                                  getPrice={getPrice}
+                                  fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                                  addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+                                  active
+                                  showPrices={!sharedPriceLabel}
+                                  selectedQuantities={selectedQuantities}
+                                />
+                              </AccordionContent>
+                            </AccordionItem>
                           );
                         })}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            );
-          })}
+                    </Accordion>
+                  ) : (
+                      <ItemGrid
+                        items={group.items}
+                        onAdd={handleAddItemClick}
+                        formatPrice={formatPrice}
+                        getPrice={getPrice}
+                        fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
+                        addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+                        active
+                        selectedQuantities={selectedQuantities}
+                      />
+                  )}
+                </section>
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>
         </div>
       </div>
 
-      {/* Delicate Floating Action Bar */}
-      <div className="fixed bottom-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
+      {/* Bottom menu controls */}
+      <div
+        className={`fixed left-4 right-4 z-50 flex justify-center pointer-events-none transition-[bottom] duration-300 ${
+          cartBottomOffset === 'raised'
+            ? 'bottom-[calc(6rem+env(safe-area-inset-bottom))]'
+            : 'bottom-[calc(1rem+env(safe-area-inset-bottom))]'
+        }`}
+      >
         <motion.div
           initial={{ y: 60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
-          className="pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full bg-card/70 backdrop-blur-xl border border-border/20 shadow-lg"
+          className="pointer-events-auto grid w-full max-w-lg grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 rounded-full border border-border/25 bg-card/80 p-1.5 shadow-xl backdrop-blur-md"
         >
-          {/* Call Waiter Button - Minimal */}
+          {showBackButton ? (
+            <motion.button
+              type="button"
+              onClick={onBack}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              aria-label={t('common.back', { defaultValue: 'Back' })}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/55 text-muted-foreground transition-all duration-300 hover:bg-muted hover:text-foreground"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </motion.button>
+          ) : (
+            <div aria-hidden="true" />
+          )}
+
+          {/* Order button - dominant center action */}
+          {showCartButton ? (
+            <motion.button
+              onClick={() => setCartOpen(true)}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative flex h-12 min-w-0 items-center justify-center gap-2 rounded-full bg-primary px-4 text-primary-foreground shadow-sm transition-all duration-300 hover:shadow-md"
+            >
+              <div className="relative shrink-0">
+                <ShoppingCart className="h-5 w-5" />
+                {cartItems.length > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground ring-1 ring-primary"
+                  >
+                    {cartItems.length}
+                  </motion.span>
+                )}
+              </div>
+              <span className="min-w-0 truncate text-sm font-semibold tracking-tight">
+                {cartItems.length > 0
+                  ? `${formatPrice(cartTotal)} · ${primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}`
+                  : t('menu.cart', { defaultValue: 'Cart' })}
+              </span>
+            </motion.button>
+          ) : (
+            <div aria-hidden="true" />
+          )}
+
+          {/* Call Waiter Button */}
           <motion.button
             type="button"
             onClick={handleBellClick}
             disabled={callStatus === 'pending'}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className={`relative flex items-center justify-center h-10 w-10 rounded-full transition-all duration-300 ${
-              callStatus === 'pending' 
-                ? 'bg-primary/15 text-primary cursor-wait' 
+            className={`relative flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 ${
+              callStatus === 'pending'
+                ? 'bg-primary/15 text-primary cursor-wait'
                 : 'bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground'
             }`}
           >
             {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
               <span className="absolute inset-0 rounded-full bg-primary/15 animate-ping" />
             )}
-            <Bell className={`h-4 w-4 relative ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
+            <Bell className={`relative h-5 w-5 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
           </motion.button>
-
-          {/* Cart Button - Compact */}
-          {showCartButton && (
-            <motion.button
-              onClick={() => setCartOpen(true)}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="relative flex items-center gap-2 h-10 pl-3 pr-4 rounded-full bg-primary text-primary-foreground font-medium transition-all duration-300 shadow-sm hover:shadow-md"
-            >
-              <div className="relative">
-                <ShoppingCart className="h-4 w-4" />
-                {cartItems.length > 0 && (
-                  <motion.span 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center ring-1 ring-primary"
-                  >
-                    {cartItems.length}
-                  </motion.span>
-                )}
-              </div>
-              {cartItems.length > 0 ? (
-                <span className="text-sm font-semibold tracking-tight">{formatPrice(cartTotal)}</span>
-              ) : (
-                <span className="text-sm font-medium">{t('menu.cart', { defaultValue: 'Cart' })}</span>
-              )}
-            </motion.button>
-          )}
         </motion.div>
       </div>
 
@@ -511,7 +905,7 @@ export const SwipeableMenuView = ({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCall}>
               {t('menu.yes_call', { defaultValue: 'Yes, Call Waiter' })}
             </AlertDialogAction>
@@ -521,17 +915,40 @@ export const SwipeableMenuView = ({
 
       {/* Cart Modal */}
       {showCartButton && (
-      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
+      <Dialog open={cartOpen} onOpenChange={handleCartOpenChange}>
+        <DialogContent
+          motionProps={{
+            animate: cartSheetMinimizing
+              ? { opacity: 0.96, scale: 0.98, y: '104%' }
+              : { opacity: 1, scale: 1, y: 0 },
+            drag: 'y',
+            dragControls: cartDragControls,
+            dragDirectionLock: true,
+            dragConstraints: { top: 0, bottom: 0 },
+            dragElastic: { top: 0, bottom: 0.36 },
+            dragListener: true,
+            dragMomentum: false,
+            dragTransition: { bounceStiffness: 420, bounceDamping: 36 },
+            onDragEnd: handleCartSheetDragEnd,
+            transition: cartSheetMinimizing
+              ? {
+                  duration: CART_MINIMIZE_ANIMATION_MS / 1000,
+                  ease: [0.32, 0.72, 0, 1],
+                }
+              : { type: 'spring', stiffness: 350, damping: 28, mass: 0.8 },
+            whileDrag: { scale: 0.995 },
+          }}
+          className="!left-0 !right-0 !bottom-0 !top-auto h-[85dvh] max-h-[100dvh] !w-[100dvw] !max-w-none overflow-hidden rounded-t-3xl border-x-0 border-b-0 p-0 ![translate:0_0] xl:!left-1/2 xl:!right-auto xl:!bottom-auto xl:!top-1/2 xl:h-auto xl:max-h-[90dvh] xl:!w-auto xl:!max-w-2xl xl:rounded-lg xl:border xl:![translate:-50%_-50%]"
+        >
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
-          <Card className="border-0 shadow-none h-full flex flex-col">
-            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
-              <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
+          <Card className="h-full min-h-0 min-w-0 overflow-hidden border-0 shadow-none flex flex-col">
+            <div className="cursor-grab touch-none bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40 active:cursor-grabbing">
+              <div className="flex justify-center pt-1 pb-2" aria-hidden="true">
                 <div className="h-1.5 w-12 rounded-full bg-muted" />
               </div>
               <div className="flex items-center gap-3">
@@ -543,13 +960,13 @@ export const SwipeableMenuView = ({
                     {t('menu.your_order', { defaultValue: 'Your Order' })}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}
+                    {itemCountLabel}
                   </p>
                 </div>
               </div>
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               {cartItems.length === 0 ? (
                 <div className="p-8 text-center">
                   <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
@@ -563,23 +980,27 @@ export const SwipeableMenuView = ({
                 <div className="p-3 space-y-2">
                   {cartItems.map((cartItem, idx) => {
                     const itemTotal = getCartItemUnitPrice(cartItem) * cartItem.quantity;
-                    const displayName = cartItem.item.name ?? cartItem.item.title ?? t('menu.item', { defaultValue: 'Item' });
+                    const displayName =
+                      cartItem.item.displayName ??
+                      cartItem.item.name ??
+                      cartItem.item.title ??
+                      t('menu.item', { defaultValue: 'Item' });
                     const hasModifiers = cartItem.selectedModifiers && Object.keys(cartItem.selectedModifiers).length > 0;
                     
                     return (
                       <div
                         key={`${cartItem.item.id}-${idx}`}
-                        className="relative group bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/30 transition-all duration-300"
+                        className="relative group min-w-0 overflow-hidden bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/30 transition-all duration-300"
                       >
                         <button
                           aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
-                          onClick={() => removeItem(cartItem.item.id)}
-                          className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 shadow-lg hover:scale-110 z-10"
+                          onClick={() => removeItemAt(idx)}
+                          className="absolute right-2 top-2 z-10 rounded-full bg-destructive p-1.5 text-destructive-foreground shadow-lg hover:scale-110"
                         >
                           <X className="h-3 w-3" />
                         </button>
 
-                        <div className="flex gap-2">
+                        <div className="flex min-w-0 gap-2 pr-8">
                           <img
                             src={cartItem.item.image}
                             alt={displayName}
@@ -587,24 +1008,24 @@ export const SwipeableMenuView = ({
                             decoding="async"
                             className="w-12 h-12 rounded-md object-cover flex-shrink-0"
                           />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
                               <h4 className="font-semibold text-sm text-foreground truncate">{displayName}</h4>
-                              <span className="text-sm font-medium text-primary whitespace-nowrap">
+                              <span className="max-w-[34vw] shrink-0 truncate text-sm font-medium text-primary sm:max-w-none">
                                 {formatPrice(itemTotal)}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between mt-1">
+                            <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))}
+                                  onClick={() => updateQuantityAt(idx, Math.max(1, cartItem.quantity - 1))}
                                   className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-primary/20 transition-colors"
                                 >
                                   -
                                 </button>
                                 <span className="text-sm font-medium w-4 text-center">{cartItem.quantity}</span>
                                 <button
-                                  onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
+                                  onClick={() => updateQuantityAt(idx, cartItem.quantity + 1)}
                                   className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-primary/20 transition-colors"
                                 >
                                   +
@@ -613,10 +1034,10 @@ export const SwipeableMenuView = ({
                               {hasModifiers && (
                                 <button
                                   onClick={() => handleEditModifiers(idx)}
-                                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                                  className="min-w-0 text-xs text-primary hover:underline flex items-center gap-1"
                                 >
                                   <Pencil className="h-3 w-3" />
-                                  {t('menu.edit', { defaultValue: 'Edit' })}
+                                  <span className="truncate">{t('menu.edit', { defaultValue: 'Edit' })}</span>
                                 </button>
                               )}
                             </div>
@@ -630,29 +1051,35 @@ export const SwipeableMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="p-4 border-t border-border/40 space-y-4 bg-card/50">
+              <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-border/40 space-y-4 bg-card/50">
                 <Textarea
                   placeholder={t('menu.order_note_placeholder', { defaultValue: 'Add a note to your order...' })}
                   value={orderNote}
                   onChange={(e) => setOrderNote(e.target.value)}
                   className="min-h-[60px] resize-none"
                 />
-                <div className="flex items-center justify-between">
+                <div className="flex min-w-0 items-center justify-between gap-3">
                   <span className="text-lg font-bold">{t('menu.total', { defaultValue: 'Total' })}</span>
-                  <span className="text-lg font-bold text-primary">{formatPrice(cartTotal)}</span>
+                  <span className="min-w-0 truncate text-lg font-bold text-primary">{formatPrice(cartTotal)}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex min-w-0 gap-2">
                   <Button
                     onClick={handleCheckout}
                     disabled={checkoutBusy}
-                    className="flex-1 h-12 text-base font-semibold"
+                    className="min-w-0 flex-1 h-12 text-base font-semibold"
                   >
                     {checkoutBusy ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
                       <>
-                        <CreditCard className="h-5 w-5 mr-2" />
-                        {primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}
+                        {showPaymentButton ? (
+                          <CreditCard className="h-5 w-5 mr-2" />
+                        ) : (
+                          <ShoppingCart className="h-5 w-5 mr-2" />
+                        )}
+                        <span className="min-w-0 truncate">
+                          {primaryCtaLabel || t('menu.checkout', { defaultValue: 'Place Order' })}
+                        </span>
                       </>
                     )}
                   </Button>

@@ -36,6 +36,7 @@ const PaymentComplete = lazy(
 const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
 const PaymentFailed = lazy(() => import("./pages/PaymentFailed"));
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
+const HybridDashboard = lazy(() => import("./pages/HybridDashboard"));
 const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const ProfileDashboard = lazy(() => import("./pages/ProfileDashboard"));
 const PublicCodeRedirect = () => {
@@ -115,6 +116,7 @@ const BrandedLoadingScreen = () => {
     "waiter",
     "manager",
     "cook",
+    "hybrid",
     "profile",
     "garsoneadmin",
     "architect",
@@ -190,7 +192,9 @@ const AppShell = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
+          <BrowserRouter
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
             <Suspense fallback={<BrandedLoadingScreen />}>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -208,6 +212,7 @@ const AppShell = () => {
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/cook" element={<CookDashboard />} />
+                <Route path="/hybrid" element={<HybridDashboard />} />
                 <Route path="/profile" element={<ProfileDashboard />} />
                 <Route path="/GarsoneAdmin" element={<ArchitectQrTiles />} />
                 <Route

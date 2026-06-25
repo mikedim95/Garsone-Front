@@ -9,7 +9,7 @@ type CardProps = React.HTMLAttributes<HTMLDivElement> & {
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, interactive = true, ...props }, ref) => {
     const interactiveClasses = interactive
-      ? "transform-gpu transition-transform transition-shadow duration-200 hover:shadow-lg hover:-translate-y-0.5"
+      ? "transition-shadow duration-200 hover:shadow-lg"
       : ""
 
     return (

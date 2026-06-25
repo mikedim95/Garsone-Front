@@ -33,7 +33,7 @@ const ModifierDialog = lazy(() =>
 
 type CategorySummary = Pick<
   MenuCategory,
-  "id" | "title" | "titleEn" | "titleEl"
+  "id" | "title" | "titleEn" | "titleEl" | "imageUrl"
 >;
 type MenuModifierLink = {
   itemId: string;
@@ -52,16 +52,36 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const mapCategories = (
-  categories?: Array<{ id?: string; title?: string }>
+  categories?: Array<{ id?: string; title?: string; imageUrl?: string | null }>
 ): CategorySummary[] =>
   (categories ?? []).reduce<CategorySummary[]>((acc, category, index) => {
     if (!category) return acc;
     const id = category.id ?? `cat-${index}`;
     const title = category.title ?? "";
     if (!title) return acc;
-    acc.push({ id, title });
+    acc.push({ id, title, imageUrl: category.imageUrl ?? null });
     return acc;
   }, []);
+
+const resolveLocalizedMenuText = (
+  preferGreek: boolean,
+  values: {
+    en?: string | null;
+    el?: string | null;
+    localized?: string | null;
+    legacy?: string | null;
+  }
+) => {
+  const en = values.en?.trim();
+  const el = values.el?.trim();
+  const localized = values.localized?.trim();
+  const legacy = values.legacy?.trim();
+
+  if (preferGreek) {
+    return el || localized || en || legacy || "";
+  }
+  return en || localized || el || legacy || "";
+};
 
 const buildMenuState = (
   payload: Partial<MenuStateData> & {
@@ -71,23 +91,31 @@ const buildMenuState = (
       titleEn?: string;
       titleEl?: string;
       printerTopic?: string | null;
+      imageUrl?: string | null;
     }>;
     items?: MenuItem[];
   } = {},
   preferGreek: boolean
 ): MenuStateData => {
-  const localizeText = (en?: string, el?: string, fallback?: string) =>
-    preferGreek ? el || en || fallback || "" : en || el || fallback || "";
-
   const localizedModifiers = (mods?: Modifier[]) =>
     (mods ?? [])
       .filter((m) => m.isAvailable !== false)
       .map((m) => ({
         ...m,
-        name: localizeText(m.titleEn, m.titleEl, m.name),
+        name: resolveLocalizedMenuText(preferGreek, {
+          en: m.titleEn,
+          el: m.titleEl,
+          localized: m.title,
+          legacy: m.name,
+        }),
         options: (m.options ?? []).map((opt) => ({
           ...opt,
-          label: localizeText(opt.titleEn, opt.titleEl, opt.label),
+          label: resolveLocalizedMenuText(preferGreek, {
+            en: opt.titleEn,
+            el: opt.titleEl,
+            localized: opt.title,
+            legacy: opt.label,
+          }),
         })),
       }));
 
@@ -95,24 +123,35 @@ const buildMenuState = (
     categories: mapCategories(
       (payload?.categories ?? []).map((cat) => ({
         ...cat,
-        title: localizeText(cat.titleEn, cat.titleEl, cat.title),
+        title: resolveLocalizedMenuText(preferGreek, {
+          en: cat.titleEn,
+          el: cat.titleEl,
+          localized: cat.title,
+        }),
       }))
     ),
     items: (payload?.items ?? []).map((item) => {
-      const name = localizeText(
-        item.titleEn || item.name,
-        item.titleEl,
-        item.name || item.title
-      );
-      const description = localizeText(
-        item.descriptionEn,
-        item.descriptionEl,
-        item.description
-      );
+      const name = resolveLocalizedMenuText(preferGreek, {
+        en: item.titleEn ?? item.name,
+        el: item.titleEl,
+        localized: item.title,
+        legacy: item.name,
+      });
+      const subcategory = resolveLocalizedMenuText(preferGreek, {
+        en: item.subcategoryEn,
+        el: item.subcategoryEl,
+        localized: item.subcategory,
+      });
+      const description = resolveLocalizedMenuText(preferGreek, {
+        en: item.descriptionEn,
+        el: item.descriptionEl,
+        localized: item.description,
+      });
       const imageUrl = item.imageUrl ?? item.image ?? "";
       return {
         ...item,
         name,
+        subcategory: subcategory || null,
         displayName: name,
         displayDescription: description,
         description,
@@ -270,7 +309,7 @@ export function WaiterMenuTab({
   };
 
   const handleConfirmModifiers = (
-    selected: Record<string, string>,
+    selected: Record<string, string | string[]>,
     qty: number
   ) => {
     if (!customizeItem) return;

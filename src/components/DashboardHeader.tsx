@@ -1,8 +1,11 @@
 import { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppBurger } from '@/components/AppBurger';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useTheme } from '@/components/theme-provider-context';
-import { Sun, Moon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/store/authStore';
+import { Home, LogIn, LogOut, Moon, Sun, UserCircle } from 'lucide-react';
 
 interface DashboardHeaderProps {
   title: string;
@@ -23,6 +26,8 @@ export const DashboardHeader = ({
   burgerActions,
   rightContent,
 }: DashboardHeaderProps) => {
+  const navigate = useNavigate();
+  const { user, logout, isAuthenticated } = useAuthStore();
   const gradientClass =
     {
       primary: 'bg-gradient-primary',
@@ -40,17 +45,23 @@ export const DashboardHeader = ({
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches);
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
+  const loggedIn = isAuthenticated();
+  const showProfile = Boolean(user);
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <header className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-40 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 py-3 sm:py-5 flex items-center justify-between gap-3 sm:gap-4">
-        <div className="flex items-center gap-4 min-w-0 flex-1">
-          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${gradientClass} flex items-center justify-center shadow-lg flex-shrink-0`}>
+      <div className="max-w-7xl mx-auto px-2 min-[360px]:px-4 py-3 sm:py-5 flex items-center justify-between gap-1 min-[360px]:gap-3 sm:gap-4">
+        <div className="flex items-center gap-2 min-[360px]:gap-4 min-w-0 flex-1">
+          <div className={`w-9 h-9 min-[360px]:w-10 min-[360px]:h-10 sm:w-12 sm:h-12 rounded-xl ${gradientClass} flex items-center justify-center shadow-lg flex-shrink-0`}>
             <span className="text-xl sm:text-2xl md:text-3xl">{icon}</span>
           </div>
           <div className="min-w-0">
             {supertitle ? (
-              <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-0.5 truncate">
+              <p className="text-xs sm:text-sm font-medium normal-case tracking-normal text-muted-foreground mb-0.5 truncate">
                 {supertitle}
               </p>
             ) : null}
@@ -62,7 +73,7 @@ export const DashboardHeader = ({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 min-[360px]:gap-2">
           {rightContent ? (
             <div className="hidden sm:flex items-center text-sm font-medium text-foreground mr-2">
               {rightContent}
@@ -72,12 +83,57 @@ export const DashboardHeader = ({
             type="button"
             onClick={toggleTheme}
             aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-            className="inline-flex items-center justify-center h-10 w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
+            className="inline-flex items-center justify-center h-9 w-9 min-[360px]:h-10 min-[360px]:w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
           >
             {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
           </button>
           <LanguageSwitcher />
           <AppBurger title={title}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => navigate('/')}
+            >
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Button>
+            {showProfile ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => navigate('/profile')}
+              >
+                <UserCircle className="mr-2 h-4 w-4" />
+                Profile
+              </Button>
+            ) : null}
+            {loggedIn ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => navigate('/login')}
+              >
+                <LogIn className="mr-2 h-4 w-4" />
+                Login
+              </Button>
+            )}
             {burgerActions}
           </AppBurger>
         </div>

@@ -2,6 +2,7 @@
 // Persists to localStorage under key "devMocks" so state survives reloads.
 
 import type { CreateOrderPayload, CreateOrderPayloadItem, OrderingMode } from "@/types";
+import { formatStoreSlugLabel } from "./storeSlug";
 
 type Id = string;
 
@@ -10,17 +11,18 @@ type Category = {
   title: string;
   titleEn?: string;
   titleEl?: string;
+  imageUrl?: string | null;
   sortOrder: number;
   printerTopic?: string | null;
 };
-type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string; printerTopic?: string | null };
+type Item = { id: Id; title: string; titleEn?: string; titleEl?: string; subcategory?: string | null; subcategoryEn?: string | null; subcategoryEl?: string | null; description?: string; descriptionEn?: string; descriptionEl?: string; priceCents: number; categoryId: Id; isAvailable?: boolean; imageUrl?: string; printerTopic?: string | null };
 type ModifierOption = { id: Id; title: string; titleEn?: string; titleEl?: string; label: string; priceDeltaCents: number; sortOrder: number };
 type Modifier = { id: Id; title: string; titleEn?: string; titleEl?: string; name: string; minSelect: number; maxSelect: number | null; isAvailable?: boolean; options: ModifierOption[] };
 type ItemModifier = { itemId: Id; modifierId: Id; isRequired: boolean };
 type Table = { id: Id; label: string; isActive: boolean };
 type StaffType = { id: Id; slug: string; title: string; printerTopic?: string | null };
-type Waiter = { id: Id; email: string; displayName: string; password?: string; waiterTypeId?: Id | null };
-type Cook = { id: Id; email: string; displayName: string; password?: string; cookTypeId?: Id | null };
+type Waiter = { id: Id; email: string; displayName: string; password?: string };
+type Cook = { id: Id; email: string; displayName: string; password?: string; printerTopic?: string | null; cookTypeId?: Id | null };
 type WaiterAssignment = { waiterId: Id; tableId: Id };
 type OrderItemStatus = 'PLACED' | 'ACCEPTED' | 'SERVED';
 type OrderItem = {
@@ -36,7 +38,7 @@ type Order = { id: Id; tableId: Id; status: 'PLACED'|'ACCEPTED'|'PREPARING'|'REA
 
 type QRTileRecord = {
   id: Id;
-  storeId: Id;
+  storeId: Id | null;
   publicCode: string;
   label?: string | null;
   tableId?: Id | null;
@@ -114,7 +116,7 @@ const normalizeTableRecord = (table: unknown): Table => {
 const normalizeWaiterRecord = (waiter: unknown): Waiter => {
   if (!isRecord(waiter)) {
     const id = uid('waiter');
-    return { id, email: `${id}@demo.local`, displayName: 'Waiter', waiterTypeId: null };
+    return { id, email: `${id}@demo.local`, displayName: 'Waiter' };
   }
   const id = typeof waiter.id === 'string' ? waiter.id : uid('waiter');
   const email = typeof waiter.email === 'string' ? waiter.email : `${id}@demo.local`;
@@ -123,9 +125,7 @@ const normalizeWaiterRecord = (waiter: unknown): Waiter => {
       ? waiter.displayName
       : email || 'Waiter';
   const password = typeof waiter.password === 'string' ? waiter.password : undefined;
-  const waiterTypeId =
-    typeof waiter.waiterTypeId === 'string' ? waiter.waiterTypeId : null;
-  return { id, email, displayName, password, waiterTypeId };
+  return { id, email, displayName, password };
 };
 
 const normalizeCookRecord = (cook: unknown): Cook => {
@@ -142,7 +142,9 @@ const normalizeCookRecord = (cook: unknown): Cook => {
   const password = typeof cook.password === 'string' ? cook.password : undefined;
   const cookTypeId =
     typeof cook.cookTypeId === 'string' ? cook.cookTypeId : null;
-  return { id, email, displayName, password, cookTypeId };
+  const printerTopic =
+    typeof cook.printerTopic === 'string' ? cook.printerTopic : null;
+  return { id, email, displayName, password, printerTopic, cookTypeId };
 };
 
 const normalizeStaffTypeRecord = (type: unknown): StaffType => {
@@ -215,7 +217,7 @@ const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
     };
   });
 
-const normalizeQrTileRecord = (tile: unknown, storeId: string): QRTileRecord => {
+const normalizeQrTileRecord = (tile: unknown, storeId: string | null): QRTileRecord => {
   if (!isRecord(tile)) {
     const now = Date.now();
     return {
@@ -384,10 +386,13 @@ function load(): Db {
     { id: uid('opt'), title: '1 tsp', label: '1 tsp', priceDeltaCents: 0, sortOrder: 1 },
     { id: uid('opt'), title: '2 tsp', label: '2 tsp', priceDeltaCents: 0, sortOrder: 2 },
   ]};
-  const itemEsp: Item = { id: uid('item'), title: 'Espresso', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true, printerTopic: catCoffee.printerTopic ?? null };
+  const itemEsp: Item = { id: uid('item'), title: 'Espresso', subcategory: 'Coffee Classics', subcategoryEn: 'Coffee Classics', subcategoryEl: 'Coffee Classics', description: 'Rich and bold', priceCents: 250, categoryId: catCoffee.id, isAvailable: true, printerTopic: catCoffee.printerTopic ?? null };
   const itemCap: Item = {
     id: uid('item'),
     title: 'Cappuccino',
+    subcategory: 'Coffee Classics',
+    subcategoryEn: 'Coffee Classics',
+    subcategoryEl: 'Coffee Classics',
     description: 'Classic foam',
     priceCents: 350,
     categoryId: catCoffee.id,
@@ -426,7 +431,6 @@ function load(): Db {
         email: 'waiter1@demo.local',
         displayName: 'Waiter 1',
         password: 'password',
-        waiterTypeId: waiterTypeFloor.id,
       },
     ],
     cooks: [
@@ -435,6 +439,7 @@ function load(): Db {
         email: 'cook1@demo.local',
         displayName: 'Cook 1',
         password: 'password',
+        printerTopic: cookTypeKitchen.printerTopic ?? null,
         cookTypeId: cookTypeKitchen.id,
       },
     ],
@@ -564,15 +569,10 @@ function seedStaffTypesIfEmpty(db: Db) {
     ];
   }
   const defaultCookTypeId = db.cookTypes[0]?.id ?? null;
-  const defaultWaiterTypeId = db.waiterTypes[0]?.id ?? null;
+  const defaultPrinterTopic = db.cookTypes[0]?.printerTopic ?? db.store.printers?.[0] ?? null;
   if (defaultCookTypeId) {
     db.cooks = db.cooks.map((cook) =>
-      cook.cookTypeId ? cook : { ...cook, cookTypeId: defaultCookTypeId }
-    );
-  }
-  if (defaultWaiterTypeId) {
-    db.waiters = db.waiters.map((waiter) =>
-      waiter.waiterTypeId ? waiter : { ...waiter, waiterTypeId: defaultWaiterTypeId }
+      cook.printerTopic ? cook : { ...cook, cookTypeId: cook.cookTypeId ?? defaultCookTypeId, printerTopic: defaultPrinterTopic }
     );
   }
 }
@@ -633,8 +633,9 @@ function serializeQrTile(db: Db, tile: QRTileRecord) {
   const table = tile.tableId ? db.tables.find((t) => t.id === tile.tableId) : null;
   return {
     id: tile.id,
-    storeId: tile.storeId,
-    storeSlug: db.store.slug || undefined,
+    storeId: tile.storeId ?? null,
+    storeSlug: tile.storeId ? db.store.slug || undefined : null,
+    storeName: tile.storeId ? db.store.name : null,
     publicCode: tile.publicCode,
     label: tile.label ?? null,
     isActive: tile.isActive,
@@ -688,6 +689,39 @@ export const devMocks = {
       ],
     });
   },
+  adminPurgeStoreHistory(storeId: string) {
+    const db = snapshot();
+    if (db.store.id !== storeId) return Promise.reject(new Error('Store not found'));
+    const orders = db.orders.length;
+    db.orders = [];
+    save(db);
+    return Promise.resolve({
+      success: true,
+      store: {
+        id: db.store.id,
+        name: db.store.name,
+        slug: db.store.slug || 'local-store',
+        orderingMode: db.store.orderingMode || 'qr',
+        printers: db.store.printers || [],
+      },
+      deleted: {
+        orders,
+        tableVisits: 0,
+        localityApprovals: 0,
+        waiterShifts: 0,
+        kitchenTicketSeqs: 0,
+        auditLogs: 0,
+        nodeAgentEvents: 0,
+      },
+    });
+  },
+  adminListAllQrTiles() {
+    const db = snapshot();
+    seedQrTilesIfEmpty(db);
+    return Promise.resolve({
+      tiles: db.qrTiles.map((tile) => serializeQrTile(db, tile)),
+    });
+  },
   adminUpdateStoreOrderingMode(storeId: string, orderingMode: OrderingMode) {
     const db = snapshot();
     if (db.store.id !== storeId) {
@@ -737,18 +771,19 @@ export const devMocks = {
     const db = snapshot();
     seedQrTilesIfEmpty(db);
     const tiles = db.qrTiles
-      .filter((tile) => tile.storeId === storeId || tile.storeId === db.store.id)
+      .filter((tile) => tile.storeId === storeId)
       .map((tile) => serializeQrTile(db, tile));
     return Promise.resolve({
       store: { id: db.store.id, name: db.store.name, slug: db.store.slug },
       tiles,
     });
   },
-  adminGenerateQrTiles(storeId: string, data: { count: number }) {
+  adminGenerateQrTiles(storeId: string, data: { count?: number; publicCodes?: string[] }) {
     const db = snapshot();
-    const requestedCount = Number.isFinite(data?.count)
+    const manualCodes = data.publicCodes?.map((code) => code.trim().toUpperCase());
+    const requestedCount = manualCodes?.length ?? (Number.isFinite(data?.count)
       ? Math.trunc(Number(data.count))
-      : 0;
+      : 0);
     if (requestedCount < 1) {
       return Promise.reject(new Error('Count must be at least 1'));
     }
@@ -758,11 +793,14 @@ export const devMocks = {
     const existing = new Set(
       db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
     );
+    if (manualCodes?.some((code) => !QR_CODE_REGEX.test(code) || existing.has(code))) {
+      return Promise.reject(new Error('Manual QR code is invalid or already exists'));
+    }
 
     const created: QRTileRecord[] = [];
     const now = Date.now();
     while (created.length < requestedCount) {
-      const publicCode = generateMockPublicCode();
+      const publicCode = manualCodes?.[created.length] ?? generateMockPublicCode();
       if (!QR_CODE_REGEX.test(publicCode) || existing.has(publicCode)) continue;
       existing.add(publicCode);
       const tile: QRTileRecord = {
@@ -781,13 +819,65 @@ export const devMocks = {
     save(db);
     return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
   },
-  adminUpdateQrTile(id: string, data: { tableId?: string | null; isActive?: boolean; label?: string }) {
+  adminGenerateGlobalQrTiles(data: { count?: number; publicCodes?: string[] }) {
+    const db = snapshot();
+    const manualCodes = data.publicCodes?.map((code) => code.trim().toUpperCase());
+    const requestedCount = manualCodes?.length ?? (Number.isFinite(data?.count)
+      ? Math.trunc(Number(data.count))
+      : 0);
+    if (requestedCount < 1) {
+      return Promise.reject(new Error('Count must be at least 1'));
+    }
+    if (requestedCount > 500) {
+      return Promise.reject(new Error('Too many codes (max 500)'));
+    }
+    const existing = new Set(
+      db.qrTiles.map((tile) => tile.publicCode.toUpperCase())
+    );
+    if (manualCodes?.some((code) => !QR_CODE_REGEX.test(code) || existing.has(code))) {
+      return Promise.reject(new Error('Manual QR code is invalid or already exists'));
+    }
+
+    const created: QRTileRecord[] = [];
+    const now = Date.now();
+    while (created.length < requestedCount) {
+      const publicCode = manualCodes?.[created.length] ?? generateMockPublicCode();
+      if (!QR_CODE_REGEX.test(publicCode) || existing.has(publicCode)) continue;
+      existing.add(publicCode);
+      const tile: QRTileRecord = {
+        id: uid('qr'),
+        storeId: null,
+        publicCode,
+        label: null,
+        tableId: null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.qrTiles.unshift(tile);
+      created.push(tile);
+    }
+    save(db);
+    return Promise.resolve({ tiles: created.map((tile) => serializeQrTile(db, tile)) });
+  },
+  adminUpdateQrTile(id: string, data: { storeId?: string | null; tableId?: string | null; isActive?: boolean; label?: string | null }) {
     const db = snapshot();
     const tile = db.qrTiles.find((t) => t.id === id);
     if (!tile) return Promise.reject(new Error('QR tile not found'));
     if (typeof data.isActive === 'boolean') tile.isActive = data.isActive;
-    if (typeof data.label !== 'undefined') tile.label = null;
-    if (typeof data.tableId !== 'undefined') tile.tableId = data.tableId || null;
+    if (typeof data.label !== 'undefined') tile.label = data.label?.trim() || null;
+    if (typeof data.storeId !== 'undefined') {
+      tile.storeId = data.storeId || null;
+      if (!tile.storeId) {
+        tile.tableId = null;
+      }
+    }
+    if (typeof data.tableId !== 'undefined') {
+      tile.tableId = data.tableId || null;
+      if (tile.tableId && !tile.storeId) {
+        tile.storeId = db.store.id;
+      }
+    }
     tile.updatedAt = Date.now();
     save(db);
     return Promise.resolve({ tile: serializeQrTile(db, tile) });
@@ -841,6 +931,15 @@ export const devMocks = {
   signIn(email: string, _password: string) {
     const db = snapshot();
     const e = email.toLowerCase();
+    const emailDomain = e.split("@")[1]?.trim().toLowerCase() || "";
+    const emailDomainSlug = emailDomain.endsWith(".local")
+      ? emailDomain.replace(/\.local$/i, "").trim().toLowerCase()
+      : "";
+    if (emailDomainSlug && emailDomainSlug !== "local-store") {
+      db.store.slug = emailDomainSlug;
+      db.store.name = formatStoreSlugLabel(emailDomainSlug) || db.store.name;
+      save(db);
+    }
     const role: 'waiter' | 'manager' | 'cook' | 'architect' = e.startsWith('manager')
       ? 'manager'
       : e.startsWith('cook')
@@ -850,27 +949,32 @@ export const devMocks = {
           : 'waiter';
     const waiter = role === 'waiter' ? db.waiters.find((w) => w.email === e) : null;
     const cook = role === 'cook' ? db.cooks.find((c) => c.email === e) : null;
-    const waiterType =
-      waiter?.waiterTypeId
-        ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-        : null;
     const cookType =
       cook?.cookTypeId
         ? db.cookTypes.find((t) => t.id === cook.cookTypeId) || null
         : null;
+    const printerTopic = cook?.printerTopic ?? cookType?.printerTopic ?? null;
     const user = {
       id: uid('user'),
       email,
       role,
       displayName: role.charAt(0).toUpperCase() + role.slice(1),
       storeId: db.store.id,
-      storeSlug: db.store.slug,
-      waiterTypeId: waiter?.waiterTypeId ?? null,
+      storeSlug: db.store.slug || 'local-store',
       cookTypeId: cook?.cookTypeId ?? null,
-      waiterType,
+      printerTopic,
       cookType,
     };
-    return Promise.resolve({ accessToken: 'offline-token', user });
+    return Promise.resolve({
+      accessToken: 'offline-token',
+      user,
+      store: {
+        id: db.store.id,
+        slug: db.store.slug || 'local-store',
+        name: db.store.name,
+        orderingMode: db.store.orderingMode,
+      },
+    });
   },
 
   // Orders
@@ -980,6 +1084,43 @@ export const devMocks = {
     save(db);
     return Promise.resolve({ order: order ? enrichOrder(db, order) : order });
   },
+  updateOrderItem(
+    orderId: Id,
+    orderItemId: Id,
+    data: { quantity: number; modifiers?: Record<string, string | string[]> }
+  ) {
+    const db = snapshot();
+    const order = db.orders.find((candidate) => candidate.id === orderId);
+    if (!order || order.status !== 'PLACED') {
+      return Promise.reject(new Error('Order can no longer be edited'));
+    }
+    const index = order.items.findIndex((item) => item.id === orderItemId);
+    if (index < 0) return Promise.reject(new Error('Order item not found'));
+    const current = order.items[index];
+    const menuItem = db.items.find((item) => item.id === current.itemId);
+    const before = `${current.qty || 1}x ${menuItem?.title || 'Item'}`;
+    if (data.quantity === 0) {
+      order.items.splice(index, 1);
+      if (order.items.length === 0) order.status = 'CANCELLED';
+    } else {
+      current.qty = data.quantity;
+      current.modifiers = Object.entries(data.modifiers || {}).map(
+        ([modifierId, optionIds]) => ({
+          modifierId,
+          optionIds: Array.isArray(optionIds) ? optionIds : [optionIds],
+        })
+      );
+    }
+    save(db);
+    const after = data.quantity === 0
+      ? `REMOVED ${menuItem?.title || 'Item'}`
+      : `${data.quantity}x ${menuItem?.title || 'Item'}`;
+    return Promise.resolve({
+      order: enrichOrder(db, order),
+      change: { from: before, to: after },
+      removed: data.quantity === 0,
+    });
+  },
   managerDeleteOrder(orderId: Id) {
     const db = snapshot();
     db.orders = db.orders.filter(o=>o.id!==orderId);
@@ -1037,6 +1178,15 @@ export const devMocks = {
     const db = snapshot();
     const table = db.tables.find((t) => t.id === id);
     if (!table) return Promise.reject(new Error('Table not found'));
+    if (!table.isActive) {
+      db.qrTiles.forEach((tile) => {
+        if (tile.tableId === id) tile.tableId = null;
+      });
+      db.tables = db.tables.filter((t) => t.id !== id);
+      db.waiterAssignments = db.waiterAssignments.filter((a) => a.tableId !== id);
+      save(db);
+      return Promise.resolve({ deleted: true, id });
+    }
     table.isActive = false;
     db.waiterAssignments = db.waiterAssignments.filter((a) => a.tableId !== id);
     save(db);
@@ -1049,10 +1199,6 @@ export const devMocks = {
       id: waiter.id,
       email: waiter.email,
       displayName: waiter.displayName,
-      waiterTypeId: waiter.waiterTypeId ?? null,
-      waiterType: waiter.waiterTypeId
-        ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-        : null,
     }));
     const tables = db.tables.map((table) => ({
       id: table.id,
@@ -1070,10 +1216,6 @@ export const devMocks = {
               id: waiter.id,
               email: waiter.email,
               displayName: waiter.displayName,
-              waiterTypeId: waiter.waiterTypeId ?? null,
-              waiterType: waiter.waiterTypeId
-                ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-                : null,
             }
           : undefined,
         table: table
@@ -1083,7 +1225,7 @@ export const devMocks = {
     }).filter((a) => a.waiter && a.table) as Array<{
       waiterId: Id;
       tableId: Id;
-      waiter: { id: Id; email: string; displayName: string; waiterTypeId?: Id | null; waiterType?: StaffType | null };
+      waiter: { id: Id; email: string; displayName: string };
       table: { id: Id; label: string; active: boolean };
     }>;
     return Promise.resolve({ assignments, waiters, tables });
@@ -1120,41 +1262,25 @@ export const devMocks = {
         id: w.id,
         email: w.email,
         displayName: w.displayName,
-        waiterTypeId: w.waiterTypeId ?? null,
-        waiterType: w.waiterTypeId
-          ? db.waiterTypes.find((t) => t.id === w.waiterTypeId) || null
-          : null,
       })),
     });
   },
-  createWaiter(email: string, password: string, displayName: string, waiterTypeId?: string | null) {
+  createWaiter(email: string, password: string, displayName: string) {
     const db = snapshot();
     if (db.waiters.some((w) => w.email.toLowerCase() === email.toLowerCase())) {
       return Promise.reject(new Error('Waiter email already exists'));
-    }
-    if (waiterTypeId) {
-      const exists = db.waiterTypes.some((t) => t.id === waiterTypeId);
-      if (!exists) return Promise.reject(new Error('Waiter type not found'));
     }
     const waiter: Waiter = {
       id: uid('waiter'),
       email: email.toLowerCase(),
       displayName: displayName || email,
       password,
-      waiterTypeId: waiterTypeId ?? null,
     };
     db.waiters.push(waiter);
     save(db);
-    return Promise.resolve({
-      waiter: {
-        ...waiter,
-        waiterType: waiter.waiterTypeId
-          ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-          : null,
-      },
-    });
+    return Promise.resolve({ waiter });
   },
-  updateWaiter(id: Id, data: Partial<{ email: string; password: string; displayName: string; waiterTypeId?: string | null }>) {
+  updateWaiter(id: Id, data: Partial<{ email: string; password: string; displayName: string }>) {
     const db = snapshot();
     const waiter = db.waiters.find((w) => w.id === id);
     if (!waiter) return Promise.reject(new Error('Waiter not found'));
@@ -1170,24 +1296,8 @@ export const devMocks = {
     }
     if (data.displayName) waiter.displayName = data.displayName;
     if (data.password) waiter.password = data.password;
-    if (data.waiterTypeId !== undefined) {
-      if (data.waiterTypeId === null) {
-        waiter.waiterTypeId = null;
-      } else {
-        const exists = db.waiterTypes.some((t) => t.id === data.waiterTypeId);
-        if (!exists) return Promise.reject(new Error('Waiter type not found'));
-        waiter.waiterTypeId = data.waiterTypeId;
-      }
-    }
     save(db);
-    return Promise.resolve({
-      waiter: {
-        ...waiter,
-        waiterType: waiter.waiterTypeId
-          ? db.waiterTypes.find((t) => t.id === waiter.waiterTypeId) || null
-          : null,
-      },
-    });
+    return Promise.resolve({ waiter });
   },
   deleteWaiter(id: Id) {
     const db = snapshot();
@@ -1288,9 +1398,6 @@ export const devMocks = {
   deleteWaiterType(id: Id) {
     const db = snapshot();
     db.waiterTypes = db.waiterTypes.filter((t) => t.id !== id);
-    db.waiters = db.waiters.map((w) =>
-      w.waiterTypeId === id ? { ...w, waiterTypeId: null } : w
-    );
     save(db);
     return Promise.resolve({ ok: true });
   },
@@ -1302,6 +1409,7 @@ export const devMocks = {
         id: c.id,
         email: c.email,
         displayName: c.displayName,
+        printerTopic: c.printerTopic ?? (c.cookTypeId ? db.cookTypes.find((t) => t.id === c.cookTypeId)?.printerTopic ?? null : null),
         cookTypeId: c.cookTypeId ?? null,
         cookType: c.cookTypeId
           ? db.cookTypes.find((t) => t.id === c.cookTypeId) || null
@@ -1309,34 +1417,30 @@ export const devMocks = {
       })),
     });
   },
-  createCook(email: string, password: string, displayName: string, cookTypeId?: string | null) {
+  createCook(email: string, password: string, displayName: string, printerTopic?: string | null) {
     const db = snapshot();
     if (db.cooks.some((c) => c.email.toLowerCase() === email.toLowerCase())) {
       return Promise.reject(new Error('Cook email already exists'));
     }
-    if (cookTypeId) {
-      const exists = db.cookTypes.some((t) => t.id === cookTypeId);
-      if (!exists) return Promise.reject(new Error('Cook type not found'));
-    }
+    const normalizedPrinterTopic = printerTopic?.trim() || null;
     const cook: Cook = {
       id: uid('cook'),
       email: email.toLowerCase(),
       displayName: displayName || email,
       password,
-      cookTypeId: cookTypeId ?? null,
+      printerTopic: normalizedPrinterTopic,
+      cookTypeId: null,
     };
     db.cooks.push(cook);
     save(db);
     return Promise.resolve({
       cook: {
         ...cook,
-        cookType: cook.cookTypeId
-          ? db.cookTypes.find((t) => t.id === cook.cookTypeId) || null
-          : null,
+        cookType: null,
       },
     });
   },
-  updateCook(id: Id, data: Partial<{ email: string; password: string; displayName: string; cookTypeId?: string | null }>) {
+  updateCook(id: Id, data: Partial<{ email: string; password: string; displayName: string; printerTopic?: string | null }>) {
     const db = snapshot();
     const cook = db.cooks.find((c) => c.id === id);
     if (!cook) return Promise.reject(new Error('Cook not found'));
@@ -1352,22 +1456,15 @@ export const devMocks = {
     }
     if (data.displayName) cook.displayName = data.displayName;
     if (data.password) cook.password = data.password;
-    if (data.cookTypeId !== undefined) {
-      if (data.cookTypeId === null) {
-        cook.cookTypeId = null;
-      } else {
-        const exists = db.cookTypes.some((t) => t.id === data.cookTypeId);
-        if (!exists) return Promise.reject(new Error('Cook type not found'));
-        cook.cookTypeId = data.cookTypeId;
-      }
+    if (data.printerTopic !== undefined) {
+      cook.printerTopic = data.printerTopic?.trim() || null;
+      cook.cookTypeId = null;
     }
     save(db);
     return Promise.resolve({
       cook: {
         ...cook,
-        cookType: cook.cookTypeId
-          ? db.cookTypes.find((t) => t.id === cook.cookTypeId) || null
-          : null,
+        cookType: null,
       },
     });
   },
@@ -1380,13 +1477,14 @@ export const devMocks = {
 
   // Manager: categories
   listCategories() { const db = snapshot(); return Promise.resolve({ categories: db.categories }); },
-  createCategory(titleEn: string, sortOrder?: number, titleEl?: string, printerTopic?: string | null) {
+  createCategory(titleEn: string, sortOrder?: number, titleEl?: string, printerTopic?: string | null, imageUrl?: string | null) {
     const db = snapshot();
     const c: Category = {
       id: uid('cat'),
       title: titleEn,
       titleEn,
       titleEl: titleEl ?? titleEn,
+      imageUrl: imageUrl ?? null,
       sortOrder: sortOrder ?? db.categories.length,
       printerTopic: normalizePrinterTopic(printerTopic, titleEn) ?? null,
     };
@@ -1421,7 +1519,28 @@ export const devMocks = {
     const printerTopic = normalizePrinterTopic(
       typeof rawPrinter === 'string' && rawPrinter.trim().length > 0 ? rawPrinter : fallbackPrinter
     ) || null;
-    const it: Item = { id: uid('item'), title: data.titleEn || data.title || 'Item', titleEn: data.titleEn || data.title || 'Item', titleEl: (data as any).titleEl || data.title || 'Item', description: (data as any).descriptionEn || data.description, descriptionEn: (data as any).descriptionEn, descriptionEl: (data as any).descriptionEl, priceCents: data.priceCents || 0, categoryId: data.categoryId as Id, isAvailable: data.isAvailable !== false, imageUrl: data.imageUrl, printerTopic };
+    const rawSubcategoryEn =
+      typeof (data as any).subcategoryEn === 'string' ? (data as any).subcategoryEn.trim() : '';
+    const rawSubcategoryEl =
+      typeof (data as any).subcategoryEl === 'string' ? (data as any).subcategoryEl.trim() : '';
+    const fallbackSubcategory = rawSubcategoryEn || rawSubcategoryEl || null;
+    const it: Item = {
+      id: uid('item'),
+      title: data.titleEn || data.title || 'Item',
+      titleEn: data.titleEn || data.title || 'Item',
+      titleEl: (data as any).titleEl || data.title || 'Item',
+      subcategory: fallbackSubcategory,
+      subcategoryEn: rawSubcategoryEn || null,
+      subcategoryEl: rawSubcategoryEl || null,
+      description: (data as any).descriptionEn || data.description,
+      descriptionEn: (data as any).descriptionEn,
+      descriptionEl: (data as any).descriptionEl,
+      priceCents: data.priceCents || 0,
+      categoryId: data.categoryId as Id,
+      isAvailable: data.isAvailable !== false,
+      imageUrl: data.imageUrl,
+      printerTopic,
+    };
     db.items.push(it); save(db); return Promise.resolve({ item: it });
   },
   updateItem(id: Id, data: Partial<Item>) {
@@ -1435,7 +1554,18 @@ export const devMocks = {
             ? null
             : normalizePrinterTopic(data.printerTopic) || null;
       }
+      if (data.subcategoryEn !== undefined) {
+        payload.subcategoryEn = data.subcategoryEn?.trim() || null;
+      }
+      if (data.subcategoryEl !== undefined) {
+        payload.subcategoryEl = data.subcategoryEl?.trim() || null;
+      }
+      if (data.subcategory !== undefined) {
+        payload.subcategory = data.subcategory?.trim() || null;
+      }
       Object.assign(it, payload);
+      it.subcategory =
+        it.subcategoryEn?.trim() || it.subcategoryEl?.trim() || it.subcategory?.trim() || null;
     }
     save(db);
     return Promise.resolve({ item: it });

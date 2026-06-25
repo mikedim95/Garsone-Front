@@ -2,6 +2,7 @@
 import { useAuthStore } from "@/store/authStore";
 import type {
   AuthResponse,
+  ArchitectStoreUser,
   CategoryPayload,
   CreateOrderPayload,
   ImageUploadPayload,
@@ -26,16 +27,18 @@ import type {
   OrderStatus,
   LandingStoreLink,
   StoreInfo,
+  StoreOnboardPayload,
+  StoreOnboardResponse,
   Table,
   CookSummary,
-  CookType,
   WaiterSummary,
-  WaiterType,
   WaiterTableOverview,
   OrderingMode,
   StoreOverview,
   RemoteNode,
   RemoteNodeConfig,
+  RemoteNodePrinterTestResponse,
+  PendingNodeAgent,
 } from "@/types";
 import { devMocks } from "./devMocks";
 import { isOfflineModeEnabled } from "./offlineMode";
@@ -86,6 +89,142 @@ export class ApiError extends Error {
   }
 }
 
+const MENU_IMAGE_WIDTH = 1200;
+const MENU_IMAGE_HEIGHT = 900;
+const MENU_IMAGE_MIME_TYPE = "image/webp";
+const MENU_IMAGE_QUALITY = 0.82;
+
+const readBlobAsDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(blob);
+  });
+
+const canvasToBlob = (
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality: number
+) =>
+  new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not optimize image"));
+          return;
+        }
+        resolve(blob);
+      },
+      mimeType,
+      quality
+    );
+  });
+
+const loadImageForCanvas = async (
+  file: File
+): Promise<ImageBitmap | HTMLImageElement> => {
+  if ("createImageBitmap" in window) {
+    try {
+      return await createImageBitmap(file, { imageOrientation: "from-image" } as any);
+    } catch {
+      // Fall through to HTMLImageElement decoding for older/stricter browsers.
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not load image"));
+    };
+    image.src = url;
+  });
+};
+
+const optimizedImageFileName = (fileName: string) => {
+  const baseName = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `${baseName || "menu-image"}.webp`;
+};
+
+async function optimizeMenuImage(file: File): Promise<File> {
+  const image = await loadImageForCanvas(file);
+  const sourceWidth =
+    image instanceof HTMLImageElement ? image.naturalWidth : image.width;
+  const sourceHeight =
+    image instanceof HTMLImageElement ? image.naturalHeight : image.height;
+
+  if (!sourceWidth || !sourceHeight) {
+    throw new Error("Could not read image dimensions");
+  }
+
+  const targetRatio = MENU_IMAGE_WIDTH / MENU_IMAGE_HEIGHT;
+  const sourceRatio = sourceWidth / sourceHeight;
+  let cropX = 0;
+  let cropY = 0;
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+
+  if (sourceRatio > targetRatio) {
+    cropWidth = sourceHeight * targetRatio;
+    cropX = (sourceWidth - cropWidth) / 2;
+  } else if (sourceRatio < targetRatio) {
+    cropHeight = sourceWidth / targetRatio;
+    cropY = (sourceHeight - cropHeight) / 2;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = MENU_IMAGE_WIDTH;
+  canvas.height = MENU_IMAGE_HEIGHT;
+  const context = canvas.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+
+  if (!context) {
+    throw new Error("Could not prepare image optimizer");
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    MENU_IMAGE_WIDTH,
+    MENU_IMAGE_HEIGHT
+  );
+
+  if ("close" in image && typeof image.close === "function") {
+    image.close();
+  }
+
+  const blob = await canvasToBlob(
+    canvas,
+    MENU_IMAGE_MIME_TYPE,
+    MENU_IMAGE_QUALITY
+  );
+
+  return new File([blob], optimizedImageFileName(file.name), {
+    type: MENU_IMAGE_MIME_TYPE,
+    lastModified: Date.now(),
+  });
+}
+
 const withVisit = <T extends Record<string, any>>(payload: T): T => payload;
 
 type ManagerTableCreateInput = { label: string; isActive?: boolean };
@@ -95,29 +234,34 @@ type CreateWaiterPayload = {
   email: string;
   password: string;
   displayName: string;
-  waiterTypeId?: string | null;
+  printerTopic?: string | null;
 };
 type UpdateWaiterPayload = Partial<CreateWaiterPayload>;
 type CreateCookPayload = {
   email: string;
   password: string;
   displayName: string;
-  cookTypeId?: string | null;
-};
-type UpdateCookPayload = Partial<CreateCookPayload>;
-type StaffTypePayload = {
-  title: string;
   printerTopic?: string | null;
 };
+type UpdateCookPayload = Partial<CreateCookPayload>;
 type ManagerItemUpdatePayload = Partial<ManagerItemPayload>;
 type ModifierUpdatePayload = Partial<Modifier>;
 type EditOrderPayload = CreateOrderPayload;
+type EditPendingTableOrdersPayload = Omit<CreateOrderPayload, "tableId"> & {
+  orderIds?: string[];
+};
 type QRTileUpdatePayload = {
+  storeId?: string | null;
   tableId?: string | null;
   isActive?: boolean;
-  label?: string;
+  label?: string | null;
 };
-type GenerateTilePayload = { count: number };
+type GenerateTilePayload = { count?: number; publicCodes?: string[] };
+type PurgeStoreHistoryResponse = {
+  success: boolean;
+  store: StoreInfo;
+  deleted: Record<string, number>;
+};
 type RemoteNodeSaveResponse = {
   node: RemoteNode;
   token?: string | null;
@@ -188,12 +332,22 @@ async function fetchApi<T>(
     if (!response.ok) {
       const error = await response.json();
       const message = error.error || error.message || "Request failed";
+      console.error("[api] request failed", {
+        endpoint,
+        status: response.status,
+        message,
+        error,
+      });
       throw new ApiError(response.status, message);
     }
 
     return response.json();
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    console.error("[api] network/parse failure", {
+      endpoint,
+      error,
+    });
     throw new ApiError(0, "Network error or invalid response");
   }
 }
@@ -228,6 +382,15 @@ export const api = {
     isOffline()
       ? devMocks.getStore()
       : fetchApi<{ store: StoreInfo }>("/store"),
+  updatePrintOnArrival: (enabled: boolean): Promise<{ store: StoreInfo }> =>
+    isOffline()
+      ? devMocks.getStore().then(({ store }) => ({
+          store: { ...store, printOnArrival: enabled },
+        }))
+      : fetchApi<{ store: StoreInfo }>("/manager/store/print-on-arrival", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        }),
   getTables: (): Promise<{ tables: Table[] }> =>
     isOffline()
       ? devMocks.getTables()
@@ -257,27 +420,30 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify(data),
         }),
-  managerDeleteTable: (id: string): Promise<{ table: ManagerTableSummary }> =>
+  managerDeleteTable: (
+    id: string
+  ): Promise<{ table?: ManagerTableSummary; deleted?: boolean; id?: string }> =>
     isOffline()
       ? devMocks.managerDeleteTable(id)
-      : fetchApi<{ table: ManagerTableSummary }>(`/manager/tables/${id}`, {
+      : fetchApi<{ table?: ManagerTableSummary; deleted?: boolean; id?: string }>(`/manager/tables/${id}`, {
           method: "DELETE",
         }),
   managerUploadImage: async (
     file: File,
     opts?: { storeSlug?: string; itemId?: string }
   ) => {
-    const toBase64 = (f: File) =>
-      new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Failed to read file"));
-        r.readAsDataURL(f);
-      });
-    const base64 = await toBase64(file);
+    const uploadFile = await optimizeMenuImage(file);
+    console.info("[api:image-upload] optimized menu image", {
+      originalName: file.name,
+      originalSize: file.size,
+      uploadName: uploadFile.name,
+      uploadSize: uploadFile.size,
+      mimeType: uploadFile.type || MENU_IMAGE_MIME_TYPE,
+    });
+    const base64 = await readBlobAsDataUrl(uploadFile);
     const payload: ImageUploadPayload = {
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
+      fileName: uploadFile.name,
+      mimeType: uploadFile.type || MENU_IMAGE_MIME_TYPE,
       base64,
       itemId: opts?.itemId || undefined,
       storeSlug: opts?.storeSlug || undefined,
@@ -295,6 +461,16 @@ export const api = {
       : fetchApi<AuthResponse>("/auth/signin", {
           method: "POST",
           body: JSON.stringify({ email, password }),
+        }),
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<OkResponse> =>
+    isOffline()
+      ? Promise.resolve({ ok: true })
+      : fetchApi<OkResponse>("/auth/change-password", {
+          method: "POST",
+          body: JSON.stringify({ currentPassword, newPassword }),
         }),
 
   // Menu & orders (public device endpoints for create + call waiter)
@@ -365,6 +541,24 @@ export const api = {
           ...(visitHeaders ? { headers: visitHeaders } : {}),
         });
   },
+  editPendingTableOrders: (
+    tableId: string,
+    data: EditPendingTableOrdersPayload
+  ): Promise<OrderResponse & { supersededOrderIds?: string[] }> => {
+    const visitHeaders = (data as any)?.visit
+      ? { "x-table-visit": (data as any).visit }
+      : undefined;
+    return isOffline()
+      ? devMocks.createOrder({ ...data, tableId } as CreateOrderPayload)
+      : fetchApi<OrderResponse & { supersededOrderIds?: string[] }>(
+          `/public/table/${tableId}/orders/pending`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(withVisit(data as CreateOrderPayload)),
+            ...(visitHeaders ? { headers: visitHeaders } : {}),
+          }
+        );
+  },
   printOrder: (orderId: string) =>
     fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
   callWaiter: (tableId: string, visit?: string): Promise<OkResponse> =>
@@ -399,10 +593,16 @@ export const api = {
         ),
   getPublicTableOrders: (
     tableId: string,
-    opts?: { status?: string; take?: number; storeSlug?: string }
+    opts?: {
+      status?: string;
+      unpaid?: boolean;
+      take?: number;
+      storeSlug?: string;
+    }
   ): Promise<OrdersResponse> => {
     const params = new URLSearchParams();
     if (opts?.status) params.set("status", opts.status);
+    if (opts?.unpaid) params.set("unpaid", "1");
     if (opts?.take) params.set("take", String(opts.take));
     const qs = params.toString();
     return fetchApi<OrdersResponse>(
@@ -470,6 +670,22 @@ export const api = {
             body: JSON.stringify({ status }),
           }
         ),
+  updateOrderItem: (
+    orderId: string,
+    orderItemId: string,
+    data: {
+      quantity: number;
+      modifiers?: Record<string, string | string[]>;
+      localityApprovalToken?: string;
+      localitySessionId?: string;
+    }
+  ): Promise<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }> =>
+    isOffline()
+      ? devMocks.updateOrderItem(orderId, orderItemId, data)
+      : fetchApi<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }>(
+          `/orders/${orderId}/items/${orderItemId}`,
+          { method: "PATCH", body: JSON.stringify(data) }
+        ),
 
   // Manager: waiter-table assignments
   getWaiterTables: (): Promise<WaiterTableOverview> =>
@@ -505,17 +721,19 @@ export const api = {
     email: string,
     password: string,
     displayName: string,
-    waiterTypeId?: string | null
+    hybrid?: boolean,
+    printerTopic?: string | null
   ): Promise<{ waiter: WaiterSummary }> =>
     isOffline()
-      ? devMocks.createWaiter(email, password, displayName, waiterTypeId)
+      ? devMocks.createWaiter(email, password, displayName)
       : fetchApi<{ waiter: WaiterSummary }>("/manager/waiters", {
           method: "POST",
           body: JSON.stringify({
             email,
             password,
             displayName,
-            ...(waiterTypeId !== undefined ? { waiterTypeId } : {}),
+            ...(hybrid ? { hybrid: true } : {}),
+            ...(printerTopic !== undefined ? { printerTopic } : {}),
           }),
         }),
   updateWaiter: (
@@ -533,68 +751,6 @@ export const api = {
       ? devMocks.deleteWaiter(id)
       : fetchApi<OkResponse>(`/manager/waiters/${id}`, { method: "DELETE" }),
 
-  // Manager: cook types CRUD
-  listCookTypes: (): Promise<{ types: CookType[] }> =>
-    isOffline()
-      ? devMocks.listCookTypes()
-      : fetchApi<{ types: CookType[] }>("/manager/cook-types"),
-  createCookType: (
-    data: StaffTypePayload
-  ): Promise<{ type: CookType }> =>
-    isOffline()
-      ? devMocks.createCookType(data)
-      : fetchApi<{ type: CookType }>("/manager/cook-types", {
-          method: "POST",
-          body: JSON.stringify(data),
-        }),
-  updateCookType: (
-    id: string,
-    data: Partial<StaffTypePayload>
-  ): Promise<{ type: CookType }> =>
-    isOffline()
-      ? devMocks.updateCookType(id, data)
-      : fetchApi<{ type: CookType }>(`/manager/cook-types/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(data),
-        }),
-  deleteCookType: (id: string): Promise<OkResponse> =>
-    isOffline()
-      ? devMocks.deleteCookType(id)
-      : fetchApi<OkResponse>(`/manager/cook-types/${id}`, {
-          method: "DELETE",
-        }),
-
-  // Manager: waiter types CRUD
-  listWaiterTypes: (): Promise<{ types: WaiterType[] }> =>
-    isOffline()
-      ? devMocks.listWaiterTypes()
-      : fetchApi<{ types: WaiterType[] }>("/manager/waiter-types"),
-  createWaiterType: (
-    data: StaffTypePayload
-  ): Promise<{ type: WaiterType }> =>
-    isOffline()
-      ? devMocks.createWaiterType(data)
-      : fetchApi<{ type: WaiterType }>("/manager/waiter-types", {
-          method: "POST",
-          body: JSON.stringify(data),
-        }),
-  updateWaiterType: (
-    id: string,
-    data: Partial<StaffTypePayload>
-  ): Promise<{ type: WaiterType }> =>
-    isOffline()
-      ? devMocks.updateWaiterType(id, data)
-      : fetchApi<{ type: WaiterType }>(`/manager/waiter-types/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(data),
-        }),
-  deleteWaiterType: (id: string): Promise<OkResponse> =>
-    isOffline()
-      ? devMocks.deleteWaiterType(id)
-      : fetchApi<OkResponse>(`/manager/waiter-types/${id}`, {
-          method: "DELETE",
-        }),
-
   // Manager: cooks CRUD
   listCooks: (): Promise<{ cooks: CookSummary[] }> =>
     isOffline()
@@ -604,17 +760,17 @@ export const api = {
     email: string,
     password: string,
     displayName: string,
-    cookTypeId?: string | null
+    printerTopic?: string | null
   ): Promise<{ cook: CookSummary }> =>
     isOffline()
-      ? devMocks.createCook(email, password, displayName, cookTypeId)
+      ? devMocks.createCook(email, password, displayName, printerTopic)
       : fetchApi<{ cook: CookSummary }>("/manager/cooks", {
           method: "POST",
           body: JSON.stringify({
             email,
             password,
             displayName,
-            ...(cookTypeId !== undefined ? { cookTypeId } : {}),
+            ...(printerTopic !== undefined ? { printerTopic } : {}),
           }),
         }),
   updateCook: (
@@ -767,10 +923,11 @@ export const api = {
     titleEn: string,
     titleEl: string,
     sortOrder?: number,
-    printerTopic?: string | null
+    printerTopic?: string | null,
+    imageUrl?: string | null
   ): Promise<{ category: MenuCategory }> =>
     isOffline()
-      ? devMocks.createCategory(titleEn, sortOrder, titleEl, printerTopic)
+      ? devMocks.createCategory(titleEn, sortOrder, titleEl, printerTopic, imageUrl)
       : fetchApi<{ category: MenuCategory }>("/manager/categories", {
           method: "POST",
           body: JSON.stringify({
@@ -778,6 +935,7 @@ export const api = {
             titleEl,
             ...(sortOrder !== undefined ? { sortOrder } : {}),
             ...(printerTopic !== undefined ? { printerTopic } : {}),
+            ...(imageUrl !== undefined ? { imageUrl } : {}),
           }),
         }),
   updateCategory: (
@@ -800,10 +958,106 @@ export const api = {
     isOffline()
       ? devMocks.adminListStores()
       : fetchApi<{ stores: StoreInfo[] }>("/admin/stores"),
+  adminCreateStore: (
+    data: StoreOnboardPayload
+  ): Promise<StoreOnboardResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          store: {
+            id: `offline-${data.slug}`,
+            name: data.name,
+            slug: data.slug,
+            orderingMode: "hybrid",
+            printers: [data.printerTopic || "printer_1"],
+          },
+          profiles: {
+            manager: data.managerEmail || `manager@${data.slug}.local`,
+            waiter: data.waiterEmail || `waiter@${data.slug}.local`,
+            cook: data.cookEmail || `cook@${data.slug}.local`,
+          },
+          tableCount: data.tableCount || 10,
+        })
+      : fetchApi<StoreOnboardResponse>("/admin/stores", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  adminListStoreUsers: (
+    storeId: string
+  ): Promise<{ users: ArchitectStoreUser[] }> =>
+    isOffline()
+      ? Promise.resolve({ users: [] })
+      : fetchApi<{ users: ArchitectStoreUser[] }>(`/admin/stores/${storeId}/users`),
+  adminCreateStoreUser: (
+    storeId: string,
+    data: {
+      email: string;
+      password: string;
+      displayName: string;
+      role: "MANAGER" | "WAITER" | "COOK" | "HYBRID";
+    }
+  ): Promise<{ user: ArchitectStoreUser }> =>
+    isOffline()
+      ? Promise.resolve({
+          user: {
+            id: `offline-user-${Date.now()}`,
+            storeId,
+            email: data.email,
+            displayName: data.displayName,
+            role: data.role.toLowerCase() as ArchitectStoreUser["role"],
+          },
+        })
+      : fetchApi<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+  adminUpdateStoreUser: (
+    storeId: string,
+    userId: string,
+    data: Partial<{
+      email: string;
+      password: string;
+      displayName: string;
+      role: "MANAGER" | "WAITER" | "COOK" | "HYBRID";
+    }>
+  ): Promise<{ user: ArchitectStoreUser }> =>
+    isOffline()
+      ? Promise.resolve({
+          user: {
+            id: userId,
+            storeId,
+            email: data.email || "offline@example.local",
+            displayName: data.displayName || "Offline user",
+            role: (data.role?.toLowerCase() as ArchitectStoreUser["role"]) || "waiter",
+          },
+        })
+      : fetchApi<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users/${userId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+  adminDeleteStoreUser: (storeId: string, userId: string): Promise<OkResponse> =>
+    isOffline()
+      ? Promise.resolve({ ok: true } as OkResponse)
+      : fetchApi<OkResponse>(`/admin/stores/${storeId}/users/${userId}`, {
+          method: "DELETE",
+        }),
+  adminPurgeStoreHistory: (
+    storeId: string,
+    confirmation: string
+  ): Promise<PurgeStoreHistoryResponse> =>
+    isOffline()
+      ? devMocks.adminPurgeStoreHistory(storeId)
+      : fetchApi<PurgeStoreHistoryResponse>(`/admin/stores/${storeId}/history`, {
+          method: "DELETE",
+          body: JSON.stringify({ confirmation }),
+        }),
   adminListStoreOverview: (): Promise<{ stores: StoreOverview[] }> =>
     isOffline()
       ? devMocks.adminListStoreOverview()
       : fetchApi<{ stores: StoreOverview[] }>("/admin/stores/overview"),
+  adminListAllQrTiles: (): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminListAllQrTiles()
+      : fetchApi<{ tiles: QRTile[] }>("/admin/qr-tiles"),
   adminListStoreTables: (
     storeId: string
   ): Promise<{ tables: ManagerTableSummary[] }> =>
@@ -833,6 +1087,15 @@ export const api = {
             body: JSON.stringify(data),
           }
         ),
+  adminGenerateGlobalQrTiles: (
+    data: GenerateTilePayload
+  ): Promise<{ tiles: QRTile[] }> =>
+    isOffline()
+      ? devMocks.adminGenerateGlobalQrTiles(data)
+      : fetchApi<{ tiles: QRTile[] }>("/admin/qr-tiles/bulk", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
   adminUpdateQrTile: (
     id: string,
     data: QRTileUpdatePayload
@@ -890,13 +1153,39 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ printers }),
         }),
-
   adminListStoreNodes: (
     storeId: string
   ): Promise<{ nodes: RemoteNode[] }> =>
     isOffline()
       ? Promise.resolve({ nodes: [] })
       : fetchApi<{ nodes: RemoteNode[] }>(`/admin/stores/${storeId}/nodes`),
+  adminListPendingNodes: (): Promise<{ pendingNodes: PendingNodeAgent[] }> =>
+    isOffline()
+      ? Promise.resolve({ pendingNodes: [] })
+      : fetchApi<{ pendingNodes: PendingNodeAgent[] }>("/admin/pending-nodes"),
+  adminClaimPendingNode: (
+    pendingNodeId: string,
+    storeId: string,
+    config?: Partial<RemoteNodeConfig>
+  ): Promise<RemoteNodeSaveResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          node: {
+            id: "offline-claimed-node",
+            storeId,
+            slug: config.nodeSlug || "main",
+            displayName: config.displayName,
+            desiredConfigVersion: 1,
+            status: "PENDING",
+            config,
+          },
+          token: "offline-token",
+          tokenOnlyShownOnce: true,
+        })
+      : fetchApi<RemoteNodeSaveResponse>(`/admin/pending-nodes/${pendingNodeId}/claim`, {
+          method: "POST",
+          body: JSON.stringify({ storeId, ...(config ? { config } : {}) }),
+        }),
   adminSaveStoreMainNode: (
     storeId: string,
     data: RemoteNodeConfig
@@ -937,6 +1226,22 @@ export const api = {
       : fetchApi<RemoteNodeSaveResponse>(`/admin/nodes/${nodeId}/rotate-token`, {
           method: "POST",
         }),
+  adminTestStorePrinter: (
+    storeId: string,
+    printer: { topicSuffix: string; mac?: string; label?: string; type?: "58" | "80" }
+  ): Promise<RemoteNodePrinterTestResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          ok: true,
+          topic: `offline-store/orders/preparing/${printer.topicSuffix || "printer_1"}`,
+        })
+      : fetchApi<RemoteNodePrinterTestResponse>(
+          `/admin/stores/${storeId}/nodes/main/printers/test`,
+          {
+            method: "POST",
+            body: JSON.stringify(printer),
+          }
+        ),
 
   // Payment: Viva payment
   getVivaCheckoutUrl: (

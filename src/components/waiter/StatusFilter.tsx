@@ -82,13 +82,15 @@ export function StatusFilter({ options, selected, onSelect, orderCounts }: Statu
 
   return (
     <div className="relative w-full">
-      {/* Subtle gradient fade edges */}
-      <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
-      <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
-      
       <div
         ref={scrollRef}
-        className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-hide scroll-smooth"
+        className="status-filter-scroll flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory"
+        style={{
+          WebkitMaskImage:
+            'linear-gradient(to right, transparent 0, black 20px, black calc(100% - 20px), transparent 100%)',
+          maskImage:
+            'linear-gradient(to right, transparent 0, black 20px, black calc(100% - 20px), transparent 100%)',
+        }}
       >
         {options.map((option) => {
           const isSelected = selected === option.key;
@@ -103,13 +105,14 @@ export function StatusFilter({ options, selected, onSelect, orderCounts }: Statu
               }}
               onClick={() => onSelect(isSelected ? null : option.key)}
               className={clsx(
-                'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 border shrink-0',
+                'snap-start flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 border shrink-0',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                 isSelected
                   ? config.activeClass
-                  : 'bg-card/50 text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
+                  : 'bg-card/60 text-muted-foreground border-border/40 hover:bg-card hover:text-foreground hover:border-border/70'
               )}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.94 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             >
               {/* Status indicator dot */}
               <span className={clsx(

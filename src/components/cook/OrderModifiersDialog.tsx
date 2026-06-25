@@ -82,11 +82,13 @@ export function OrderModifiersDialog({
         menuItem?.name ||
         menuItem?.title ||
         `Item ${index + 1}`;
-      const selections = Object.entries(line.selectedModifiers ?? {}).map(
-        ([modifierId, optionId]) => {
+      const selections = Object.entries(line.selectedModifiers ?? {}).flatMap(
+        ([modifierId, optionIds]) => {
           const modifier = menuItem?.modifiers?.find((mod) => mod.id === modifierId);
-          const option = modifier?.options?.find((opt) => opt.id === optionId);
-          return {
+          const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+          return ids.map((optionId) => {
+            const option = modifier?.options?.find((opt) => opt.id === optionId);
+            return {
             modifierId,
             optionId,
             modifierLabel: modifier?.name || modifier?.title || modifierId,
@@ -95,7 +97,8 @@ export function OrderModifiersDialog({
               option?.title ||
               line.selectedModifierLabels?.[modifierId] ||
               optionId,
-          };
+            };
+          });
         }
       );
       return { line, itemName, selections };
@@ -106,6 +109,7 @@ export function OrderModifiersDialog({
 
   const note = order.note?.trim();
   const orderTime = formatTime(order.createdAt);
+  const tablePrefix = t("manager.table", { defaultValue: "Table" });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -114,7 +118,7 @@ export function OrderModifiersDialog({
           <DialogTitle className="flex items-center gap-2">
             <span>{t("cook.modifiers_title", { defaultValue: "Order modifiers" })}</span>
             {order.tableLabel && (
-              <Badge variant="outline">{formatTableLabel(order.tableLabel)}</Badge>
+              <Badge variant="outline">{formatTableLabel(order.tableLabel, tablePrefix)}</Badge>
             )}
             <Badge variant="secondary" className="ml-auto">
               {resolvedItems.length} {t("cook.items", { defaultValue: "items" })}

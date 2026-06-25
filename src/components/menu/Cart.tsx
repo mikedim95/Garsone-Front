@@ -45,8 +45,11 @@ const formatOrderTime = (order?: SubmittedOrderSummary | null) => {
 const getErrorMessage = (error: unknown, fallback = "Unexpected error") =>
   error instanceof Error ? error.message : fallback;
 
-const getItemName = (item: { name?: string; title?: string }) =>
-  item.name ?? item.title ?? "Item";
+const getItemName = (item: {
+  displayName?: string;
+  name?: string;
+  title?: string;
+}) => item.displayName ?? item.name ?? item.title ?? "Item";
 
 interface CartProps {
   onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;
@@ -71,7 +74,6 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
 
   const [queueAhead, setQueueAhead] = useState<number | null>(null);
   const [queueLoading, setQueueLoading] = useState(false);
-  const [submittedAhead, setSubmittedAhead] = useState<number | null>(null);
   const [lastSubmitWasEdit, setLastSubmitWasEdit] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
 
@@ -196,7 +198,7 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
 
       {/* CART DIALOG */}
       <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="sm:max-w-lg flex flex-col">
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[calc(100dvh-1rem)] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("menu.cart")}</DialogTitle>
           </DialogHeader>
@@ -222,7 +224,7 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
               </div>
             </div>
           )}
-          <div className="flex-1 overflow-y-auto px-1 py-2 space-y-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-1 py-2 space-y-2">
             {items.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
                 Cart is empty
@@ -351,7 +353,7 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                     </div>
                   );
                 })}
-                <div className="pt-2 pb-1 space-y-3">
+                <div className="sticky bottom-0 z-10 -mx-1 mt-2 space-y-3 border-t border-border/40 bg-background/95 px-1 pt-3 pb-[calc(0.25rem+env(safe-area-inset-bottom))] backdrop-blur">
                   <div className="bg-primary/5 border border-primary/20 rounded-2xl px-5 py-4 shadow-sm backdrop-blur-sm">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-muted-foreground">
@@ -482,14 +484,17 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {Object.entries(cartItem.selectedModifiers || {}).map(
-                        ([modId, optId]) => {
+                        ([modId, optIds]) => {
                           const mod = cartItem.item.modifiers?.find(
                             (m) => m.id === modId
                           );
-                          const opt = mod?.options.find((o) => o.id === optId);
+                          const ids = Array.isArray(optIds) ? optIds : [optIds];
+                          const labels = ids
+                            .map((id) => mod?.options.find((o) => o.id === id)?.label)
+                            .filter(Boolean);
                           return (
                             <div key={modId}>
-                              {mod?.name}: {opt?.label}
+                              {mod?.name}: {labels.join(', ')}
                             </div>
                           );
                         }
@@ -519,12 +524,10 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                     setLastSubmitWasEdit(isEditingExisting);
                     setPlacing(true);
                     const result = await onCheckout(note || undefined);
-                    const aheadValue = queueAhead ?? 0;
                     setReviewOpen(false);
                     setQueueAhead(null);
                     setNote("");
                     if (result) {
-                      setSubmittedAhead(aheadValue);
                       setSubmittedOrder(result);
                       setSuccessOpen(true);
                     }
@@ -547,12 +550,10 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                       setLastSubmitWasEdit(isEditingExisting);
                       setPlacing(true);
                       const result = await onImmediateCheckout(note || undefined);
-                      const aheadValue = queueAhead ?? 0;
                       setReviewOpen(false);
                       setQueueAhead(null);
                       setNote("");
                       if (result) {
-                        setSubmittedAhead(aheadValue);
                         setSubmittedOrder(result);
                         setSuccessOpen(true);
                       }
@@ -588,7 +589,6 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
           setSuccessOpen(open);
           if (!open) {
             setSubmittedOrder(null);
-            setSubmittedAhead(null);
           }
         }}
       >
@@ -599,12 +599,8 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
             </span>
             <div>
               <h2 className="text-lg font-semibold text-foreground">
-                Order submitted
+                Thank you for your order
               </h2>
-              <p className="text-sm text-muted-foreground">
-                Your order is on its way to the kitchen. Priority number:{" "}
-                {submittedAhead ?? queueAhead ?? 0}
-              </p>
             </div>
           </div>
 

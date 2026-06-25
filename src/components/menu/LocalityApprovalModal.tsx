@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { useTranslation } from "react-i18next";
 import {
   getDeviceContext,
   isNfcSupported,
@@ -79,6 +80,7 @@ export const LocalityApprovalModal = ({
   onCancel,
   onApproved,
 }: LocalityApprovalModalProps) => {
+  const { t } = useTranslation();
   const [stage, setStage] = useState<LocalityStage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number>(SCAN_SECONDS);
@@ -134,7 +136,7 @@ export const LocalityApprovalModal = ({
     timeoutRef.current = window.setTimeout(() => {
       stopScan();
       setStage("error");
-      setError("Scan timed out. Try again.");
+      setError(t("menu.locality_scan_timeout", { defaultValue: "Scan timed out. Try again." }));
       trackEvent("locality_scan_failed", { reason: "timeout" }, method);
     }, SCAN_TIMEOUT_MS);
     intervalRef.current = window.setInterval(() => {
@@ -191,7 +193,7 @@ export const LocalityApprovalModal = ({
     setError(null);
     if (!isNfcSupported()) {
       setStage("error");
-      setError("NFC is not supported on this device. Use QR instead.");
+      setError(t("menu.locality_nfc_unsupported", { defaultValue: "NFC is not supported on this device. Use QR instead." }));
       await trackEvent("locality_scan_failed", { reason: "nfc_unsupported" }, "nfc");
       return;
     }
@@ -215,7 +217,7 @@ export const LocalityApprovalModal = ({
         const code = decoded ? extractPublicCode(decoded) : null;
         if (!code) {
           setStage("error");
-          setError("Tag data not recognized. Try another tag.");
+          setError(t("menu.locality_tag_unrecognized", { defaultValue: "Tag data not recognized. Try another tag." }));
           await trackEvent("locality_scan_failed", { reason: "invalid_tag" }, "nfc");
           return;
         }
@@ -226,7 +228,7 @@ export const LocalityApprovalModal = ({
       const handleReadingError = async () => {
         stopScan();
         setStage("error");
-        setError("Scan failed. Try again.");
+        setError(t("menu.locality_scan_failed", { defaultValue: "Scan failed. Try again." }));
         await trackEvent("locality_scan_failed", { reason: "read_error" }, "nfc");
       };
 
@@ -236,7 +238,7 @@ export const LocalityApprovalModal = ({
     } catch (err) {
       stopScan();
       setStage("error");
-      setError("Unable to start NFC scanning.");
+      setError(t("menu.locality_scan_start_failed", { defaultValue: "Unable to start NFC scanning." }));
       await trackEvent("locality_scan_failed", { reason: "scan_start_failed" }, "nfc");
     }
   };
@@ -247,7 +249,7 @@ export const LocalityApprovalModal = ({
     const code = extractPublicCode(qrInput);
     if (!code) {
       setStage("error");
-      setError("Enter a valid QR link or code.");
+      setError(t("menu.locality_qr_invalid", { defaultValue: "Enter a valid QR link or code." }));
       await trackEvent("locality_scan_failed", { reason: "invalid_qr" }, "qr");
       return;
     }
@@ -274,10 +276,10 @@ export const LocalityApprovalModal = ({
   }, [open]);
 
   const progress = [
-    { key: "waiting", label: "Waiting" },
-    { key: "scanned", label: "Scanned" },
-    { key: "verifying", label: "Verifying" },
-    { key: "approved", label: "Approved" },
+    { key: "waiting", label: t("menu.locality_waiting", { defaultValue: "Waiting" }) },
+    { key: "scanned", label: t("menu.locality_scanned", { defaultValue: "Scanned" }) },
+    { key: "verifying", label: t("menu.locality_verifying", { defaultValue: "Verifying" }) },
+    { key: "approved", label: t("menu.locality_approved", { defaultValue: "Approved" }) },
   ];
   const stageIndex = progress.findIndex((step) => step.key === stage);
 
@@ -285,14 +287,20 @@ export const LocalityApprovalModal = ({
     <Dialog open={open} onOpenChange={(next) => (!next ? onCancel() : undefined)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Confirm you&#39;re at the venue</DialogTitle>
+          <DialogTitle>
+            {t("menu.locality_title", { defaultValue: "Confirm you're at the venue" })}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-lg border border-border/60 bg-card/80 px-4 py-3 text-sm text-muted-foreground">
             {isNfcSupported()
-              ? "Hold your phone near the NFC tag on your table to approve this order."
-              : "NFC is not available here. Use the table QR code instead."}
+              ? t("menu.locality_nfc_instruction", {
+                  defaultValue: "Hold your phone near the NFC tag on your table to approve this order.",
+                })
+              : t("menu.locality_qr_instruction", {
+                  defaultValue: "NFC is not available here. Use the table QR code instead.",
+                })}
           </div>
 
           <div className="space-y-2">
@@ -338,20 +346,26 @@ export const LocalityApprovalModal = ({
               onClick={handleNfcScan}
               disabled={stage === "waiting" || stage === "verifying"}
             >
-              {stage === "waiting" ? "Scanning NFC..." : "Scan NFC tag"}
+              {stage === "waiting"
+                ? t("menu.locality_scanning_nfc", { defaultValue: "Scanning NFC..." })
+                : t("menu.locality_scan_nfc", { defaultValue: "Scan NFC tag" })}
             </Button>
 
             <div className="rounded-md border border-border/60 bg-card/60 p-3 space-y-2">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                QR fallback
+                {t("menu.locality_qr_fallback", { defaultValue: "QR fallback" })}
               </p>
               <p className="text-xs text-muted-foreground">
-                Scan the table QR and paste the link or code here.
+                {t("menu.locality_qr_fallback_description", {
+                  defaultValue: "Scan the table QR and paste the link or code here.",
+                })}
               </p>
               <Input
                 value={qrInput}
                 onChange={(e) => setQrInput(e.target.value)}
-                placeholder="Paste QR link or code"
+                placeholder={t("menu.locality_qr_placeholder", {
+                  defaultValue: "Paste QR link or code",
+                })}
               />
               <Button
                 type="button"
@@ -360,7 +374,7 @@ export const LocalityApprovalModal = ({
                 onClick={handleQrVerify}
                 disabled={stage === "waiting" || stage === "verifying"}
               >
-                Verify QR code
+                {t("menu.locality_verify_qr", { defaultValue: "Verify QR code" })}
               </Button>
             </div>
           </div>
@@ -378,7 +392,7 @@ export const LocalityApprovalModal = ({
             disabled={stage === "verifying"}
             className="w-full"
           >
-            Cancel
+            {t("actions.cancel", { defaultValue: "Cancel" })}
           </Button>
         </DialogFooter>
       </DialogContent>

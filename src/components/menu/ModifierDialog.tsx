@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import type { MenuItem, Modifier } from '@/types';
+import { useTranslation } from 'react-i18next';
 
-type SelectionMap = { [modifierId: string]: string };
+type SelectionMap = { [modifierId: string]: string | string[] };
 
 interface Props {
   open: boolean;
@@ -14,6 +16,11 @@ interface Props {
   onConfirm: (selected: SelectionMap, quantity: number) => void;
   initialSelected?: SelectionMap;
   initialQty?: number;
+  confirmLabel?: string;
+  minQuantity?: number;
+  onRemove?: () => void;
+  removeLabel?: string;
+  saving?: boolean;
 }
 
 const getModifierPriceDelta = (option: Modifier['options'][number]) => {
@@ -22,9 +29,23 @@ const getModifierPriceDelta = (option: Modifier['options'][number]) => {
   return 0;
 };
 
-export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected, initialQty = 1 }: Props) => {
+export const ModifierDialog = ({
+  open,
+  item,
+  onClose,
+  onConfirm,
+  initialSelected,
+  initialQty = 1,
+  confirmLabel,
+  minQuantity = 1,
+  onRemove,
+  removeLabel,
+  saving = false,
+}: Props) => {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
-  const [qty, setQty] = useState<number>(initialQty || 1);
+  const [qty, setQty] = useState<number>(Math.max(minQuantity, initialQty));
+  const [submitted, setSubmitted] = useState(false);
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
   const formatter = useMemo(() => {
     try {
@@ -36,30 +57,52 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
   }, [currency]);
   const formatCurrency = (value: number) =>
     formatter ? formatter.format(value) : `€${value.toFixed(2)}`;
+  const displayName = item?.displayName ?? item?.name ?? item?.title ?? t('menu.item', { defaultValue: 'Item' });
+  const description = item?.displayDescription ?? item?.description ?? '';
 
   useEffect(() => {
     setSelected(initialSelected || {});
-    setQty(initialQty || 1);
-  }, [initialSelected, initialQty, item?.id, open]);
+    setQty(Math.max(minQuantity, initialQty));
+    setSubmitted(false);
+  }, [initialSelected, initialQty, item?.id, minQuantity, open]);
 
   const effectiveModifiers: Modifier[] = useMemo(() => item?.modifiers || [], [item]);
 
   const canConfirm = useMemo(() => {
-    if (!effectiveModifiers?.length) return true;
+    if (qty === 0 || !effectiveModifiers?.length) return true;
     return effectiveModifiers.every((m) => {
       const required = !!m.required || (m.minSelect ?? 0) > 0;
       if (!required) return true;
-      return !!selected[m.id];
+      const value = selected[m.id];
+      return Array.isArray(value) ? value.length > 0 : !!value;
     });
-  }, [effectiveModifiers, selected]);
+  }, [effectiveModifiers, qty, selected]);
 
   const handlePick = (modifierId: string, optionId: string) => {
     setSelected((prev) => ({ ...prev, [modifierId]: optionId }));
   };
 
+  const handleToggle = (modifierId: string, optionId: string, checked: boolean) => {
+    setSelected((prev) => {
+      const current = prev[modifierId];
+      const values = Array.isArray(current) ? current : current ? [current] : [];
+      const next = checked ? [...new Set([...values, optionId])] : values.filter((id) => id !== optionId);
+      if (!next.length) {
+        const { [modifierId]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [modifierId]: next };
+    });
+  };
+
   const handleConfirm = () => {
-    onConfirm(selected, Math.max(1, qty));
+    if (!canConfirm) {
+      setSubmitted(true);
+      return;
+    }
+    onConfirm(selected, Math.max(minQuantity, qty));
     setSelected({});
+    setSubmitted(false);
   };
 
   return (
@@ -67,59 +110,128 @@ export const ModifierDialog = ({ open, item, onClose, onConfirm, initialSelected
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {item ? `Customize: ${item.name}` : 'Customize'}
+            {item ? displayName : t('menu.item', { defaultValue: 'Item' })}
           </DialogTitle>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
 
         <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-1">
           {effectiveModifiers?.length ? (
-            effectiveModifiers.map((mod) => (
-              <div key={mod.id} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">
-                    {mod.name}
-                    {mod.required || (mod.minSelect ?? 0) > 0 ? (
-                      <span className="ml-2 text-xs text-destructive">(required)</span>
+            effectiveModifiers.map((mod) => {
+              const currentValue = selected[mod.id];
+              const missingRequired =
+                submitted &&
+                (!!mod.required || (mod.minSelect ?? 0) > 0) &&
+                (Array.isArray(currentValue) ? currentValue.length === 0 : !currentValue);
+              const allowsMultiple = mod.maxSelect === null || (mod.maxSelect ?? 1) > 1;
+
+              return (
+                <div key={mod.id} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium">{mod.name}</h4>
+                    {missingRequired ? (
+                      <span className="ml-3 text-xs font-medium text-destructive">
+                        {t('menu.choose_required_modifier', { defaultValue: 'Choose one option' })}
+                      </span>
                     ) : null}
-                  </h4>
-                </div>
-                <RadioGroup
-                  value={selected[mod.id]}
-                  onValueChange={(val) => handlePick(mod.id, val)}
-                  className="grid grid-cols-1 gap-2"
-                >
-                  {mod.options.map((opt) => {
-                    const delta = getModifierPriceDelta(opt);
-                    return (
-                    <Label
-                      key={opt.id}
-                      htmlFor={`${mod.id}-${opt.id}`}
-                      className="flex items-center gap-3 p-3 border rounded cursor-pointer"
+                  </div>
+
+                  {allowsMultiple ? (
+                    <div className="grid grid-cols-1 gap-2">
+                      {mod.options.map((opt) => {
+                        const delta = getModifierPriceDelta(opt);
+                        const checked = Array.isArray(currentValue)
+                          ? currentValue.includes(opt.id)
+                          : currentValue === opt.id;
+                        return (
+                          <Label
+                            key={opt.id}
+                            htmlFor={`${mod.id}-${opt.id}`}
+                            className="flex items-center gap-3 p-3 border rounded cursor-pointer"
+                          >
+                            <Checkbox
+                              id={`${mod.id}-${opt.id}`}
+                              checked={checked}
+                              onCheckedChange={(value) => handleToggle(mod.id, opt.id, value === true)}
+                            />
+                            <span className="flex-1">{opt.label}</span>
+                            {delta !== 0 && (
+                              <span className="text-sm text-muted-foreground">
+                                {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
+                              </span>
+                            )}
+                          </Label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <RadioGroup
+                      value={Array.isArray(currentValue) ? currentValue[0] : currentValue}
+                      onValueChange={(val) => handlePick(mod.id, val)}
+                      className="grid grid-cols-1 gap-2"
                     >
-                      <RadioGroupItem id={`${mod.id}-${opt.id}`} value={opt.id} />
-                      <span className="flex-1">{opt.label}</span>
-                      {delta !== 0 && (
-                        <span className="text-sm text-muted-foreground">
-                          {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
-                        </span>
-                      )}
-                    </Label>
-                  )})}
-                </RadioGroup>
-              </div>
-            ))
+                      {mod.options.map((opt) => {
+                        const delta = getModifierPriceDelta(opt);
+                        return (
+                          <Label
+                            key={opt.id}
+                            htmlFor={`${mod.id}-${opt.id}`}
+                            className="flex items-center gap-3 p-3 border rounded cursor-pointer"
+                          >
+                            <RadioGroupItem id={`${mod.id}-${opt.id}`} value={opt.id} />
+                            <span className="flex-1">{opt.label}</span>
+                            {delta !== 0 && (
+                              <span className="text-sm text-muted-foreground">
+                                {(delta > 0 ? '+' : '-') + formatCurrency(Math.abs(delta))}
+                              </span>
+                            )}
+                          </Label>
+                        );
+                      })}
+                    </RadioGroup>
+                  )}
+                </div>
+              );
+            })
           ) : null}
         </div>
 
         <div className="flex items-center justify-center gap-3 py-2">
-          <Button type="button" variant="outline" size="icon" onClick={() => setQty((v) => Math.max(1, v - 1))}>-</Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setQty((v) => Math.max(minQuantity, v - 1))}
+            disabled={saving}
+            aria-label={t('menu.decrease_quantity', { defaultValue: 'Decrease quantity' })}
+          >
+            -
+          </Button>
           <span className="text-lg font-semibold w-8 text-center">{qty}</span>
-          <Button type="button" variant="outline" size="icon" onClick={() => setQty((v) => v + 1)}>+</Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setQty((v) => v + 1)}
+            disabled={saving}
+            aria-label={t('menu.increase_quantity', { defaultValue: 'Increase quantity' })}
+          >
+            +
+          </Button>
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={!canConfirm}>Add to cart</Button>
+          {onRemove ? (
+            <Button variant="destructive" onClick={onRemove} disabled={saving}>
+              {removeLabel ?? t('menu.remove_item', { defaultValue: 'Cancel item' })}
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            {t('actions.cancel', { defaultValue: 'Cancel' })}
+          </Button>
+          <Button onClick={handleConfirm} disabled={saving}>
+            {confirmLabel ?? t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

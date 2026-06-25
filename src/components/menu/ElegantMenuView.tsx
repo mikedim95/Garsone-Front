@@ -7,6 +7,7 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { ModifierDialog } from './ModifierDialog';
@@ -61,9 +62,9 @@ export const ElegantMenuView = ({
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
-  const removeItem = useCartStore((state) => state.removeItem);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
-  const updateItemModifiers = useCartStore((state) => state.updateItemModifiers);
+  const removeItemAt = useCartStore((state) => state.removeItemAt);
+  const updateQuantityAt = useCartStore((state) => state.updateQuantityAt);
+  const updateItemAt = useCartStore((state) => state.updateItemAt);
   const [cartOpen, setCartOpen] = useState(false);
   const [expandedBubble, setExpandedBubble] = useState<'none' | 'cart' | 'call'>('none');
   const [orderNote, setOrderNote] = useState('');
@@ -100,11 +101,13 @@ export const ElegantMenuView = ({
 
   const getSelectedModifiersTotal = (cartItem: CartItem) => {
     if (!cartItem.selectedModifiers) return 0;
-    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionId]) => {
-      const option = cartItem.item.modifiers
-        ?.find((modifier) => modifier.id === modifierId)
-        ?.options.find((opt) => opt.id === optionId);
-      return sum + (option ? getModifierOptionPriceDelta(option) : 0);
+    return Object.entries(cartItem.selectedModifiers).reduce((sum, [modifierId, optionIds]) => {
+      const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
+      const modifierOptions = cartItem.item.modifiers?.find((modifier) => modifier.id === modifierId)?.options ?? [];
+      return sum + ids.reduce((optionSum, optionId) => {
+        const option = modifierOptions.find((opt) => opt.id === optionId);
+        return optionSum + (option ? getModifierOptionPriceDelta(option) : 0);
+      }, 0);
     }, 0);
   };
 
@@ -135,6 +138,69 @@ export const ElegantMenuView = ({
       })).filter(group => group.items.length > 0)
     : [{ category: categories.find(c => c.id === selectedCategory) || { id: selectedCategory, title: '' }, items: filteredItems }];
 
+  const buildSubgroups = (list: MenuItem[]) => {
+    const groups = new Map<string, MenuItem[]>();
+    for (const item of list) {
+      const key = (item.subcategory ?? '').trim();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    return Array.from(groups.entries()).map(([title, subgroupItems]) => ({
+      title,
+      items: subgroupItems,
+    }));
+  };
+
+  const renderItemGrid = (list: MenuItem[]) => (
+    <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+      {list.map((item) => {
+        const price = getPrice(item);
+        const displayName =
+          item.displayName ??
+          item.name ??
+          item.title ??
+          t('menu.item', { defaultValue: 'Item' });
+
+        return (
+          <Card
+            key={item.id}
+            className="group relative overflow-hidden border-border/40 bg-card hover:border-primary/30"
+          >
+            <div
+              className="relative aspect-square overflow-hidden cursor-pointer"
+              role="button"
+              tabIndex={item.available === false ? -1 : 0}
+              aria-disabled={item.available === false}
+              onClick={() => handleAddItemClick(item)}
+              onKeyDown={(event) => handleImageKeyDown(event, item)}
+            >
+              <img
+                src={item.image}
+                alt={displayName}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-x-0 top-0 z-20 p-2 sm:p-2.5 bg-gradient-to-b from-black/70 via-black/40 to-transparent flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-xs sm:text-sm text-foreground drop-shadow-lg line-clamp-2 leading-tight">
+                    {displayName}
+                  </h3>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 bg-primary text-primary-foreground border-0 font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
+                >
+                  {formatPrice(price)}
+                </Badge>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+
   const handleCheckout = async () => {
     if (checkoutBusy) return;
     const res = await onCheckout(orderNote);
@@ -155,12 +221,12 @@ export const ElegantMenuView = ({
     setEditingItemIndex(index);
   };
 
-  const handleConfirmEditModifiers = (selectedModifiers: Record<string, string>, qty: number) => {
+  const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
     if (editingItemIndex !== null) {
-      updateItemModifiers(editingItemIndex, selectedModifiers);
-      if (qty !== cartItems[editingItemIndex].quantity) {
-        updateQuantity(cartItems[editingItemIndex].item.id, qty);
-      }
+      updateItemAt(editingItemIndex, {
+        quantity: Math.max(1, qty || 1),
+        selectedModifiers,
+      });
     }
     setEditingItemIndex(null);
   };
@@ -230,7 +296,14 @@ export const ElegantMenuView = ({
     <>
       {/* Menu Section */}
       <div className="w-full pb-32">
-        {itemsByCategory.map((group, groupIdx) => (
+        {itemsByCategory.map((group) => {
+          const subgroups = buildSubgroups(group.items);
+          const namedSubgroups = subgroups.filter((entry) => entry.title);
+          const ungroupedItems = subgroups
+            .filter((entry) => !entry.title)
+            .flatMap((entry) => entry.items);
+
+          return (
           <div key={group.category.id}>
             {selectedCategory === 'all' && (
               <div className="flex items-center gap-4 my-8">
@@ -241,50 +314,41 @@ export const ElegantMenuView = ({
                 <Separator className="flex-1 h-[2px] bg-border" />
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
-          {group.items.map((item) => {
-            const price = getPrice(item);
-            const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
-            const description = item.description ?? '';
-
-            return (
-              <Card
-                key={item.id}
-                className="group relative overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-all duration-500 hover:shadow-xl"
-              >
-                <div
-                  className="relative aspect-square overflow-hidden cursor-pointer"
-                  role="button"
-                  tabIndex={item.available === false ? -1 : 0}
-                  aria-disabled={item.available === false}
-                  onClick={() => handleAddItemClick(item)}
-                  onKeyDown={(e) => handleImageKeyDown(e, item)}
+            <div className="mb-6 sm:mb-8 space-y-4">
+              {ungroupedItems.length > 0 ? renderItemGrid(ungroupedItems) : null}
+              {namedSubgroups.length > 0 ? (
+                <Accordion
+                  type="multiple"
+                  defaultValue={namedSubgroups.map((entry) => entry.title)}
+                  className="space-y-2"
                 >
-                  <img
-                    src={item.image}
-                    alt={displayName}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-x-0 top-0 z-20 p-2 sm:p-2.5 bg-gradient-to-b from-black/70 via-black/40 to-transparent flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-xs sm:text-sm text-foreground drop-shadow-lg line-clamp-2 leading-tight">
-                        {displayName}
-                      </h3>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 bg-primary/90 text-primary-foreground border-0 backdrop-blur-sm font-bold text-[10px] sm:text-xs px-2 py-1 shadow-lg"
+                  {namedSubgroups.map((entry) => (
+                    <AccordionItem
+                      key={entry.title}
+                      value={entry.title}
+                      className="border border-border/40 rounded-xl bg-card/60 overflow-hidden"
                     >
-                      {formatPrice(price)}
-                    </Badge>
-                  </div>
-                </div>
-              </Card>
-              );
-            })}
+                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                        <div className="flex items-center gap-3">
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                          <span className="text-sm font-medium text-foreground tracking-wide">
+                            {entry.title}
+                          </span>
+                          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                            {entry.items.length}
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-3 pb-4 pt-0">
+                        {renderItemGrid(entry.items)}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              ) : null}
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Floating Cart Button */}
@@ -392,14 +456,14 @@ export const ElegantMenuView = ({
           setCartOpen(open);
         }}
       >
-        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
+        <DialogContent className="w-[95vw] sm:w-auto max-w-2xl h-[85dvh] max-h-[calc(100dvh-0.75rem)] sm:h-auto sm:max-h-[90dvh] overflow-hidden p-0 bottom-0 top-auto left-1/2 [translate:-50%_0] sm:top-1/2 sm:bottom-auto sm:[translate:-50%_-50%] rounded-t-3xl sm:rounded-lg">
           <DialogTitle className="sr-only">
             {t('menu.your_order', { defaultValue: 'Your Order' })}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {t('menu.cart_summary', { defaultValue: 'Cart summary and checkout' })}
           </DialogDescription>
-          <Card className="border-0 shadow-none h-full flex flex-col">
+          <Card className="border-0 shadow-none h-full min-h-0 flex flex-col">
             <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 border-b border-border/40">
               {/* Bottom-sheet drag handle (mobile only) */}
               <div className="sm:hidden flex justify-center pt-1 pb-2" aria-hidden="true">
@@ -420,7 +484,7 @@ export const ElegantMenuView = ({
               </div>
             </div>
 
-            <ScrollArea className="max-h-[45vh] sm:max-h-[35vh]">
+            <ScrollArea className="min-h-0 flex-1">
             {cartItems.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
@@ -435,10 +499,11 @@ export const ElegantMenuView = ({
                 {cartItems.map((cartItem, idx) => {
                   const unitPrice = getCartItemUnitPrice(cartItem);
                   const itemTotal = unitPrice * cartItem.quantity;
-                  const displayName =
-                    cartItem.item.name ??
-                    cartItem.item.title ??
-                    t('menu.item', { defaultValue: 'Item' });
+                    const displayName =
+                      cartItem.item.displayName ??
+                      cartItem.item.name ??
+                      cartItem.item.title ??
+                      t('menu.item', { defaultValue: 'Item' });
 
                   const hasModifiers = cartItem.selectedModifiers && Object.keys(cartItem.selectedModifiers).length > 0;
                   
@@ -449,7 +514,7 @@ export const ElegantMenuView = ({
                     >
                       <button
                         aria-label={t('menu.remove_item', { defaultValue: 'Remove item' })}
-                        onClick={() => removeItem(cartItem.item.id)}
+                        onClick={() => removeItemAt(idx)}
                         className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-100 transition-opacity duration-200 shadow-lg hover:scale-110 z-10"
                       >
                         <X className="h-3 w-3" />
@@ -483,15 +548,18 @@ export const ElegantMenuView = ({
                           {hasModifiers && (
                             <div className="mb-1 space-y-0.5">
                               {cartItem.item.modifiers?.map((modifier) => {
-                                const selectedOptionId = cartItem.selectedModifiers[modifier.id];
-                                const selectedOption = modifier.options.find(opt => opt.id === selectedOptionId);
-                                if (!selectedOption) return null;
-                                const optionDelta = getModifierOptionPriceDelta(selectedOption);
+                                const selectedOptionIds = cartItem.selectedModifiers[modifier.id];
+                                const ids = Array.isArray(selectedOptionIds) ? selectedOptionIds : selectedOptionIds ? [selectedOptionIds] : [];
+                                const selectedOptions = ids
+                                  .map((id) => modifier.options.find((opt) => opt.id === id))
+                                  .filter(Boolean);
+                                if (!selectedOptions.length) return null;
+                                const optionDelta = selectedOptions.reduce((sum, option) => sum + getModifierOptionPriceDelta(option!), 0);
                                 
                                 return (
                                   <div key={modifier.id} className="text-[10px] text-muted-foreground">
                                     <span className="font-medium">{modifier.name || modifier.title}:</span>{' '}
-                                    <span>{selectedOption.label || selectedOption.title}</span>
+                                    <span>{selectedOptions.map((option) => option!.label || option!.title).join(', ')}</span>
                                     {optionDelta > 0 && (
                                       <span className="text-primary ml-1">
                                         +{formatPrice(optionDelta)}
@@ -507,7 +575,7 @@ export const ElegantMenuView = ({
                             <div className="flex items-center gap-2 bg-background/50 rounded-full px-2 py-1">
                               <button
                                 onClick={() =>
-                                  updateQuantity(cartItem.item.id, Math.max(1, cartItem.quantity - 1))
+                                  updateQuantityAt(idx, Math.max(1, cartItem.quantity - 1))
                                 }
                                 aria-label={t('menu.decrease_quantity', { defaultValue: 'Decrease quantity' })}
                                 className="text-muted-foreground hover:text-foreground transition-colors w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full hover:bg-muted text-base"
@@ -518,7 +586,7 @@ export const ElegantMenuView = ({
                                 {cartItem.quantity}
                               </span>
                               <button
-                                onClick={() => updateQuantity(cartItem.item.id, cartItem.quantity + 1)}
+                                onClick={() => updateQuantityAt(idx, cartItem.quantity + 1)}
                                 aria-label={t('menu.increase_quantity', { defaultValue: 'Increase quantity' })}
                                 className="text-muted-foreground hover:text-foreground transition-colors w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full hover:bg-muted text-base"
                               >
@@ -539,7 +607,7 @@ export const ElegantMenuView = ({
             </ScrollArea>
 
             {cartItems.length > 0 && (
-              <div className="sticky bottom-0 p-3 sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
+              <div className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4 border-t border-border/40 space-y-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10">
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-foreground">
                     {t('menu.total', { defaultValue: 'Total' })}

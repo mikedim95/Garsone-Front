@@ -1,105 +1,77 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { HomeLink } from '@/components/HomeLink';
-import { AppBurger } from '@/components/AppBurger';
-import { CheckCircle, Clock, Utensils } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { api } from '@/lib/api';
-import { setStoredStoreSlug } from '@/lib/storeSlug';
-
-type OrderReadyPayload = {
-  orderId?: string;
-  tableId?: string;
-};
+import { useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, CheckCircle } from "lucide-react";
+import { motion } from "framer-motion";
+import { api } from "@/lib/api";
+import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 export default function OrderThanks() {
-  const { orderId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const [ready, setReady] = useState(false);
-  const [queuePosition, setQueuePosition] = useState<number | null>(null);
-  const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
-  const { tableId, paid } = useMemo(() => {
+  const { t } = useTranslation();
+  const { tableId, storeSlug, updated } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
     return {
-      tableId: qs.get('tableId') || undefined,
-      paid: qs.get('paid') === '1',
+      tableId: qs.get("tableId") || undefined,
+      storeSlug: qs.get("storeSlug") || undefined,
+      updated: qs.get("updated") === "1",
     };
   }, [location.search]);
-  const [storeSlug, setStoreSlug] = useState<string>('');
+
+  const menuPath = useMemo(() => {
+    if (!tableId) return "/";
+    const qs = new URLSearchParams();
+    if (storeSlug) qs.set("storeSlug", storeSlug);
+    qs.set("highlightLastOrder", "1");
+    const suffix = qs.toString();
+    return `/${tableId}${suffix ? `?${suffix}` : ""}`;
+  }, [storeSlug, tableId]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const store = await api.getStore();
-        if (mounted && store?.store?.slug) {
-          setStoreSlug(store.store.slug);
-        }
+        if (!mounted) return;
         if (store?.store?.name) {
           try {
-            localStorage.setItem('STORE_NAME', store.store.name);
+            localStorage.setItem("STORE_NAME", store.store.name);
           } catch (error) {
-            console.warn('Failed to persist STORE_NAME', error);
+            console.warn("Failed to persist STORE_NAME", error);
           }
         }
         if (store?.store?.slug) {
           try {
             setStoredStoreSlug(store.store.slug);
-            window.dispatchEvent(new CustomEvent('store-slug-changed', { detail: { slug: store.store.slug } }));
+            window.dispatchEvent(
+              new CustomEvent("store-slug-changed", {
+                detail: { slug: store.store.slug },
+              })
+            );
           } catch (error) {
-            console.warn('Failed to persist STORE_SLUG', error);
+            console.warn("Failed to persist STORE_SLUG", error);
           }
         }
       } catch (error) {
-        console.error('Failed to load store info', error);
+        console.error("Failed to load store info", error);
       }
     })();
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => {
-    if (!orderId || !storeSlug) return;
-    let active = true;
-    api
-      .getPublicOrderSummary(orderId, { storeSlug })
-      .then((summary) => {
-        if (!active) return;
-        const nextQueue =
-          typeof summary.queuePosition === 'number' ? summary.queuePosition : null;
-        const nextEstimate =
-          typeof summary.estimatedMinutes === 'number'
-            ? summary.estimatedMinutes
-            : null;
-        setQueuePosition(nextQueue);
-        setEstimatedMinutes(nextEstimate);
-      })
-      .catch((error) => {
-        console.warn('Failed to load order summary', error);
-      });
     return () => {
-      active = false;
+      mounted = false;
     };
-  }, [storeSlug, orderId]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex items-center justify-center p-4">
-      <div className="absolute top-4 left-4">
-        <HomeLink />
-      </div>
-      <div className="absolute top-4 right-4">
-        <AppBurger />
-      </div>
-
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
         className="max-w-sm w-full text-center"
       >
-        {/* Success Icon */}
-        <motion.div 
+        <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -111,10 +83,12 @@ export default function OrderThanks() {
               animate={{ scale: 1 }}
               transition={{ delay: 0.4, type: "spring", stiffness: 300 }}
             >
-              <CheckCircle className="h-12 w-12 text-primary" strokeWidth={1.5} />
+              <CheckCircle
+                className="h-12 w-12 text-primary"
+                strokeWidth={1.5}
+              />
             </motion.div>
           </div>
-          {/* Subtle ring animation */}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1.2, opacity: 0 }}
@@ -123,87 +97,33 @@ export default function OrderThanks() {
           />
         </motion.div>
 
-        {/* Main Message */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
         >
           <h1 className="text-2xl font-semibold text-foreground mb-2">
-            Thank you!
+            {updated
+              ? t("order.updated_success_title", {
+                  defaultValue: "Order changed successfully",
+                })
+              : t("order.success_title", {
+                  defaultValue: "Order successful",
+                })}
           </h1>
-          <p className="text-muted-foreground text-sm mb-8">
-            {paid 
-              ? 'Payment confirmed — your order is being prepared.' 
-              : 'Your order has been sent to the kitchen.'}
-          </p>
         </motion.div>
 
-        {/* Status Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="space-y-3 mb-8"
-        >
-          {/* Queue Position / Priority */}
-          <div className="bg-card/50 backdrop-blur-sm border border-border/50 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Utensils className="w-5 h-5 text-primary" strokeWidth={1.5} />
-            </div>
-            <div className="text-left flex-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Queue Position</p>
-              <p className="text-lg font-medium text-foreground">
-                {queuePosition !== null ? `#${queuePosition}` : '—'}
-              </p>
-            </div>
-          </div>
-
-          {/* Estimated Time */}
-          <div className="bg-card/50 backdrop-blur-sm border border-border/50 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5 text-primary" strokeWidth={1.5} />
-            </div>
-            <div className="text-left flex-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Estimated Time</p>
-              <p className="text-lg font-medium text-foreground">
-                {estimatedMinutes !== null ? `~${estimatedMinutes} min` : '—'}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Ready notification */}
-        {ready && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-primary/10 border border-primary/20 rounded-xl p-4 mb-6"
-          >
-            <p className="text-sm text-primary font-medium">
-              Your order is ready!
-            </p>
-          </motion.div>
-        )}
-
-        {/* Back Button */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
         >
           <Button
-            variant="ghost"
-            onClick={() => {
-              if (tableId) {
-                navigate(`/${tableId}`);
-              } else {
-                navigate("/");
-              }
-            }}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => navigate(menuPath)}
+            className="mt-8 h-12 rounded-full px-6 font-semibold shadow-lg"
           >
-            ← Back to Menu
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {t("order.go_back_to_menu", { defaultValue: "Go back to menu" })}
           </Button>
         </motion.div>
       </motion.div>

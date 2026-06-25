@@ -24,8 +24,9 @@ export const MenuItemCard = ({ item, onAdd }: Props) => {
     console.warn('Failed to format price', error);
   }
 
-  const displayName = item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
-  const description = item.description ?? '';
+  const displayName =
+    item.displayName ?? item.name ?? item.title ?? t('menu.item', { defaultValue: 'Item' });
+  const description = item.displayDescription ?? item.description ?? '';
 
   return (
     <div className="group relative rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
@@ -71,7 +72,7 @@ export const MenuItemCard = ({ item, onAdd }: Props) => {
               size="icon"
               onClick={() => onAdd(item)}
               disabled={item.available === false}
-              className="h-10 w-10 rounded-full shrink-0 bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30 hover:scale-110 transition-all duration-300 shadow-lg"
+              className="h-10 w-10 rounded-full shrink-0 bg-white/30 border border-white/40 text-white hover:bg-white/40 shadow-lg"
               aria-label={t('menu.add_to_cart')}
             >
               <Plus className="h-5 w-5" />

@@ -84,13 +84,15 @@ export function StatusCarousel({ options, selected, onSelect }: StatusCarouselPr
 
   return (
     <div className="relative w-full">
-      {/* Subtle gradient fade edges */}
-      <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background via-background/80 to-transparent z-10 pointer-events-none" />
-      <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background via-background/80 to-transparent z-10 pointer-events-none" />
-      
       <div
         ref={scrollRef}
-        className="flex items-center gap-2.5 px-6 py-2 overflow-x-auto scrollbar-hide scroll-smooth"
+        className="flex items-center gap-2.5 px-6 py-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory"
+        style={{
+          WebkitMaskImage:
+            'linear-gradient(to right, transparent 0, black 24px, black calc(100% - 24px), transparent 100%)',
+          maskImage:
+            'linear-gradient(to right, transparent 0, black 24px, black calc(100% - 24px), transparent 100%)',
+        }}
       >
         {options.map((option) => {
           const isSelected = selected === option.key;

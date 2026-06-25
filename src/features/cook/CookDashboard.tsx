@@ -7,6 +7,7 @@ import { useOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import { realtimeService } from "@/lib/realtime";
+import { registerStaffPush } from "@/lib/staffPush";
 import type { Order, CartItem, OrderItemStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,15 +18,23 @@ import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
+import { CookOrderCard } from "@/components/cook/CookOrderCard";
 import { OrderModifiersDialog } from "@/components/cook/OrderModifiersDialog";
-import { LayoutGrid, List, ListChecks } from "lucide-react";
-import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
+import { LayoutGrid, List, ListChecks, RefreshCcw, XCircle } from "lucide-react";
+import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from "@/lib/storeSlug";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const normalizePrinterTopicValue = (value?: string | null) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : '';
+  typeof value === "string"
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9:_-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "")
+    : "";
 
 const pickOptionId = (value: unknown): string | null => {
   if (typeof value === "string") return value;
@@ -283,13 +292,28 @@ const isOrderPlacedPayload = (payload: unknown): payload is {
 } =>
   isRecord(payload) && typeof payload.orderId === 'string';
 
-export default function CookDashboard() {
+const isWaiterCallPayload = (
+  payload: unknown
+): payload is {
+  tableId?: string;
+  tableLabel?: string;
+  message?: string;
+  printerTopics?: string[];
+} => isRecord(payload) && (payload as any).action === "called";
+
+interface CookDashboardProps {
+  embeddedHybrid?: boolean;
+}
+
+export default function CookDashboard({ embeddedHybrid = false }: CookDashboardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
-  const cookPrinterTopic = user?.cookType?.printerTopic ?? null;
+  const isHybridUser = user?.role === "hybrid";
+  const cookPrinterTopic =
+    user?.printerTopic ?? user?.cookType?.printerTopic ?? null;
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -331,10 +355,27 @@ export default function CookDashboard() {
       localStorage.setItem("COOK_VIEW_MODE", next);
     } catch {}
   };
+
+  useEffect(() => {
+    if (isHybridUser) {
+      setViewMode("pro");
+      try {
+        localStorage.setItem("COOK_VIEW_MODE", "pro");
+      } catch {}
+    }
+  }, [isHybridUser]);
+
+  useEffect(() => {
+    if (!isAuthenticated() || (user?.role !== "cook" && user?.role !== "hybrid")) {
+      return;
+    }
+    void registerStaffPush({ storeSlug: user?.storeSlug });
+  }, [isAuthenticated, user?.id, user?.role, user?.storeSlug]);
+
   useEffect(() => {
     if (
       !isAuthenticated() ||
-      (user?.role !== "cook" && user?.role !== "manager")
+      (user?.role !== "cook" && user?.role !== "manager" && user?.role !== "hybrid")
     ) {
       navigate("/login");
     }
@@ -382,6 +423,14 @@ export default function CookDashboard() {
       ? `${storeSlug}/orders/placed/${normalizedCookTopic}`
       : `${storeSlug}/orders/placed`;
     const itemTopic = `${storeSlug}/orders/items`;
+    const waiterCallTopic = `${storeSlug}/waiter/call`;
+    const statusTopics = [
+      `${storeSlug}/orders/preparing`,
+      `${storeSlug}/orders/ready`,
+      `${storeSlug}/orders/served`,
+      `${storeSlug}/orders/paid`,
+      `${storeSlug}/orders/canceled`,
+    ];
     const handler = (payload: unknown) => {
       if (!isOrderPlacedPayload(payload)) return;
       const payloadOrder = isRecord(payload.order) ? payload.order : null;
@@ -401,6 +450,24 @@ export default function CookDashboard() {
       );
       if (normalized) upsertOrder(normalized);
     };
+    const handleStatusOrder = async (payload: unknown) => {
+      if (!isRecord(payload)) return;
+      const rawOrder = (payload as any).order;
+      if (rawOrder) {
+        const normalized = normalizeOrder(rawOrder, Date.now(), cookPrinterTopic);
+        if (normalized) upsertOrder(normalized);
+        return;
+      }
+      const orderId = typeof (payload as any).orderId === "string" ? (payload as any).orderId : "";
+      if (!orderId) return;
+      try {
+        const res = await api.getOrder(orderId);
+        const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+        if (normalized) upsertOrder(normalized);
+      } catch (error) {
+        console.warn("Failed to hydrate cook order status event", error);
+      }
+    };
     const handleItemStatus = (payload: unknown) => {
       if (!isRecord(payload)) return;
       const rawOrder = (payload as any).order;
@@ -408,14 +475,45 @@ export default function CookDashboard() {
       const normalized = normalizeOrder(rawOrder, Date.now(), cookPrinterTopic);
       if (normalized) upsertOrder(normalized);
     };
+    const handleWaiterCall = (payload: unknown) => {
+      if (!isWaiterCallPayload(payload)) return;
+      const normalizedCookTopic = normalizePrinterTopicValue(cookPrinterTopic);
+      const payloadTopics = Array.isArray(payload.printerTopics)
+        ? payload.printerTopics.map(normalizePrinterTopicValue).filter(Boolean)
+        : [];
+      if (
+        normalizedCookTopic &&
+        payloadTopics.length > 0 &&
+        !payloadTopics.includes(normalizedCookTopic)
+      ) {
+        return;
+      }
+      const tableText = payload.tableLabel || payload.tableId || "";
+      toast({
+        title: t("toasts.waiter_called", { defaultValue: "Bell ring" }),
+        description:
+          payload.message ||
+          (tableText
+            ? `Table ${tableText} needs assistance.`
+            : "A table needs assistance."),
+      });
+    };
     realtimeService.connect();
     realtimeService.subscribe(topic, handler);
     realtimeService.subscribe(itemTopic, handleItemStatus);
+    realtimeService.subscribe(waiterCallTopic, handleWaiterCall);
+    statusTopics.forEach((statusTopic) => {
+      realtimeService.subscribe(statusTopic, handleStatusOrder);
+    });
     return () => {
       realtimeService.unsubscribe(topic, handler);
       realtimeService.unsubscribe(itemTopic, handleItemStatus);
+      realtimeService.unsubscribe(waiterCallTopic, handleWaiterCall);
+      statusTopics.forEach((statusTopic) => {
+        realtimeService.unsubscribe(statusTopic, handleStatusOrder);
+      });
     };
-  }, [storeSlug, cookPrinterTopic, upsertOrder]);
+  }, [storeSlug, cookPrinterTopic, upsertOrder, toast, t]);
 
   // Incoming orders: priority based on createdAt (older first => priority 1)
   const incoming = useMemo(
@@ -438,6 +536,28 @@ export default function CookDashboard() {
         }),
     [ordersAll]
   );
+  const ready = useMemo(
+    () =>
+      ordersAll
+        .filter((o) => o.status === "READY")
+        .sort((a, b) => {
+          const aTime = new Date(a.readyAt || a.updatedAt || a.createdAt).getTime();
+          const bTime = new Date(b.readyAt || b.updatedAt || b.createdAt).getTime();
+          return aTime - bTime;
+        }),
+    [ordersAll]
+  );
+  const served = useMemo(
+    () =>
+      ordersAll
+        .filter((o) => o.status === "SERVED")
+        .sort((a, b) => {
+          const aTime = new Date(a.servedAt || a.updatedAt || a.createdAt).getTime();
+          const bTime = new Date(b.servedAt || b.updatedAt || b.createdAt).getTime();
+          return aTime - bTime;
+        }),
+    [ordersAll]
+  );
 
   const getVisibleItemsForOrder = useCallback((order: Order) => {
     const items = order.items ?? [];
@@ -455,6 +575,14 @@ export default function CookDashboard() {
   const preparingVisible = useMemo(
     () => preparing.filter((order) => getVisibleItemsForOrder(order).length > 0),
     [preparing, getVisibleItemsForOrder]
+  );
+  const readyVisible = useMemo(
+    () => ready.filter((order) => getVisibleItemsForOrder(order).length > 0),
+    [ready, getVisibleItemsForOrder]
+  );
+  const servedVisible = useMemo(
+    () => served.filter((order) => getVisibleItemsForOrder(order).length > 0),
+    [served, getVisibleItemsForOrder]
   );
 
   const toggleItemSelection = useCallback(
@@ -762,6 +890,60 @@ export default function CookDashboard() {
     }
   };
 
+  const markServed = async (id: string) => {
+    setActingIds((s) => new Set(s).add(`served:${id}`));
+    try {
+      const res = await api.updateOrderStatus(id, "SERVED");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "SERVED");
+      }
+      toast({
+        title: t("status.SERVED", { defaultValue: "Served" }),
+        description: t("cook.order_now_served", {
+          defaultValue: "Order {{orderId}} is SERVED",
+          orderId: id,
+        }),
+      });
+      clearAllSelectionsForOrder(id);
+    } finally {
+      setActingIds((s) => {
+        const n = new Set(s);
+        n.delete(`served:${id}`);
+        return n;
+      });
+    }
+  };
+
+  const markPaid = async (id: string) => {
+    setActingIds((s) => new Set(s).add(`paid:${id}`));
+    try {
+      const res = await api.updateOrderStatus(id, "PAID");
+      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
+      if (normalized) {
+        upsertOrder(normalized);
+      } else {
+        updateLocalStatus(id, "PAID");
+      }
+      toast({
+        title: t("status.PAID", { defaultValue: "Paid" }),
+        description: t("cook.order_now_paid", {
+          defaultValue: "Order {{orderId}} is PAID",
+          orderId: id,
+        }),
+      });
+      clearAllSelectionsForOrder(id);
+    } finally {
+      setActingIds((s) => {
+        const n = new Set(s);
+        n.delete(`paid:${id}`);
+        return n;
+      });
+    }
+  };
+
   // Individual item status update handler for the Pro view
   const updateSingleItemStatus = async (
     orderId: string,
@@ -852,22 +1034,31 @@ export default function CookDashboard() {
   });
   const proViewLabel = t("cook.pro_view", { defaultValue: "Pro" });
   const classicViewLabel = t("cook.classic_view", { defaultValue: "Classic" });
+  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
+  const tablePrefix = t("manager.table", { defaultValue: "Table" });
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
-  const storeTitle =
-    (() => {
-      try {
-        return localStorage.getItem('STORE_NAME');
-      } catch {
-        return null;
-      }
-    })() || user?.storeSlug || t('cook.dashboard') || 'Cook Dashboard';
+  const storedStoreName = (() => {
+    try {
+      return localStorage.getItem('STORE_NAME');
+    } catch {
+      return null;
+    }
+  })();
+  const storeTitle = resolveStoreDisplayName(
+    storedStoreName,
+    user?.storeSlug,
+    t('cook.dashboard') || 'Cook Dashboard'
+  );
+  const headerSupertitle = embeddedHybrid
+    ? t('hybrid.dashboard', { defaultValue: 'Hybrid' })
+    : t('cook.dashboard') || 'Cook Dashboard';
 
   return (
-    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
-      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
+    <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh min-w-0 overflow-x-hidden')}>
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh min-w-0 dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
-          supertitle={t('cook.dashboard') || 'Cook Dashboard'}
+          supertitle={headerSupertitle}
           title={storeTitle}
           subtitle={undefined}
           rightContent={
@@ -900,14 +1091,28 @@ export default function CookDashboard() {
           }
           icon="👨‍🍳"
           tone="primary"
-          burgerActions={null}
+          burgerActions={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              {refreshLabel}
+            </Button>
+          }
         />
 
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">
+        <div className="w-full min-w-0 px-2 min-[360px]:px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8 flex-1">
           {viewMode === "pro" ? (
             <CookProView
               incoming={incomingVisible}
               preparing={preparingVisible}
+              ready={readyVisible}
+              served={servedVisible}
+              showServiceStages={isHybridUser}
               loadingOrders={loadingOrders}
               accepting={accepting}
               printing={printing}
@@ -917,15 +1122,17 @@ export default function CookDashboard() {
               onAcceptWithPrint={acceptWithPrint}
               onCancel={cancelOrder}
               onMarkReady={markReady}
+              onMarkServed={markServed}
+              onMarkPaid={markPaid}
               onViewModifiers={setModifierOrder}
               onToggleItem={toggleItemSelection}
               onUpdateItemStatus={updateSingleItemStatus}
             />
           ) : (
             <>
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex min-w-0 items-start gap-2 sm:gap-3">
                 <div className="h-1 w-10 sm:w-12 bg-gradient-primary rounded-full" />
-                <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">
                   {t('cook.incoming_orders')}
                 </h2>
                 <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
@@ -950,7 +1157,7 @@ export default function CookDashboard() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground text-sm sm:text-base flex items-center gap-2">
-                              <span>{formatTableLabel(o.tableLabel)}</span>
+                              <span>{formatTableLabel(o.tableLabel, tablePrefix)}</span>
                               <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] sm:text-xs px-2 py-0.5">
                                 {t("cook.priority_number", {
                                   defaultValue: "Priority #{{priority}}",
@@ -1072,9 +1279,9 @@ export default function CookDashboard() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 sm:gap-3 mt-10">
+              <div className="flex min-w-0 items-start gap-2 sm:gap-3 mt-10">
                 <div className="h-1 w-10 sm:w-12 bg-gradient-secondary rounded-full" />
-                <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('cook.in_preparation')}</h2>
+                <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">{t('cook.in_preparation')}</h2>
                 <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
                   {preparingVisible.length}
                 </div>
@@ -1097,7 +1304,7 @@ export default function CookDashboard() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground text-sm sm:text-base">
-                              {formatTableLabel(o.tableLabel)}
+                              {formatTableLabel(o.tableLabel, tablePrefix)}
                               {typeof o.priority === 'number' && (
                                 <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
                                   {t("cook.priority_number", {
@@ -1181,11 +1388,100 @@ export default function CookDashboard() {
                         >
                           <ListChecks className="h-4 w-4" />
                         </Button>
+                        <Button
+                          className="inline-flex items-center justify-center bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md"
+                          onClick={() => cancelOrder(o.id)}
+                          disabled={actingIds.has(`cancel:${o.id}`)}
+                          aria-label={cancelLabel}
+                          title={cancelLabel}
+                        >
+                          {actingIds.has(`cancel:${o.id}`) ? (
+                            <span className="h-4 w-4 border-2 border-current/60 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <XCircle className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </Card>
                   );
                   })}
                 </div>
+              )}
+
+              {isHybridUser && (
+                <>
+                  <div className="flex min-w-0 items-start gap-2 sm:gap-3 mt-10">
+                    <div className="h-1 w-10 sm:w-12 bg-emerald-500 rounded-full" />
+                    <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">
+                      {t("status.READY", { defaultValue: "Ready" })}
+                    </h2>
+                    <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
+                      {readyVisible.length}
+                    </div>
+                  </div>
+                  {loadingOrders ? (
+                    <DashboardGridSkeleton count={2} />
+                  ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+                      {readyVisible.map((order) => (
+                        <CookOrderCard
+                          key={order.id}
+                          order={order}
+                          onAcceptAll={accept}
+                          onAcceptWithPrint={acceptWithPrint}
+                          onCancel={cancelOrder}
+                          onMarkAllReady={markReady}
+                          onMarkServed={markServed}
+                          onMarkPaid={markPaid}
+                          onViewModifiers={setModifierOrder}
+                          onUpdateItemStatus={updateSingleItemStatus}
+                          selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                          onToggleItem={toggleItemSelection}
+                          isAccepting={accepting.has(order.id)}
+                          isPrinting={printing.has(order.id)}
+                          isActing={actingIds.has(`served:${order.id}`)}
+                          isCancelling={actingIds.has(`cancel:${order.id}`)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex min-w-0 items-start gap-2 sm:gap-3 mt-10">
+                    <div className="h-1 w-10 sm:w-12 bg-slate-500 rounded-full" />
+                    <h2 className="min-w-0 flex-1 text-lg sm:text-2xl leading-tight font-bold text-foreground">
+                      {t("status.SERVED", { defaultValue: "Served" })}
+                    </h2>
+                    <div className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-semibold">
+                      {servedVisible.length}
+                    </div>
+                  </div>
+                  {loadingOrders ? (
+                    <DashboardGridSkeleton count={2} />
+                  ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+                      {servedVisible.map((order) => (
+                        <CookOrderCard
+                          key={order.id}
+                          order={order}
+                          onAcceptAll={accept}
+                          onAcceptWithPrint={acceptWithPrint}
+                          onCancel={cancelOrder}
+                          onMarkAllReady={markReady}
+                          onMarkServed={markServed}
+                          onMarkPaid={markPaid}
+                          onViewModifiers={setModifierOrder}
+                          onUpdateItemStatus={updateSingleItemStatus}
+                          selectedItems={selectedItemsByOrder[order.id] ?? {}}
+                          onToggleItem={toggleItemSelection}
+                          isAccepting={accepting.has(order.id)}
+                          isPrinting={printing.has(order.id)}
+                          isActing={actingIds.has(`paid:${order.id}`)}
+                          isCancelling={actingIds.has(`cancel:${order.id}`)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

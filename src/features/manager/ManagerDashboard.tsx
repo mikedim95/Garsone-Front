@@ -7,6 +7,7 @@
   useState,
 } from "react";
 import clsx from "clsx";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
@@ -14,7 +15,6 @@ import { useOrdersStore } from "@/store/ordersStore";
 import type {
   CartItem,
   CookSummary,
-  CookType,
   ManagerItemSummary,
   ManagerTableSummary,
   MenuCategory,
@@ -26,10 +26,9 @@ import type {
   Table,
   WaiterSummary,
   WaiterTableAssignment,
-  WaiterType,
 } from "@/types";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import {
   LogOut,
@@ -43,14 +42,13 @@ import {
   ListChecks,
   Users,
   UtensilsCrossed,
-  ChevronDown,
-  ChevronUp,
   RefreshCcw,
-  Search,
   ChefHat,
-  Tag,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolveStoreDisplayName } from "@/lib/storeSlug";
 import { Card } from "@/components/ui/card";
 import { ManagerMenuPanel } from "@/features/manager/ManagerMenuPanel";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +82,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -99,9 +98,9 @@ import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   Select,
@@ -111,8 +110,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/ui/page-transition";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
+import { useToast } from "@/components/ui/use-toast";
 
 type ManagerMode = "basic" | "pro";
 type ManagerTab = "economics" | "orders" | "personnel" | "menu";
@@ -120,11 +121,28 @@ type EconRange = "today" | "last24h" | "week" | "month" | "custom";
 type MenuCategoryMode = "units" | "share";
 type ActiveWaiter = WaiterSummary & {
   originalDisplayName?: string;
-  originalWaiterTypeId?: string | null;
 };
 type ActiveCook = CookSummary & {
   originalDisplayName?: string;
-  originalCookTypeId?: string | null;
+  originalPrinterTopic?: string | null;
+};
+type StaffRosterMember = {
+  id: string;
+  email: string;
+  displayName: string;
+  isHybrid: boolean;
+  waiterDetail?: {
+    waiter: WaiterSummary;
+    assignedTables: WaiterAssignedTable[];
+    shiftOn: boolean;
+    ordersHandled: number;
+  };
+  cook?: CookSummary;
+};
+type ActiveHybrid = StaffRosterMember & {
+  originalDisplayName?: string;
+  printerTopic?: string | null;
+  originalPrinterTopic?: string | null;
 };
 type TableSummary = {
   id: string;
@@ -139,23 +157,15 @@ interface WaiterForm {
   email: string;
   displayName: string;
   password: string;
-  waiterTypeId?: string | null;
+  printerTopic?: string | null;
+  hybrid?: boolean;
 }
 interface CookForm {
   email: string;
   displayName: string;
   password: string;
-  cookTypeId?: string | null;
+  printerTopic?: string | null;
 }
-interface StaffTypeForm {
-  title: string;
-  printerTopic: string;
-}
-type EditableCookType = {
-  id: string;
-  title: string;
-  printerTopic: string;
-};
 type WaiterAssignedTable = { id: string; label: string; active: boolean };
 
 const STATUS_THRESHOLD_MINUTES: Partial<Record<OrderStatus, number>> = {
@@ -218,6 +228,11 @@ const ProBadge = () => (
     ★
   </span>
 );
+
+const shortenChartLabel = (value: string, maxLength = 10) =>
+  value.length > maxLength
+    ? `${value.slice(0, Math.max(3, maxLength - 1))}…`
+    : value;
 
 const isWaiterCallEvent = (
   payload: unknown
@@ -369,9 +384,65 @@ const LS_ORDERS_TS_KEY = "MANAGER_ORDERS_CACHE_TS";
 export default function ManagerDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
+  const isMobile = useIsMobile();
   const isManagerRole = user?.role === "manager" || user?.role === "architect";
+  const uncategorizedLabel = t("manager.uncategorized", {
+    defaultValue: "Uncategorized",
+  });
+  const itemFallbackLabel = t("manager.item", { defaultValue: "Item" });
+  const minutesShortLabel = t("manager.minutes_short", { defaultValue: "min" });
+  const formatStatusLabel = useCallback(
+    (status: OrderStatus) => t(`status.${status}`, { defaultValue: status }),
+    [t]
+  );
+  const formatDaypartLabel = useCallback(
+    (label: string) => {
+      const key = label.toLowerCase();
+      const labels: Record<string, string> = {
+        breakfast: t("manager.daypart_breakfast", {
+          defaultValue: "Breakfast",
+        }),
+        lunch: t("manager.daypart_lunch", { defaultValue: "Lunch" }),
+        afternoon: t("manager.daypart_afternoon", {
+          defaultValue: "Afternoon",
+        }),
+        evening: t("manager.daypart_evening", { defaultValue: "Evening" }),
+        late: t("manager.daypart_late", { defaultValue: "Late" }),
+      };
+      return labels[key] ?? label;
+    },
+    [t]
+  );
+  const formatStatusAxisLabel = useCallback(
+    (status: OrderStatus) => {
+      const full = formatStatusLabel(status);
+      if (!isMobile) return full;
+      const compact: Record<OrderStatus, string> = {
+        PLACED: shortenChartLabel(full, 4),
+        PREPARING: shortenChartLabel(full, 5),
+        READY: shortenChartLabel(full, 5),
+        SERVED: shortenChartLabel(full, 5),
+        PAID: shortenChartLabel(full, 4),
+        CANCELLED: shortenChartLabel(full, 5),
+      };
+      return compact[status];
+    },
+    [formatStatusLabel, isMobile]
+  );
+  const formatDaypartAxisLabel = useCallback(
+    (label: string) => {
+      const translated = formatDaypartLabel(label);
+      return isMobile ? shortenChartLabel(translated, 6) : translated;
+    },
+    [formatDaypartLabel, isMobile]
+  );
+  const formatCategoryAxisLabel = useCallback(
+    (label: string) => (isMobile ? shortenChartLabel(label, 8) : label),
+    [isMobile]
+  );
 
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
@@ -379,12 +450,9 @@ export default function ManagerDashboard() {
   const [assignments, setAssignments] = useState<WaiterTableAssignment[]>([]);
   const [waiters, setWaiters] = useState<WaiterSummary[]>([]);
   const [cooks, setCooks] = useState<CookSummary[]>([]);
-  const [cookTypes, setCookTypes] = useState<CookType[]>([]);
-  const [waiterTypes, setWaiterTypes] = useState<WaiterType[]>([]);
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loadingWaiters, setLoadingWaiters] = useState(true);
   const [loadingCooks, setLoadingCooks] = useState(true);
-  const [loadingTypes, setLoadingTypes] = useState(true);
   const [managerTables, setManagerTables] = useState<ManagerTableSummary[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -400,25 +468,29 @@ export default function ManagerDashboard() {
   const [qrTiles, setQrTiles] = useState<QRTile[]>([]);
   const [loadingQrTiles, setLoadingQrTiles] = useState(false);
   const [updatingTileId, setUpdatingTileId] = useState<string | null>(null);
-  const [qrTileSearch, setQrTileSearch] = useState("");
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [activeWaiter, setActiveWaiter] = useState<ActiveWaiter | null>(null);
   const [editCookModalOpen, setEditCookModalOpen] = useState(false);
   const [activeCook, setActiveCook] = useState<ActiveCook | null>(null);
+  const [hybridModalOpen, setHybridModalOpen] = useState(false);
+  const [activeHybrid, setActiveHybrid] = useState<ActiveHybrid | null>(null);
   const [initialTableSelection, setInitialTableSelection] = useState<
     Set<string>
   >(new Set());
   const [tableSelection, setTableSelection] = useState<Set<string>>(new Set());
+  const [newWaiterTableSelection, setNewWaiterTableSelection] = useState<Set<string>>(new Set());
   const [savingWaiter, setSavingWaiter] = useState(false);
   const [savingCook, setSavingCook] = useState(false);
+  const [savingHybrid, setSavingHybrid] = useState(false);
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newWaiter, setNewWaiter] = useState<WaiterForm>({
     email: "",
     displayName: "",
     password: "",
-    waiterTypeId: null,
+    printerTopic: null,
+    hybrid: false,
   });
   const [addingWaiter, setAddingWaiter] = useState(false);
   const [deletingWaiterId, setDeletingWaiterId] = useState<string | null>(null);
@@ -427,44 +499,24 @@ export default function ManagerDashboard() {
     email: "",
     displayName: "",
     password: "",
-    cookTypeId: null,
+    printerTopic: null,
   });
   const [addingCook, setAddingCook] = useState(false);
   const [deletingCookId, setDeletingCookId] = useState<string | null>(null);
-  const [addCookTypeModalOpen, setAddCookTypeModalOpen] = useState(false);
-  const [newCookType, setNewCookType] = useState<StaffTypeForm>({
-    title: "",
-    printerTopic: "",
-  });
-  const [addingCookType, setAddingCookType] = useState(false);
-  const [deletingCookTypeId, setDeletingCookTypeId] = useState<string | null>(
-    null
-  );
-  const [editCookTypeModalOpen, setEditCookTypeModalOpen] = useState(false);
-  const [activeCookType, setActiveCookType] = useState<EditableCookType | null>(
-    null
-  );
-  const [savingCookType, setSavingCookType] = useState(false);
-  const [addWaiterTypeModalOpen, setAddWaiterTypeModalOpen] = useState(false);
-  const [newWaiterType, setNewWaiterType] = useState<StaffTypeForm>({
-    title: "",
-    printerTopic: "",
-  });
-  const [addingWaiterType, setAddingWaiterType] = useState(false);
-  const [deletingWaiterTypeId, setDeletingWaiterTypeId] = useState<
-    string | null
-  >(null);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [tableForm, setTableForm] = useState<{
     id?: string;
     label: string;
     isActive: boolean;
+    qrTileId: string;
   }>({
     label: "",
     isActive: true,
+    qrTileId: "unassigned",
   });
   const [savingTable, setSavingTable] = useState(false);
   const [tableDeletingId, setTableDeletingId] = useState<string | null>(null);
+  const [showInactiveTables, setShowInactiveTables] = useState(false);
   const [menuCategoryLookup, setMenuCategoryLookup] = useState<
     Map<string, string>
   >(new Map());
@@ -481,8 +533,7 @@ export default function ManagerDashboard() {
     return "basic";
   });
   const [activeTab, setActiveTab] = useState<ManagerTab>("economics");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [navExpanded, setNavExpanded] = useState(false);
   const [econRange, setEconRange] = useState<EconRange>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -514,7 +565,6 @@ export default function ManagerDashboard() {
     const toInput = (d: Date) => d.toISOString().slice(0, 10);
     return { start: toInput(start), end: toInput(end) };
   });
-  const [tablesCollapsed, setTablesCollapsed] = useState(false);
   const [menuCategoryMode, setMenuCategoryMode] =
     useState<MenuCategoryMode>("units");
   const [modifierLookup, setModifierLookup] = useState<Map<string, string>>(
@@ -667,22 +717,6 @@ export default function ManagerDashboard() {
     }
   };
 
-  const loadStaffTypes = async () => {
-    setLoadingTypes(true);
-    try {
-      const [cookRes, waiterRes] = await Promise.all([
-        api.listCookTypes(),
-        api.listWaiterTypes(),
-      ]);
-      setCookTypes(cookRes.types ?? []);
-      setWaiterTypes(waiterRes.types ?? []);
-    } catch (error) {
-      console.error("Failed to load staff types", error);
-    } finally {
-      setLoadingTypes(false);
-    }
-  };
-
   const loadManagerTables = async () => {
     setLoadingTables(true);
     try {
@@ -755,7 +789,6 @@ export default function ManagerDashboard() {
     if (isAuthenticated() && isManagerRole) {
       loadWaiterData();
       loadCookData();
-      loadStaffTypes();
       loadManagerTables();
     }
   }, [isAuthenticated, isManagerRole]);
@@ -858,7 +891,6 @@ export default function ManagerDashboard() {
     setActiveWaiter({
       ...waiter,
       originalDisplayName: waiter.displayName,
-      originalWaiterTypeId: waiter.waiterTypeId ?? null,
     });
     setTableSelection(new Set(assignedIds));
     setInitialTableSelection(new Set(assignedIds));
@@ -869,9 +901,24 @@ export default function ManagerDashboard() {
     setActiveCook({
       ...cook,
       originalDisplayName: cook.displayName,
-      originalCookTypeId: cook.cookTypeId ?? null,
+      originalPrinterTopic: cook.printerTopic ?? null,
     });
     setEditCookModalOpen(true);
+  };
+
+  const openEditHybrid = (member: StaffRosterMember) => {
+    const assignedIds = (member.waiterDetail?.assignedTables ?? [])
+      .map((table) => table.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    setActiveHybrid({
+      ...member,
+      originalDisplayName: member.displayName,
+      printerTopic: member.cook?.printerTopic ?? null,
+      originalPrinterTopic: member.cook?.printerTopic ?? null,
+    });
+    setTableSelection(new Set(assignedIds));
+    setInitialTableSelection(new Set(assignedIds));
+    setHybridModalOpen(true);
   };
 
   const tablesById = useMemo(() => {
@@ -898,21 +945,20 @@ export default function ManagerDashboard() {
     );
   }, [managerTables]);
 
-  const filteredQrTiles = useMemo(() => {
-    const term = qrTileSearch.trim().toLowerCase();
-    if (!term) return qrTiles;
-    return qrTiles.filter((tile) => {
-      const assignedLabel =
-        tile.tableId && tablesById.get(tile.tableId)?.label
-          ? tablesById.get(tile.tableId)?.label
-          : tile.tableLabel ?? "";
-      return (
-        tile.publicCode.toLowerCase().includes(term) ||
-        (tile.label ?? "").toLowerCase().includes(term) ||
-        (assignedLabel ?? "").toLowerCase().includes(term)
-      );
+  const assignedQrTileByTableId = useMemo(() => {
+    const map = new Map<string, QRTile>();
+    qrTiles.forEach((tile) => {
+      if (!tile.tableId || map.has(tile.tableId)) return;
+      map.set(tile.tableId, tile);
     });
-  }, [qrTiles, qrTileSearch, tablesById]);
+    return map;
+  }, [qrTiles]);
+
+  const tableQrTileOptions = useMemo(() => {
+    return qrTiles
+      .filter((tile) => !tile.tableId || tile.tableId === tableForm.id)
+      .sort((a, b) => a.publicCode.localeCompare(b.publicCode));
+  }, [qrTiles, tableForm.id]);
 
   const currencyCode =
     typeof window !== "undefined"
@@ -1271,9 +1317,9 @@ export default function ManagerDashboard() {
       if (itemId && menuCategoryLookup.has(itemId)) {
         return menuCategoryLookup.get(itemId)!;
       }
-      return "Uncategorized";
+      return uncategorizedLabel;
     },
-    [menuCategoryLookup]
+    [menuCategoryLookup, uncategorizedLabel]
   );
 
   useEffect(() => {
@@ -1326,8 +1372,8 @@ export default function ManagerDashboard() {
       } else if (fallbackTotal > 0) {
         if (lines.length === 0) {
           buckets.set(
-            "Uncategorized",
-            (buckets.get("Uncategorized") ?? 0) + fallbackTotal
+            uncategorizedLabel,
+            (buckets.get(uncategorizedLabel) ?? 0) + fallbackTotal
           );
         } else {
           const share = fallbackTotal / lines.length;
@@ -1344,7 +1390,7 @@ export default function ManagerDashboard() {
       revenue,
       share: (revenue / total) * 100,
     }));
-  }, [servedInRange, resolveCategoryLabel, menuMetaReady]);
+  }, [servedInRange, resolveCategoryLabel, menuMetaReady, uncategorizedLabel]);
 
   const avgTicketByDaypart = useMemo(() => {
     const parts = ["Breakfast", "Lunch", "Afternoon", "Evening"] as const;
@@ -1408,7 +1454,7 @@ export default function ManagerDashboard() {
       pickLabel(line?.title) ||
       pickLabel((line as { titleSnapshot?: string })?.titleSnapshot) ||
       pickLabel(line?.name) ||
-      "Item";
+      itemFallbackLabel;
 
     const map = new Map<string, { name: string; revenue: number }>();
     servedInRange.forEach((order) => {
@@ -1427,7 +1473,7 @@ export default function ManagerDashboard() {
     return Array.from(map.values())
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
-  }, [servedInRange, rangeInfo.start, rangeInfo.end]);
+  }, [servedInRange, rangeInfo.start, rangeInfo.end, itemFallbackLabel]);
 
   const dayFormatter = useMemo(
     () =>
@@ -1453,14 +1499,14 @@ export default function ManagerDashboard() {
       (order.items ?? []).map((line) => ({
         orderId: order.id,
         itemId: line.item?.id ?? "",
-        name: line.item?.name ?? line.item?.title ?? "Item",
+        name: line.item?.name ?? line.item?.title ?? itemFallbackLabel,
         category: resolveCategoryLabel(line.item ?? line),
         quantity: getLineQuantity(line),
         selectedModifiers: line.selectedModifiers ?? {},
         placedAt: getPlacedDate(order),
       }))
     );
-  }, [ordersAll, resolveCategoryLabel]);
+  }, [ordersAll, resolveCategoryLabel, itemFallbackLabel]);
 
   const categoryUnits = useMemo(() => {
     const buckets = new Map<string, number>();
@@ -1575,14 +1621,14 @@ export default function ManagerDashboard() {
     const map = new Map<string, Map<string, number>>();
     orderLineItems.forEach((line) => {
       const key = line.name;
-      const cat = line.category || "Uncategorized";
+      const cat = line.category || uncategorizedLabel;
       const counts = map.get(key) || new Map<string, number>();
       counts.set(cat, (counts.get(cat) ?? 0) + line.quantity);
       map.set(key, counts);
     });
     const result = new Map<string, string>();
     map.forEach((counts, item) => {
-      let best = "Uncategorized";
+      let best = uncategorizedLabel;
       let bestCount = -1;
       counts.forEach((c, cat) => {
         if (c > bestCount) {
@@ -1593,7 +1639,7 @@ export default function ManagerDashboard() {
       result.set(item, best);
     });
     return result;
-  }, [orderLineItems]);
+  }, [orderLineItems, uncategorizedLabel]);
 
   const cannibalizationPairs = useMemo(() => {
     const up: Record<string, Array<{ item: string; pct: number }>> = {};
@@ -1601,7 +1647,7 @@ export default function ManagerDashboard() {
     const thresholdUp = 25;
     const thresholdDown = -25;
     menuTrendInfo.deltaPct.forEach((pct, name) => {
-      const cat = itemCategoryMap.get(name) || "Uncategorized";
+      const cat = itemCategoryMap.get(name) || uncategorizedLabel;
       if (pct >= thresholdUp) {
         (up[cat] = up[cat] || []).push({ item: name, pct });
       } else if (pct <= thresholdDown) {
@@ -1622,7 +1668,7 @@ export default function ManagerDashboard() {
       });
     });
     return pairs.slice(0, 6);
-  }, [menuTrendInfo, itemCategoryMap]);
+  }, [menuTrendInfo, itemCategoryMap, uncategorizedLabel]);
 
   const daypartFitRows = useMemo(() => {
     // Fit score = share in top daypart within last 14 days
@@ -1712,7 +1758,7 @@ export default function ManagerDashboard() {
         const d = getPlacedDate(order);
         if (d < periodStart || d > addDays(periodEnd, 1)) return;
         (order.items ?? []).forEach((line) => {
-          const name = line.item?.name ?? line.item?.title ?? "Item";
+          const name = line.item?.name ?? line.item?.title ?? itemFallbackLabel;
           const qty = getLineQuantity(line);
           const price = unitPrice(line);
           const cost =
@@ -1746,7 +1792,7 @@ export default function ManagerDashboard() {
       }
     });
     return best;
-  }, [servedOrders, hasCostData]);
+  }, [servedOrders, hasCostData, itemFallbackLabel]);
 
   // Personnel: Pro analytics (defined after waiterDetails)
 
@@ -1829,19 +1875,53 @@ export default function ManagerDashboard() {
     });
   }, [sortedWaiters, waiterAssignmentsMap, tablesById, ordersByTable]);
 
-  const workloadDistribution = useMemo(() => {
-    const total = waiterDetails.reduce(
-      (sum, detail) => sum + detail.ordersHandled,
-      0
+  const staffRoster = useMemo<StaffRosterMember[]>(() => {
+    const members = new Map<string, StaffRosterMember>();
+    waiterDetails.forEach((detail) => {
+      const role = String(detail.waiter.role || "").toLowerCase();
+      members.set(detail.waiter.id, {
+        id: detail.waiter.id,
+        email: detail.waiter.email,
+        displayName: detail.waiter.displayName || detail.waiter.email,
+        isHybrid: role === "hybrid",
+        waiterDetail: detail,
+      });
+    });
+    cooks.forEach((cook) => {
+      const existing = members.get(cook.id);
+      const role = String(cook.role || "").toLowerCase();
+      if (existing) {
+        existing.cook = cook;
+        existing.isHybrid = existing.isHybrid || role === "hybrid";
+        return;
+      }
+      members.set(cook.id, {
+        id: cook.id,
+        email: cook.email,
+        displayName: cook.displayName || cook.email,
+        isHybrid: role === "hybrid",
+        cook,
+      });
+    });
+    return Array.from(members.values()).sort((a, b) =>
+      (a.displayName || a.email).toLowerCase().localeCompare(
+        (b.displayName || b.email).toLowerCase()
+      )
     );
-    if (!total)
-      return [] as Array<{ name: string; percent: number; count: number }>;
-    return waiterDetails.map((detail) => ({
-      name: detail.waiter.displayName || detail.waiter.email || "Waiter",
-      percent: Number(((detail.ordersHandled / total) * 100).toFixed(1)),
-      count: detail.ordersHandled,
-    }));
-  }, [waiterDetails]);
+  }, [waiterDetails, cooks]);
+
+  const waiterPersonnel = useMemo(
+    () => staffRoster.filter((member) => member.waiterDetail && !member.isHybrid),
+    [staffRoster]
+  );
+  const cookPersonnel = useMemo(
+    () => staffRoster.filter((member) => member.cook && !member.isHybrid),
+    [staffRoster]
+  );
+  const hybridPersonnel = useMemo(
+    () => staffRoster.filter((member) => member.isHybrid),
+    [staffRoster]
+  );
 
   // Personnel: Pro analytics (depends on waiterDetails)
   const topAndAttentionWaiters = useMemo(() => {
@@ -1906,6 +1986,15 @@ export default function ManagerDashboard() {
       return { ...table, openOrders };
     });
   }, [sortedTables, ordersByTable]);
+
+  const inactiveTableCount = useMemo(
+    () => tablesOverview.filter((table) => !table.isActive).length,
+    [tablesOverview]
+  );
+  const visibleTablesOverview = useMemo(
+    () => tablesOverview.filter((table) => table.isActive || showInactiveTables),
+    [showInactiveTables, tablesOverview]
+  );
 
   const totalOrders = useMemo(() => ordersInRange.length, [ordersInRange]);
 
@@ -2025,10 +2114,12 @@ export default function ManagerDashboard() {
     });
     return (Object.keys(base) as OrderStatus[]).map((status) => ({
       status,
+      statusLabel: formatStatusLabel(status),
+      statusAxisLabel: formatStatusAxisLabel(status),
       count: base[status],
       atRisk: Boolean(atRiskMap[status] && statusHasThreshold(status)),
     }));
-  }, [ordersInRange, rangeInfo.start, rangeInfo.end]);
+  }, [formatStatusAxisLabel, formatStatusLabel, ordersInRange]);
 
   // Pro analytics for Orders
   const prepHistogram = useMemo(() => {
@@ -2163,7 +2254,12 @@ export default function ManagerDashboard() {
   );
 
   const openCreateTable = () => {
-    setTableForm({ id: undefined, label: "", isActive: true });
+    setTableForm({
+      id: undefined,
+      label: "",
+      isActive: true,
+      qrTileId: "unassigned",
+    });
     setTableModalOpen(true);
   };
 
@@ -2171,7 +2267,13 @@ export default function ManagerDashboard() {
     table: TableSummary | (ManagerTableSummary & { openOrders: number })
   ) => {
     const isActive = "active" in table ? table.active : table.isActive;
-    setTableForm({ id: table.id, label: table.label, isActive });
+    const assignedTileId = assignedQrTileByTableId.get(table.id)?.id ?? "unassigned";
+    setTableForm({
+      id: table.id,
+      label: table.label,
+      isActive,
+      qrTileId: assignedTileId,
+    });
     setTableModalOpen(true);
   };
 
@@ -2180,39 +2282,136 @@ export default function ManagerDashboard() {
     if (!label) return;
     setSavingTable(true);
     try {
+      let targetTableId = tableForm.id;
       if (tableForm.id) {
-        await api.managerUpdateTable(tableForm.id, {
+        const response = await api.managerUpdateTable(tableForm.id, {
           label,
           isActive: tableForm.isActive,
         });
+        targetTableId = response.table.id;
       } else {
-        await api.managerCreateTable({ label, isActive: tableForm.isActive });
+        const response = await api.managerCreateTable({
+          label,
+          isActive: tableForm.isActive,
+        });
+        targetTableId = response.table.id;
       }
+
+      if (targetTableId) {
+        const selectedQrTileId =
+          tableForm.qrTileId !== "unassigned" ? tableForm.qrTileId : null;
+        const currentTableTiles = qrTiles.filter(
+          (tile) => tile.tableId === targetTableId
+        );
+
+        for (const tile of currentTableTiles) {
+          if (tile.id !== selectedQrTileId) {
+            await api.managerUpdateQrTile(tile.id, { tableId: null });
+          }
+        }
+
+        if (selectedQrTileId) {
+          await api.managerUpdateQrTile(selectedQrTileId, {
+            tableId: targetTableId,
+          });
+        }
+      }
+
       await loadManagerTables();
+      if (storeId) {
+        await loadQrTiles(storeId);
+      }
       await loadWaiterData();
       setTableModalOpen(false);
-      setTableForm({ id: undefined, label: "", isActive: true });
+      setTableForm({
+        id: undefined,
+        label: "",
+        isActive: true,
+        qrTileId: "unassigned",
+      });
     } catch (error) {
       console.error("Failed to save table", error);
+      toast({
+        variant: "destructive",
+        title: t("manager.table_save_failed", {
+          defaultValue: "Table save failed",
+        }),
+        description:
+          error instanceof ApiError
+            ? error.message
+            : t("manager.table_save_failed_description", {
+                defaultValue: "Please try again.",
+              }),
+      });
     } finally {
       setSavingTable(false);
     }
   };
 
-  const handleDeleteTable = async (tableId: string) => {
+  const handleDeleteTable = async (table: ManagerTableSummary) => {
+    const permanently = !table.isActive;
     if (
       !window.confirm(
-        "Delete this table? It will be marked inactive and unassigned from waiters."
+        permanently
+          ? t("manager.confirm_permanent_delete_table", {
+              defaultValue:
+                "Delete table {{label}} permanently? This also deletes its order history. The QR code will be kept and unassigned.",
+              label: table.label,
+            })
+          : t("manager.confirm_delete_table", {
+              defaultValue:
+                "Delete this table? It will be marked inactive and unassigned from waiters.",
+            })
       )
     )
       return;
-    setTableDeletingId(tableId);
+    setTableDeletingId(table.id);
     try {
-      await api.managerDeleteTable(tableId);
+      await api.managerDeleteTable(table.id);
       await loadManagerTables();
-      await loadWaiterData();
+      if (permanently && storeId) await loadQrTiles(storeId);
+      await Promise.all([loadWaiterData(), loadCookData()]);
+      toast({
+        title: permanently
+          ? t("manager.table_permanently_deleted", { defaultValue: "Table permanently deleted" })
+          : t("manager.table_moved_inactive", { defaultValue: "Table moved to inactive" }),
+        description: permanently
+          ? t("manager.qr_available_again", { defaultValue: "Its QR code is available to assign again." })
+          : t("manager.inactive_table_hint", { defaultValue: "Use Show inactive to restore or permanently delete it." }),
+      });
     } catch (error) {
       console.error("Failed to delete table", error);
+      toast({
+        variant: "destructive",
+        title: permanently
+          ? t("manager.permanent_deletion_failed", { defaultValue: "Permanent deletion failed" })
+          : t("manager.table_deletion_failed", { defaultValue: "Table deletion failed" }),
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setTableDeletingId(null);
+    }
+  };
+
+  const handleRestoreTable = async (table: ManagerTableSummary) => {
+    setTableDeletingId(table.id);
+    try {
+      await api.managerUpdateTable(table.id, { isActive: true });
+      await loadManagerTables();
+      await Promise.all([loadWaiterData(), loadCookData()]);
+      toast({
+        title: t("manager.table_restored", {
+          defaultValue: "Table {{label}} restored",
+          label: table.label,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to restore table", error);
+      toast({
+        variant: "destructive",
+        title: t("manager.table_restore_failed", { defaultValue: "Table restore failed" }),
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
     } finally {
       setTableDeletingId(null);
     }
@@ -2234,8 +2433,29 @@ export default function ManagerDashboard() {
     }
   };
 
+  const closeHybridModal = (open: boolean) => {
+    setHybridModalOpen(open);
+    if (!open) {
+      setActiveHybrid(null);
+      setTableSelection(new Set());
+      setInitialTableSelection(new Set());
+    }
+  };
+
   const handleToggleTable = (tableId: string, checked: boolean) => {
     setTableSelection((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(tableId);
+      } else {
+        next.delete(tableId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleNewWaiterTable = (tableId: string, checked: boolean) => {
+    setNewWaiterTableSelection((prev) => {
       const next = new Set(prev);
       if (checked) {
         next.add(tableId);
@@ -2259,14 +2479,9 @@ export default function ManagerDashboard() {
       const ops: Array<Promise<unknown>> = [];
       const trimmedName = (activeWaiter.displayName || "").trim();
       const originalName = activeWaiter.originalDisplayName || "";
-      const selectedTypeId = activeWaiter.waiterTypeId ?? null;
-      const originalTypeId = activeWaiter.originalWaiterTypeId ?? null;
       const updatePayload: Record<string, unknown> = {};
       if (trimmedName && trimmedName !== originalName) {
         updatePayload.displayName = trimmedName;
-      }
-      if (selectedTypeId !== originalTypeId) {
-        updatePayload.waiterTypeId = selectedTypeId;
       }
       if (Object.keys(updatePayload).length > 0) {
         ops.push(api.updateWaiter(activeWaiter.id, updatePayload));
@@ -2291,11 +2506,25 @@ export default function ManagerDashboard() {
   };
 
   const handleDeleteWaiter = async (waiterId: string) => {
-    if (!window.confirm("Delete this waiter account?")) return;
+    const waiter = waiters.find((item) => item.id === waiterId);
+    const isHybrid = String(waiter?.role || "").toLowerCase() === "hybrid";
+    if (
+      !window.confirm(
+        isHybrid
+          ? t("manager.confirm_remove_waiter_role", {
+              defaultValue:
+                "Remove waiter access from this hybrid person? The cook account will remain.",
+            })
+          : t("manager.confirm_delete_waiter", {
+              defaultValue: "Delete this waiter account?",
+            })
+      )
+    )
+      return;
     setDeletingWaiterId(waiterId);
     try {
       await api.deleteWaiter(waiterId);
-      await loadWaiterData();
+      await Promise.all([loadWaiterData(), isHybrid ? loadCookData() : Promise.resolve()]);
     } catch (error) {
       console.error("Failed to delete waiter", error);
     } finally {
@@ -2308,20 +2537,28 @@ export default function ManagerDashboard() {
     setAddingWaiter(true);
     try {
       const displayName = newWaiter.displayName.trim() || newWaiter.email;
-      await api.createWaiter(
+      const created = await api.createWaiter(
         newWaiter.email,
         newWaiter.password,
         displayName,
-        newWaiter.waiterTypeId
+        Boolean(newWaiter.hybrid),
+        newWaiter.hybrid ? newWaiter.printerTopic : undefined
+      );
+      await Promise.all(
+        Array.from(newWaiterTableSelection).map((tableId) =>
+          api.assignWaiterTable(created.waiter.id, tableId)
+        )
       );
       setNewWaiter({
         email: "",
         displayName: "",
         password: "",
-        waiterTypeId: null,
+        printerTopic: null,
+        hybrid: false,
       });
+      setNewWaiterTableSelection(new Set());
       setAddModalOpen(false);
-      await loadWaiterData();
+      await Promise.all([loadWaiterData(), newWaiter.hybrid ? loadCookData() : Promise.resolve()]);
     } catch (error) {
       console.error("Failed to create waiter", error);
     } finally {
@@ -2335,19 +2572,19 @@ export default function ManagerDashboard() {
     try {
       const trimmedName = (activeCook.displayName || "").trim();
       const originalName = activeCook.originalDisplayName || "";
-      const selectedTypeId = activeCook.cookTypeId ?? null;
-      const originalTypeId = activeCook.originalCookTypeId ?? null;
+      const selectedPrinterTopic = activeCook.printerTopic ?? null;
+      const originalPrinterTopic = activeCook.originalPrinterTopic ?? null;
       const updatePayload: Record<string, unknown> = {};
       if (trimmedName && trimmedName !== originalName) {
         updatePayload.displayName = trimmedName;
       }
-      if (selectedTypeId !== originalTypeId) {
-        updatePayload.cookTypeId = selectedTypeId;
+      if (selectedPrinterTopic !== originalPrinterTopic) {
+        updatePayload.printerTopic = selectedPrinterTopic;
       }
       if (Object.keys(updatePayload).length > 0) {
         await api.updateCook(activeCook.id, updatePayload);
       }
-      await loadCookData();
+      await Promise.all([loadCookData(), loadWaiterData()]);
       setEditCookModalOpen(false);
       setActiveCook(null);
     } catch (error) {
@@ -2357,12 +2594,67 @@ export default function ManagerDashboard() {
     }
   };
 
+  const handleSaveHybrid = async () => {
+    if (!activeHybrid) return;
+    setSavingHybrid(true);
+    try {
+      const desired = new Set(tableSelection);
+      const current = new Set(initialTableSelection);
+      const toAdd = Array.from(desired).filter((id) => !current.has(id));
+      const toRemove = Array.from(current).filter((id) => !desired.has(id));
+
+      const ops: Array<Promise<unknown>> = [];
+      const trimmedName = (activeHybrid.displayName || "").trim();
+      const originalName = activeHybrid.originalDisplayName || "";
+      if (trimmedName && trimmedName !== originalName) {
+        ops.push(api.updateWaiter(activeHybrid.id, { displayName: trimmedName }));
+      }
+
+      const selectedPrinterTopic = activeHybrid.printerTopic ?? null;
+      const originalPrinterTopic = activeHybrid.originalPrinterTopic ?? null;
+      if (selectedPrinterTopic !== originalPrinterTopic) {
+        ops.push(api.updateCook(activeHybrid.id, { printerTopic: selectedPrinterTopic }));
+      }
+
+      toAdd.forEach((tableId) =>
+        ops.push(api.assignWaiterTable(activeHybrid.id, tableId))
+      );
+      toRemove.forEach((tableId) =>
+        ops.push(api.removeWaiterTable(activeHybrid.id, tableId))
+      );
+
+      if (ops.length) {
+        await Promise.all(ops);
+      }
+      await Promise.all([loadWaiterData(), loadCookData()]);
+      closeHybridModal(false);
+    } catch (error) {
+      console.error("Failed to save hybrid changes", error);
+    } finally {
+      setSavingHybrid(false);
+    }
+  };
+
   const handleDeleteCook = async (cookId: string) => {
-    if (!window.confirm("Delete this cook account?")) return;
+    const cook = cooks.find((item) => item.id === cookId);
+    const isHybrid = String(cook?.role || "").toLowerCase() === "hybrid";
+    if (
+      !window.confirm(
+        isHybrid
+          ? t("manager.confirm_remove_cook_role", {
+              defaultValue:
+                "Remove cook access from this hybrid person? The waiter account will remain.",
+            })
+          : t("manager.confirm_delete_cook", {
+              defaultValue: "Delete this cook account?",
+            })
+      )
+    )
+      return;
     setDeletingCookId(cookId);
     try {
       await api.deleteCook(cookId);
-      await loadCookData();
+      await Promise.all([loadCookData(), isHybrid ? loadWaiterData() : Promise.resolve()]);
     } catch (error) {
       console.error("Failed to delete cook", error);
     } finally {
@@ -2379,13 +2671,13 @@ export default function ManagerDashboard() {
         newCook.email,
         newCook.password,
         displayName,
-        newCook.cookTypeId
+        newCook.printerTopic
       );
       setNewCook({
         email: "",
         displayName: "",
         password: "",
-        cookTypeId: null,
+        printerTopic: null,
       });
       setAddCookModalOpen(false);
       await loadCookData();
@@ -2396,108 +2688,6 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleCreateCookType = async () => {
-    if (!newCookType.title.trim()) return;
-    setAddingCookType(true);
-    try {
-      const printerTopic = newCookType.printerTopic.trim();
-      await api.createCookType({
-        title: newCookType.title.trim(),
-        ...(printerTopic.length > 0 ? { printerTopic } : {}),
-      });
-      setNewCookType({ title: "", printerTopic: "" });
-      setAddCookTypeModalOpen(false);
-      await loadStaffTypes();
-    } catch (error) {
-      console.error("Failed to create cook type", error);
-    } finally {
-      setAddingCookType(false);
-    }
-  };
-
-  const openEditCookType = (type: CookType) => {
-    const printerTopic =
-      type.printerTopic && printerTopics.includes(type.printerTopic)
-        ? type.printerTopic
-        : "";
-    setActiveCookType({
-      id: type.id,
-      title: type.title,
-      printerTopic,
-    });
-    setEditCookTypeModalOpen(true);
-  };
-
-  const handleUpdateCookType = async () => {
-    if (!activeCookType) return;
-    const title = activeCookType.title.trim();
-    if (!title) return;
-    setSavingCookType(true);
-    try {
-      const printerTopic = activeCookType.printerTopic.trim();
-      await api.updateCookType(activeCookType.id, {
-        title,
-        printerTopic: printerTopic.length > 0 ? printerTopic : null,
-      });
-      setEditCookTypeModalOpen(false);
-      setActiveCookType(null);
-      await loadStaffTypes();
-      await loadCookData();
-    } catch (error) {
-      console.error("Failed to update cook type", error);
-    } finally {
-      setSavingCookType(false);
-    }
-  };
-
-  const handleDeleteCookType = async (typeId: string) => {
-    if (!window.confirm("Delete this cook type?")) return;
-    setDeletingCookTypeId(typeId);
-    try {
-      await api.deleteCookType(typeId);
-      await loadStaffTypes();
-      await loadCookData();
-    } catch (error) {
-      console.error("Failed to delete cook type", error);
-    } finally {
-      setDeletingCookTypeId(null);
-    }
-  };
-
-  const handleCreateWaiterType = async () => {
-    if (!newWaiterType.title.trim()) return;
-    setAddingWaiterType(true);
-    try {
-      await api.createWaiterType({
-        title: newWaiterType.title.trim(),
-        ...(newWaiterType.printerTopic.trim().length > 0
-          ? { printerTopic: newWaiterType.printerTopic.trim() }
-          : {}),
-      });
-      setNewWaiterType({ title: "", printerTopic: "" });
-      setAddWaiterTypeModalOpen(false);
-      await loadStaffTypes();
-    } catch (error) {
-      console.error("Failed to create waiter type", error);
-    } finally {
-      setAddingWaiterType(false);
-    }
-  };
-
-  const handleDeleteWaiterType = async (typeId: string) => {
-    if (!window.confirm("Delete this waiter type?")) return;
-    setDeletingWaiterTypeId(typeId);
-    try {
-      await api.deleteWaiterType(typeId);
-      await loadStaffTypes();
-      await loadWaiterData();
-    } catch (error) {
-      console.error("Failed to delete waiter type", error);
-    } finally {
-      setDeletingWaiterTypeId(null);
-    }
-  };
-
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const ordersBusy = ordersLoading && ordersAll.length === 0;
 
@@ -2505,19 +2695,6 @@ export default function ManagerDashboard() {
 
   const DateRangeHeader = () => (
     <div className="relative flex items-center justify-center">
-      {sidebarCollapsed && (
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed(false)}
-          className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-card/95 border border-border/50 shadow-lg backdrop-blur-sm text-sm font-medium text-foreground hover:bg-accent transition-colors absolute left-0 top-1/2 -translate-y-1/2"
-          aria-label={t("manager.expand_navigation", {
-            defaultValue: "Expand navigation",
-          })}
-        >
-          <BarChart2 className="h-4 w-4" />
-          <span>›</span>
-        </button>
-      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-center sm:justify-center gap-3 w-full">
         <div className="flex items-center gap-2 flex-wrap justify-center">
           <div className="inline-flex rounded-lg border border-border/60 bg-card overflow-hidden shadow-sm">
@@ -2589,12 +2766,35 @@ export default function ManagerDashboard() {
     </div>
   );
 
+  const navItems = [
+    {
+      key: "economics" as ManagerTab,
+      label: t("manager.economics", { defaultValue: "Economics" }),
+      icon: BarChart2,
+    },
+    {
+      key: "orders" as ManagerTab,
+      label: t("waiter.orders", { defaultValue: "Orders" }),
+      icon: ListChecks,
+    },
+    {
+      key: "personnel" as ManagerTab,
+      label: t("manager.personnel", { defaultValue: "Personnel" }),
+      icon: Users,
+    },
+    {
+      key: "menu" as ManagerTab,
+      label: t("menu.title"),
+      icon: UtensilsCrossed,
+    },
+  ];
+
   return (
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
-      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
         <DashboardHeader
           supertitle={t("manager.dashboard")}
-          title={storeName || user?.storeSlug || t("manager.dashboard")}
+          title={resolveStoreDisplayName(storeName, user?.storeSlug, t("manager.dashboard"))}
           subtitle={undefined}
           rightContent={
             user ? (
@@ -2616,8 +2816,18 @@ export default function ManagerDashboard() {
           icon="📊"
           tone="accent"
           burgerActions={
-            <div className="flex flex-wrap items-center justify-end gap-3 text-xs">
-              <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => window.location.reload()}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                {t("manager.refresh", { defaultValue: "Refresh" })}
+              </Button>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs">
                 <span className="text-muted-foreground">
                   {t("manager.mode_title", { defaultValue: "MODE" })}:{" "}
                   <span className="font-semibold text-foreground">
@@ -2631,7 +2841,9 @@ export default function ManagerDashboard() {
                   onCheckedChange={(checked) =>
                     setManagerMode(checked ? "pro" : "basic")
                   }
-                  aria-label="Toggle manager mode"
+                  aria-label={t("manager.toggle_manager_mode", {
+                    defaultValue: "Toggle manager mode",
+                  })}
                 />
               </div>
             </div>
@@ -2643,160 +2855,131 @@ export default function ManagerDashboard() {
             value={activeTab}
             onValueChange={(value) => {
               setActiveTab(value as ManagerTab);
-              setSidebarCollapsed(true);
+              setNavExpanded(false);
             }}
             className="flex flex-1 min-h-0 relative"
           >
-            <aside
-              className={clsx(
-                "hidden sm:flex flex-col absolute z-40 left-4 top-4 rounded-2xl bg-card/95 border border-border/50 shadow-2xl backdrop-blur-sm transition-all duration-200 ease-out w-56",
-                sidebarCollapsed
-                  ? "-translate-x-[calc(100%+24px)] opacity-0 pointer-events-none"
-                  : "translate-x-0 opacity-100"
-              )}
+            {/* Desktop floating rail (sm+) */}
+            <motion.aside
+              initial={false}
+              animate={{ width: navExpanded ? 224 : 48 }}
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              className="hidden sm:flex h-fit flex-col absolute z-40 left-3 top-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden"
             >
-              <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                    {t("manager.nav_title", { defaultValue: "Dashboard" })}
-                  </p>
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {t("manager.analytics_overview", {
-                      defaultValue: "Analytics",
-                    })}
-                  </p>
-                </div>
+              <div
+                className={clsx(
+                  "flex items-center justify-between",
+                  navExpanded
+                    ? "gap-2 px-3 py-3 border-b border-border/40"
+                    : "p-2",
+                )}
+              >
+                <AnimatePresence initial={false}>
+                  {navExpanded && (
+                    <motion.div
+                      key="title"
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="min-w-0"
+                    >
+                      <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                        {t("manager.nav_title", { defaultValue: "Dashboard" })}
+                      </p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {t("manager.analytics_overview", { defaultValue: "Analytics" })}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <button
                   type="button"
-                  onClick={() => setSidebarCollapsed(true)}
-                  className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={t("manager.hide_navigation", {
-                    defaultValue: "Collapse",
-                  })}
+                  onClick={() => setNavExpanded((v) => !v)}
+                  className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={navExpanded ? "Collapse navigation" : "Expand navigation"}
+                  aria-expanded={navExpanded}
+                  aria-controls="manager-desktop-navigation"
                 >
-                  <span className="text-base leading-none block">‹</span>
+                  {navExpanded ? (
+                    <ChevronLeft className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
                 </button>
               </div>
-              <div className="px-2 py-2">
-                <TabsList className="flex flex-col w-full gap-1 bg-transparent">
-                  {[
-                    {
-                      key: "economics",
-                      label: t("manager.economics", {
-                        defaultValue: "Economics",
-                      }),
-                      icon: <BarChart2 className="h-4 w-4 shrink-0" />,
-                    },
-                    {
-                      key: "orders",
-                      label: t("waiter.orders", { defaultValue: "Orders" }),
-                      icon: <ListChecks className="h-4 w-4 shrink-0" />,
-                    },
-                    {
-                      key: "personnel",
-                      label: t("manager.personnel", {
-                        defaultValue: "Personnel",
-                      }),
-                      icon: <Users className="h-4 w-4 shrink-0" />,
-                    },
-                    {
-                      key: "menu",
-                      label: t("menu.title"),
-                      icon: <UtensilsCrossed className="h-4 w-4 shrink-0" />,
-                    },
-                  ].map(({ key, label, icon }) => (
+              <AnimatePresence initial={false}>
+                {navExpanded && (
+                  <motion.div
+                    id="manager-desktop-navigation"
+                    key="desktop-navigation"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-2 py-2">
+                      <TabsList className="flex flex-col w-full gap-1 bg-transparent h-auto">
+                        {navItems.map(({ key, label, icon: Icon }) => {
+                          const isActive = activeTab === key;
+                          return (
+                            <TabsTrigger
+                              key={key}
+                              value={key}
+                              title={label}
+                              className="group relative w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/60 data-[state=active]:!bg-transparent data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-colors overflow-hidden"
+                            >
+                              {isActive && (
+                                <motion.span
+                                  layoutId="nav-active-pill"
+                                  className="absolute inset-0 rounded-xl bg-primary"
+                                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                                />
+                              )}
+                              <Icon className="h-5 w-5 shrink-0 relative z-10" />
+                              <span className="truncate relative z-10">
+                                {label}
+                              </span>
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.aside>
+
+            {/* Mobile bottom nav (<sm) */}
+            <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm">
+              <TabsList className="flex w-full gap-1 p-1.5 bg-transparent h-auto">
+                {navItems.map(({ key, label, icon: Icon }) => {
+                  const isActive = activeTab === key;
+                  return (
                     <TabsTrigger
                       key={key}
                       value={key}
-                      className="w-full justify-start gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm transition-all duration-150"
+                      className="relative flex-1 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[10px] font-semibold text-muted-foreground hover:text-foreground data-[state=active]:!bg-transparent data-[state=active]:text-primary-foreground transition-colors overflow-hidden"
                     >
-                      {icon}
-                      <span className="truncate">{label}</span>
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-active-pill-mobile"
+                          className="absolute inset-0 rounded-xl bg-primary"
+                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                        />
+                      )}
+                      <Icon className="h-5 w-5 relative z-10" />
+                      <span className="truncate w-full text-center relative z-10">{label}</span>
                     </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-            </aside>
-
-            {/* Mobile Navigation */}
-            <div className="sm:hidden fixed bottom-4 left-4 z-50">
-              <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="rounded-full shadow-lg px-4"
-                    aria-label={t("manager.nav_title", {
-                      defaultValue: "Dashboard",
-                    })}
-                  >
-                    <BarChart2 className="h-4 w-4 mr-2" />
-                    {t("app.navigation", { defaultValue: "Menu" })}
-                  </Button>
-                </SheetTrigger>
-                <SheetContent
-                  side="left"
-                  className="w-[280px] bg-background text-foreground"
-                >
-                  <SheetHeader>
-                    <SheetTitle className="text-base font-semibold">
-                      {t("manager.analytics_overview", {
-                        defaultValue: "Analytics",
-                      })}
-                    </SheetTitle>
-                  </SheetHeader>
-                  <div className="mt-4 space-y-1">
-                    {[
-                      {
-                        key: "economics",
-                        label: t("manager.economics", {
-                          defaultValue: "Economics",
-                        }),
-                        icon: <BarChart2 className="h-4 w-4" />,
-                      },
-                      {
-                        key: "orders",
-                        label: t("waiter.orders", { defaultValue: "Orders" }),
-                        icon: <ListChecks className="h-4 w-4" />,
-                      },
-                      {
-                        key: "personnel",
-                        label: t("manager.personnel", {
-                          defaultValue: "Personnel",
-                        }),
-                        icon: <Users className="h-4 w-4" />,
-                      },
-                      {
-                        key: "menu",
-                        label: t("menu.title"),
-                        icon: <UtensilsCrossed className="h-4 w-4" />,
-                      },
-                    ].map(({ key, label, icon }) => (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          setActiveTab(key as ManagerTab);
-                          setSidebarCollapsed(true);
-                          setMobileNavOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                          activeTab === key
-                            ? "bg-primary text-primary-foreground"
-                            : "text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {icon}
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
+                  );
+                })}
+              </TabsList>
+            </nav>
 
             <div className="flex-1 w-full overflow-y-auto">
-              <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
-                <TabsContent value="economics" className="space-y-6">
+              <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
+                <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />
                   ) : (
@@ -2868,44 +3051,47 @@ export default function ManagerDashboard() {
                                 defaultValue: "Revenue by day",
                               })}
                         </h3>
-                        <div className="h-72 flex items-center justify-center">
-                          <div className="h-full w-full max-w-4xl px-4 mx-auto">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart
-                                data={revenueTimeline}
-                                margin={{
-                                  top: 16,
-                                  right: 24,
-                                  bottom: 8,
-                                  left: 24,
-                                }}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Line
-                                  type="monotone"
-                                  dataKey="revenue"
-                                  stroke="hsl(var(--primary))"
-                                  strokeWidth={2}
-                                  name={t("manager.revenue_eur", {
-                                    defaultValue: "Revenue (€)",
-                                  })}
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="prevRevenue"
-                                  stroke="hsl(var(--muted-foreground))"
-                                  strokeDasharray="4 4"
-                                  name={t("manager.prior_period_eur", {
-                                    defaultValue: "Prior period (€)",
-                                  })}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
+                        <div className="h-72 w-full min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart
+                              data={revenueTimeline}
+                              margin={{
+                                top: 16,
+                                right: isMobile ? 8 : 24,
+                                bottom: isMobile ? 12 : 8,
+                                left: isMobile ? 0 : 24,
+                              }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="date"
+                                tick={{ fontSize: isMobile ? 10 : 12 }}
+                                interval="preserveStartEnd"
+                                minTickGap={isMobile ? 20 : 8}
+                              />
+                              <YAxis width={isMobile ? 30 : 40} />
+                              <Tooltip />
+                              {!isMobile ? <Legend /> : null}
+                              <Line
+                                type="monotone"
+                                dataKey="revenue"
+                                stroke="hsl(var(--primary))"
+                                strokeWidth={2}
+                                name={t("manager.revenue_eur", {
+                                  defaultValue: "Revenue (€)",
+                                })}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="prevRevenue"
+                                stroke="hsl(var(--muted-foreground))"
+                                strokeDasharray="4 4"
+                                name={t("manager.prior_period_eur", {
+                                  defaultValue: "Prior period (€)",
+                                })}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
                         </div>
                       </Card>
 
@@ -2942,11 +3128,28 @@ export default function ManagerDashboard() {
                             </div>
                           ) : (
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={categoryRevenue}>
+                              <BarChart
+                                data={categoryRevenue}
+                                margin={{
+                                  top: 8,
+                                  right: isMobile ? 8 : 16,
+                                  bottom: isMobile ? 24 : 8,
+                                  left: isMobile ? 0 : 8,
+                                }}
+                              >
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="category" />
-                                <YAxis />
+                                <XAxis
+                                  dataKey="category"
+                                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                                  tickFormatter={formatCategoryAxisLabel}
+                                  interval={0}
+                                  angle={isMobile ? -20 : 0}
+                                  textAnchor={isMobile ? "end" : "middle"}
+                                  height={isMobile ? 48 : 30}
+                                />
+                                <YAxis width={isMobile ? 32 : 40} />
                                 <Tooltip
+                                  labelFormatter={(value) => String(value)}
                                   formatter={(value: ValueType) => {
                                     const numericValue =
                                       typeof value === "number"
@@ -2960,10 +3163,7 @@ export default function ManagerDashboard() {
                                     ];
                                   }}
                                 />
-                                <Bar
-                                  dataKey="revenue"
-                                  fill="hsl(var(--primary))"
-                                />
+                                  <Bar dataKey="revenue" fill="hsl(var(--primary))" />
                               </BarChart>
                             </ResponsiveContainer>
                           )}
@@ -3102,17 +3302,37 @@ export default function ManagerDashboard() {
                                 </div>
                                 <ProBadge />
                               </div>
-                              <div className="h-64">
+                              <div className="h-64 w-full min-w-0">
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart data={avgTicketByDaypart}>
+                                  <BarChart
+                                    data={avgTicketByDaypart}
+                                    margin={{
+                                      top: 8,
+                                      right: isMobile ? 8 : 16,
+                                      bottom: isMobile ? 24 : 8,
+                                      left: isMobile ? 0 : 8,
+                                    }}
+                                  >
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="daypart" />
+                                    <XAxis
+                                      dataKey="daypart"
+                                      tick={{ fontSize: isMobile ? 10 : 12 }}
+                                      tickFormatter={formatDaypartAxisLabel}
+                                      interval={0}
+                                      angle={isMobile ? -20 : 0}
+                                      textAnchor={isMobile ? "end" : "middle"}
+                                      height={isMobile ? 48 : 30}
+                                    />
                                     <YAxis
+                                      width={isMobile ? 36 : 52}
                                       tickFormatter={(v) =>
                                         formatCurrency(Number(v))
                                       }
                                     />
                                     <Tooltip
+                                      labelFormatter={(label) =>
+                                        formatDaypartLabel(String(label))
+                                      }
                                       formatter={(value: ValueType) => {
                                         const numericValue =
                                           typeof value === "number"
@@ -3120,7 +3340,9 @@ export default function ManagerDashboard() {
                                             : Number(value ?? 0);
                                         return [
                                           formatCurrency(numericValue),
-                                          "Avg ticket",
+                                          t("manager.avg_ticket", {
+                                            defaultValue: "Avg ticket",
+                                          }),
                                         ];
                                       }}
                                     />
@@ -3164,7 +3386,7 @@ export default function ManagerDashboard() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="orders" className="space-y-6">
+                <TabsContent value="orders" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={3} />
                   ) : (
@@ -3172,12 +3394,16 @@ export default function ManagerDashboard() {
                       <DateRangeHeader />
                       <Card className="p-4 sm:p-6">
                         <p className="text-sm text-muted-foreground mb-4">
-                          Operations KPIs
+                          {t("manager.operations_kpis", {
+                            defaultValue: "Operations KPIs",
+                          })}
                         </p>
                         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Total Orders
+                              {t("manager.total_orders", {
+                                defaultValue: "Total Orders",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {totalOrders}
@@ -3185,7 +3411,9 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Avg Serve Time (min)
+                              {t("manager.avg_serve_min", {
+                                defaultValue: "Avg Serve Time (min)",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {formatMinutesValue(avgServeTimeMinutes)}
@@ -3193,7 +3421,9 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Median Serve (min)
+                              {t("manager.median_serve_min", {
+                                defaultValue: "Median Serve (min)",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {formatMinutesValue(medianServeMinutes)}
@@ -3201,7 +3431,9 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              Busiest Hour
+                              {t("manager.busiest_hour", {
+                                defaultValue: "Busiest Hour",
+                              })}
                             </p>
                             <p className="text-2xl font-semibold">
                               {busiestHourLabel ?? "—"}
@@ -3214,10 +3446,12 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">
-                              Volume
+                              {t("manager.volume", { defaultValue: "Volume" })}
                             </p>
                             <h3 className="text-lg font-semibold">
-                              Orders timeline
+                              {t("manager.orders_timeline", {
+                                defaultValue: "Orders timeline",
+                              })}
                             </h3>
                           </div>
                           <div className="text-xs font-semibold text-muted-foreground">
@@ -3240,27 +3474,35 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                         {ordersTimeline.length ? (
-                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                            <div className="h-full w-full max-w-3xl mx-auto">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <LineChart 
-                                  data={ordersTimeline}
-                                  margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-                                >
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={35} />
-                                  <Tooltip />
-                                  <Line
-                                    type="monotone"
-                                    dataKey="count"
-                                    stroke="hsl(var(--primary))"
-                                    strokeWidth={2}
-                                    name="Orders"
-                                  />
-                                </LineChart>
-                              </ResponsiveContainer>
-                            </div>
+                          <div className="h-64 sm:h-72 w-full min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart
+                                data={ordersTimeline}
+                                margin={{
+                                  top: 8,
+                                  right: isMobile ? 8 : 16,
+                                  bottom: isMobile ? 12 : 8,
+                                  left: 0,
+                                }}
+                              >
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis
+                                  dataKey="label"
+                                  tick={{ fontSize: isMobile ? 10 : 11 }}
+                                  interval="preserveStartEnd"
+                                  minTickGap={isMobile ? 18 : 8}
+                                />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={35} />
+                                <Tooltip />
+                                <Line
+                                  type="monotone"
+                                  dataKey="count"
+                                  stroke="hsl(var(--primary))"
+                                  strokeWidth={2}
+                                  name={t("manager.total_orders", { defaultValue: "Orders" })}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-8">
@@ -3288,32 +3530,40 @@ export default function ManagerDashboard() {
                             </div>
                           </div>
                           {totalOrders ? (
-                            <div className="h-56 sm:h-64 w-full flex items-center justify-center">
-                              <div className="h-full w-full max-w-md mx-auto">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart 
-                                    data={ordersByStatus}
-                                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                                  >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="status" tick={{ fontSize: 10 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                                    <Tooltip />
-                                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                                      {ordersByStatus.map((entry, idx) => (
-                                        <Cell
-                                          key={`c-${idx}`}
-                                          fill={
-                                            entry.atRisk
-                                              ? "hsl(var(--destructive))"
-                                              : "hsl(var(--primary))"
-                                          }
-                                        />
-                                      ))}
-                                    </Bar>
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
+                            <div className="h-56 sm:h-64 w-full min-w-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                  data={ordersByStatus}
+                                  margin={{
+                                    top: 8,
+                                    right: isMobile ? 8 : 12,
+                                    bottom: isMobile ? 20 : 8,
+                                    left: 0,
+                                  }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis
+                                    dataKey="statusAxisLabel"
+                                    tick={{ fontSize: isMobile ? 9 : 10 }}
+                                    interval={0}
+                                    minTickGap={0}
+                                  />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                  <Tooltip labelFormatter={(_, payload) => String(payload?.[0]?.payload?.statusLabel ?? "")} />
+                                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                    {ordersByStatus.map((entry, idx) => (
+                                      <Cell
+                                        key={`c-${idx}`}
+                                        fill={
+                                          entry.atRisk
+                                            ? "hsl(var(--destructive))"
+                                            : "hsl(var(--primary))"
+                                        }
+                                      />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">
@@ -3329,33 +3579,40 @@ export default function ManagerDashboard() {
                           <div className="flex items-center justify-between mb-4">
                             <div>
                               <p className="text-sm text-muted-foreground">
-                                Throughput
+                                {t("manager.throughput", {
+                                  defaultValue: "Throughput",
+                                })}
                               </p>
                               <h3 className="text-lg font-semibold">
-                                Placed → Served minutes
+                                {t("manager.placed_served_minutes", {
+                                  defaultValue: "Placed → Served minutes",
+                                })}
                               </h3>
                             </div>
                           </div>
                           {serveDurationsMinutes.length ? (
-                            <div className="h-56 sm:h-64 w-full flex items-center justify-center">
-                              <div className="h-full w-full max-w-md mx-auto">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart 
-                                    data={throughputHistogram}
-                                    margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                                  >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                                    <Tooltip />
-                                    <Bar
-                                      dataKey="count"
-                                      fill="hsl(var(--primary))"
-                                      radius={[4, 4, 0, 0]}
-                                    />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
+                            <div className="h-56 sm:h-64 w-full min-w-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                  data={throughputHistogram}
+                                  margin={{
+                                    top: 8,
+                                    right: isMobile ? 8 : 12,
+                                    bottom: isMobile ? 12 : 8,
+                                    left: 0,
+                                  }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis dataKey="label" tick={{ fontSize: isMobile ? 9 : 10 }} />
+                                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                  <Tooltip />
+                                  <Bar
+                                    dataKey="count"
+                                    fill="hsl(var(--primary))"
+                                    radius={[4, 4, 0, 0]}
+                                  />
+                                </BarChart>
+                              </ResponsiveContainer>
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">
@@ -3375,34 +3632,41 @@ export default function ManagerDashboard() {
                               <div className="flex items-center justify-between mb-4">
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    Variability
+                                    {t("manager.variability", {
+                                      defaultValue: "Variability",
+                                    })}
                                   </p>
                                   <h3 className="text-lg font-semibold">
-                                    Prep Time Distribution
+                                    {t("manager.prep_time_distribution", {
+                                      defaultValue: "Prep Time Distribution",
+                                    })}
                                   </h3>
                                 </div>
                                 <ProBadge />
                               </div>
                               {prepDurationsMinutes.length ? (
-                                <div className="h-56 sm:h-64 w-full flex items-center justify-center">
-                                  <div className="h-full w-full max-w-md mx-auto">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                      <BarChart 
-                                        data={prepHistogram}
-                                        margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                                      >
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
-                                        <Tooltip />
-                                        <Bar
-                                          dataKey="count"
-                                          fill="hsl(var(--primary))"
-                                          radius={[4, 4, 0, 0]}
-                                        />
-                                      </BarChart>
-                                    </ResponsiveContainer>
-                                  </div>
+                                <div className="h-56 sm:h-64 w-full min-w-0">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                      data={prepHistogram}
+                                      margin={{
+                                        top: 8,
+                                        right: isMobile ? 8 : 12,
+                                        bottom: isMobile ? 12 : 8,
+                                        left: 0,
+                                      }}
+                                    >
+                                      <CartesianGrid strokeDasharray="3 3" />
+                                      <XAxis dataKey="label" tick={{ fontSize: isMobile ? 9 : 10 }} />
+                                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                                      <Tooltip />
+                                      <Bar
+                                        dataKey="count"
+                                        fill="hsl(var(--primary))"
+                                        radius={[4, 4, 0, 0]}
+                                      />
+                                    </BarChart>
+                                  </ResponsiveContainer>
                                 </div>
                               ) : (
                                 <p className="text-sm text-muted-foreground text-center py-8">
@@ -3417,10 +3681,14 @@ export default function ManagerDashboard() {
                               <div className="flex items-center justify-between mb-4">
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    Reliability
+                                    {t("manager.reliability", {
+                                      defaultValue: "Reliability",
+                                    })}
                                   </p>
                                   <h3 className="text-lg font-semibold">
-                                    SLA Breaches
+                                    {t("manager.sla_breaches", {
+                                      defaultValue: "SLA Breaches",
+                                    })}
                                   </h3>
                                 </div>
                                 <ProBadge />
@@ -3430,7 +3698,10 @@ export default function ManagerDashboard() {
                                   {slaBreaches.length}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  Target: {SLA_TARGET_MINUTES} min
+                                  {t("manager.target_minutes", {
+                                    defaultValue: "Target: {{minutes}} min",
+                                    minutes: SLA_TARGET_MINUTES,
+                                  })}
                                 </div>
                               </div>
                               {slaBreaches.length ? (
@@ -3463,17 +3734,24 @@ export default function ManagerDashboard() {
                             <div className="flex items-center justify-between mb-4">
                               <div>
                                 <p className="text-sm text-muted-foreground">
-                                  Queue Pressure
+                                  {t("manager.queue_pressure", {
+                                    defaultValue: "Queue Pressure",
+                                  })}
                                 </p>
                                 <h3 className="text-lg font-semibold">
-                                  Bottleneck Heatmap
+                                  {t("manager.bottleneck_heatmap", {
+                                    defaultValue: "Bottleneck Heatmap",
+                                  })}
                                 </h3>
                               </div>
                               <ProBadge />
                             </div>
                             <div className="overflow-x-auto">
                               <div className="text-xs text-muted-foreground mb-2">
-                                Counts by hour of placement and current status
+                                {t("manager.bottleneck_heatmap_description", {
+                                  defaultValue:
+                                    "Counts by hour of placement and current status",
+                                })}
                               </div>
                               <div className="inline-block">
                                 <div
@@ -3494,7 +3772,7 @@ export default function ManagerDashboard() {
                                   {bottleneckMatrix.statuses.map((status) => (
                                     <Fragment key={`row-${status}`}>
                                       <div className="text-[10px] pr-2 flex items-center justify-end text-muted-foreground">
-                                        {status}
+                                        {formatStatusLabel(status)}
                                       </div>
                                       {bottleneckMatrix.hours.map((h) => {
                                         const v =
@@ -3529,10 +3807,14 @@ export default function ManagerDashboard() {
                             <div className="flex items-center justify-between mb-2">
                               <div>
                                 <p className="text-sm text-muted-foreground">
-                                  Engagement
+                                  {t("manager.engagement", {
+                                    defaultValue: "Engagement",
+                                  })}
                                 </p>
                                 <h3 className="text-lg font-semibold">
-                                  Reorder Rate (≤45m)
+                                  {t("manager.reorder_rate_45m", {
+                                    defaultValue: "Reorder Rate (≤45m)",
+                                  })}
                                 </h3>
                               </div>
                               <ProBadge />
@@ -3542,9 +3824,12 @@ export default function ManagerDashboard() {
                                 {reorderRate.percent}%
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {reorderRate.tablesWithReorder}/
-                                {reorderRate.tablesWithOrders} tables placed a
-                                second order within 45 minutes.
+                                {t("manager.reorder_rate_description", {
+                                  defaultValue:
+                                    "{{reordered}}/{{total}} tables placed a second order within 45 minutes.",
+                                  reordered: reorderRate.tablesWithReorder,
+                                  total: reorderRate.tablesWithOrders,
+                                })}
                               </div>
                             </div>
                           </Card>
@@ -3555,10 +3840,14 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">
-                              Exceptions
+                              {t("manager.exceptions", {
+                                defaultValue: "Exceptions",
+                              })}
                             </p>
                             <h3 className="text-lg font-semibold">
-                              Stuck orders
+                              {t("manager.stuck_orders", {
+                                defaultValue: "Stuck orders",
+                              })}
                             </h3>
                           </div>
                         </div>
@@ -3575,8 +3864,12 @@ export default function ManagerDashboard() {
                                       {order.tableLabel ?? order.tableId}
                                     </p>
                                     <p className="text-xs text-muted-foreground">
-                                      {order.status} · {minutes.toFixed(1)} min
-                                      (limit {threshold}m)
+                                      {formatStatusLabel(order.status)} ·{" "}
+                                      {minutes.toFixed(1)} {minutesShortLabel}{" "}
+                                      {t("manager.limit_minutes", {
+                                        defaultValue: "(limit {{minutes}}m)",
+                                        minutes: threshold,
+                                      })}
                                     </p>
                                   </div>
                                   <Badge variant="destructive">
@@ -3600,10 +3893,14 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">
-                              Activity
+                              {t("manager.activity", {
+                                defaultValue: "Activity",
+                              })}
                             </p>
                             <h3 className="text-lg font-semibold">
-                              Recent orders
+                              {t("manager.recent_orders", {
+                                defaultValue: "Recent orders",
+                              })}
                             </h3>
                           </div>
                         </div>
@@ -3611,10 +3908,18 @@ export default function ManagerDashboard() {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-left text-xs text-muted-foreground border-b">
-                                <th className="py-2">Order</th>
-                                <th className="py-2">Table</th>
-                                <th className="py-2">Status</th>
-                                <th className="py-2">Placed</th>
+                                <th className="py-2">
+                                  {t("manager.order", { defaultValue: "Order" })}
+                                </th>
+                                <th className="py-2">
+                                  {t("manager.table", { defaultValue: "Table" })}
+                                </th>
+                                <th className="py-2">
+                                  {t("manager.status", { defaultValue: "Status" })}
+                                </th>
+                                <th className="py-2">
+                                  {t("manager.placed", { defaultValue: "Placed" })}
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -3647,7 +3952,9 @@ export default function ManagerDashboard() {
                                     className="py-2 text-muted-foreground"
                                     colSpan={4}
                                   >
-                                    No orders yet.
+                                    {t("manager.no_orders_yet", {
+                                      defaultValue: "No orders yet.",
+                                    })}
                                   </td>
                                 </tr>
                               )}
@@ -3659,52 +3966,52 @@ export default function ManagerDashboard() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="personnel" className="space-y-6">
-                  <DateRangeHeader />
-
+                <TabsContent value="personnel" className="space-y-6 min-w-0 overflow-x-hidden">
                   {/* Unified Staff Management Card */}
                   <Card className="p-0 overflow-hidden">
                     <Tabs defaultValue="waiters" className="w-full">
                       {/* Horizontal category navigation */}
                       <div className="border-b border-border/60 bg-muted/30">
                         <div className="px-4 sm:px-6 pt-4 pb-0">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-lg font-semibold">Staff Management</h3>
+                          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <h3 className="text-lg font-semibold">
+                              {t("manager.staff_management", {
+                                defaultValue: "Staff Management",
+                              })}
+                            </h3>
                             <div className="text-xs text-muted-foreground">
-                              {waiterDetails.length + cooks.length} members · {cookTypes.length + waiterTypes.length} types
+                              {t("manager.staff_summary", {
+                                defaultValue: "{{members}} members",
+                                members: staffRoster.length,
+                              })}
                             </div>
                           </div>
-                          <TabsList className="w-full justify-start gap-0 h-auto p-0 bg-transparent rounded-none">
+                          <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto p-0 bg-transparent rounded-none">
                             <TabsTrigger 
                               value="waiters" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <Users className="h-4 w-4 mr-1.5" />
-                              Waiters
-                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{waiterDetails.length}</Badge>
+                              {t("manager.waiters", {
+                                defaultValue: "Waiters",
+                              })}
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{waiterPersonnel.length}</Badge>
                             </TabsTrigger>
                             <TabsTrigger 
                               value="cooks" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
                               <ChefHat className="h-4 w-4 mr-1.5" />
-                              Cooks
-                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{cooks.length}</Badge>
+                              {t("manager.cooks", { defaultValue: "Cooks" })}
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{cookPersonnel.length}</Badge>
                             </TabsTrigger>
-                            <div className="h-6 w-px bg-border mx-2 self-center" />
-                            <TabsTrigger 
-                              value="waiter-types" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
+                            <TabsTrigger
+                              value="hybrids"
+                              className="relative shrink-0 rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                             >
-                              Waiter Types
-                              <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{waiterTypes.length}</Badge>
-                            </TabsTrigger>
-                            <TabsTrigger 
-                              value="cook-types" 
-                              className="relative rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm font-medium"
-                            >
-                              Cook Types
-                              <Badge variant="outline" className="ml-2 h-5 px-1.5 text-[10px]">{cookTypes.length}</Badge>
+                              <UtensilsCrossed className="h-4 w-4 mr-1.5" />
+                              {t("manager.hybrids", { defaultValue: "Hybrids" })}
+                              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">{hybridPersonnel.length}</Badge>
                             </TabsTrigger>
                           </TabsList>
                         </div>
@@ -3712,23 +4019,32 @@ export default function ManagerDashboard() {
 
                       {/* Content area */}
                       <div className="p-4 sm:p-6">
-                        {/* Waiters Tab */}
                         <TabsContent value="waiters" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Manage your front-of-house team and table assignments
+                              {t("manager.waiters_description", {
+                                defaultValue:
+                                  "Manage waiter personnel, table assignments, and service options.",
+                              })}
                             </p>
-                            <Button
-                              onClick={() => setAddModalOpen(true)}
-                              size="sm"
-                              className="inline-flex items-center gap-2"
-                            >
-                              <Plus className="h-4 w-4" /> {t("actions.add_waiter")}
-                            </Button>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button
+                                onClick={() => {
+                                  setNewWaiter((prev) => ({ ...prev, hybrid: false, printerTopic: null }));
+                                  setNewWaiterTableSelection(new Set());
+                                  setAddModalOpen(true);
+                                }}
+                                size="sm"
+                                className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+                              >
+                                <Plus className="h-4 w-4" />{" "}
+                                {t("actions.add_waiter")}
+                              </Button>
+                            </div>
                           </div>
                           {loadingWaiters ? (
                             <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
-                          ) : waiterDetails.length === 0 ? (
+                          ) : waiterPersonnel.length === 0 ? (
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
                               <Users className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
@@ -3739,64 +4055,149 @@ export default function ManagerDashboard() {
                             </div>
                           ) : (
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {waiterDetails.map((detail) => (
+                              {waiterPersonnel.map((member) => (
                                 <div
-                                  key={detail.waiter.id}
+                                  key={member.id}
                                   className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
                                 >
                                   <div className="flex items-start gap-3">
                                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                       <span className="text-sm font-semibold text-primary">
-                                        {(detail.waiter.displayName || detail.waiter.email || "?")[0].toUpperCase()}
+                                        {(member.displayName || member.email || "?")[0].toUpperCase()}
                                       </span>
                                     </div>
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-2">
                                         <p className="font-medium text-foreground truncate">
-                                          {detail.waiter.displayName || detail.waiter.email}
+                                          {member.displayName || member.email}
                                         </p>
-                                        <span className={cn(
-                                          "h-2 w-2 rounded-full shrink-0",
-                                          detail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
-                                        )} title={detail.shiftOn ? "On shift" : "Off shift"} />
+                                        {member.waiterDetail && (
+                                          <span className={cn(
+                                            "h-2 w-2 rounded-full shrink-0",
+                                            member.waiterDetail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
+                                          )} title={member.waiterDetail.shiftOn
+                                            ? t("manager.on_shift", {
+                                                defaultValue: "On shift",
+                                              })
+                                            : t("manager.off_shift", {
+                                                defaultValue: "Off shift",
+                                              })} />
+                                        )}
                                       </div>
                                       <p className="text-xs text-muted-foreground truncate">
-                                        {detail.waiter.email}
+                                        {member.email}
                                       </p>
                                       <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                        <Badge variant="outline" className="text-[10px] h-5">
-                                          {detail.assignedTables.length} tables
-                                        </Badge>
-                                        {detail.waiter.waiterType?.title && (
+                                        {member.isHybrid ? (
+                                          <Badge variant="success" className="text-[10px] h-5">
+                                            {t("manager.hybrid_personnel", {
+                                              defaultValue: "Hybrid waiter + cook",
+                                            })}
+                                          </Badge>
+                                        ) : member.waiterDetail ? (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {t("manager.waiter", { defaultValue: "Waiter" })}
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {t("manager.cook", { defaultValue: "Cook" })}
+                                          </Badge>
+                                        )}
+                                        {member.waiterDetail && (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {member.waiterDetail.assignedTables.length}{" "}
+                                            {t("manager.tables", { defaultValue: "tables" })}
+                                          </Badge>
+                                        )}
+                                        {member.cook?.printerTopic && (
                                           <Badge variant="secondary" className="text-[10px] h-5">
-                                            {detail.waiter.waiterType.title}
+                                            {member.cook.printerTopic}
                                           </Badge>
                                         )}
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="flex-1 h-8 text-xs"
-                                      onClick={() => openEditWaiter(detail.waiter)}
-                                    >
-                                      <Pencil className="h-3 w-3 mr-1" /> Edit
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteWaiter(detail.waiter.id)}
-                                      disabled={deletingWaiterId === detail.waiter.id}
-                                    >
-                                      {deletingWaiterId === detail.waiter.id ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3 w-3" />
-                                      )}
-                                    </Button>
+                                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/40">
+                                    {member.waiterDetail && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditWaiter(member.waiterDetail!.waiter)}
+                                      >
+                                        <Users className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.waiter", { defaultValue: "Waiter" })}
+                                      </Button>
+                                    )}
+                                    {member.cook && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditCook(member.cook!)}
+                                      >
+                                        <ChefHat className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.cook", { defaultValue: "Cook" })}
+                                      </Button>
+                                    )}
+                                    {member.isHybrid ? (
+                                      <>
+                                        {member.waiterDetail && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 flex-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteWaiter(member.id)}
+                                            disabled={deletingWaiterId === member.id}
+                                          >
+                                            {deletingWaiterId === member.id ? (
+                                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-3 w-3 mr-1" />
+                                            )}
+                                            {t("manager.remove_waiter_role", {
+                                              defaultValue: "Remove waiter",
+                                            })}
+                                          </Button>
+                                        )}
+                                        {member.cook && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 flex-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteCook(member.id)}
+                                            disabled={deletingCookId === member.id}
+                                          >
+                                            {deletingCookId === member.id ? (
+                                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-3 w-3 mr-1" />
+                                            )}
+                                            {t("manager.remove_cook_role", {
+                                              defaultValue: "Remove cook",
+                                            })}
+                                          </Button>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() =>
+                                          member.waiterDetail
+                                            ? handleDeleteWaiter(member.id)
+                                            : handleDeleteCook(member.id)
+                                        }
+                                        disabled={deletingWaiterId === member.id || deletingCookId === member.id}
+                                      >
+                                        {deletingWaiterId === member.id || deletingCookId === member.id ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-3 w-3" />
+                                        )}
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -3804,34 +4205,41 @@ export default function ManagerDashboard() {
                           )}
                         </TabsContent>
 
-                        {/* Cooks Tab */}
                         <TabsContent value="cooks" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Manage your kitchen staff and specializations
+                              {t("manager.cooks_description", {
+                                defaultValue:
+                                  "Manage cook personnel and kitchen routing options.",
+                              })}
                             </p>
                             <Button
                               onClick={() => setAddCookModalOpen(true)}
                               size="sm"
-                              className="inline-flex items-center gap-2"
+                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                             >
-                              <Plus className="h-4 w-4" /> Add cook
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.add_cook", {
+                                defaultValue: "Add cook",
+                              })}
                             </Button>
                           </div>
                           {loadingCooks ? (
                             <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
-                          ) : cooks.length === 0 ? (
+                          ) : cookPersonnel.length === 0 ? (
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
                               <ChefHat className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
-                                No cooks yet. Add your first cook to get started.
+                                {t("manager.no_cooks", {
+                                  defaultValue: "No cooks yet. Add your first cook to get started.",
+                                })}
                               </p>
                             </div>
                           ) : (
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {cooks.map((cook) => (
+                              {cookPersonnel.map((member) => (
                                 <div
-                                  key={cook.id}
+                                  key={member.id}
                                   className="group border border-border/60 rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
                                 >
                                   <div className="flex items-start gap-3">
@@ -3840,35 +4248,45 @@ export default function ManagerDashboard() {
                                     </div>
                                     <div className="min-w-0 flex-1">
                                       <p className="font-medium text-foreground truncate">
-                                        {cook.displayName || cook.email}
+                                        {member.displayName || member.email}
                                       </p>
                                       <p className="text-xs text-muted-foreground truncate">
-                                        {cook.email}
+                                        {member.email}
                                       </p>
-                                      {cook.cookType?.title && (
-                                        <Badge variant="secondary" className="text-[10px] h-5 mt-2">
-                                          {cook.cookType.title}
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <Badge variant="outline" className="text-[10px] h-5">
+                                          {t("manager.cook", { defaultValue: "Cook" })}
                                         </Badge>
-                                      )}
+                                        {member.cook?.printerTopic && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {member.cook.printerTopic}
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="flex-1 h-8 text-xs"
-                                      onClick={() => openEditCook(cook)}
-                                    >
-                                      <Pencil className="h-3 w-3 mr-1" /> Edit
-                                    </Button>
+                                    {member.cook && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs"
+                                        onClick={() => openEditCook(member.cook!)}
+                                      >
+                                        <Pencil className="h-3 w-3 mr-1" />{" "}
+                                        {t("manager.edit_details", {
+                                          defaultValue: "Edit details",
+                                        })}
+                                      </Button>
+                                    )}
                                     <Button
                                       variant="ghost"
                                       size="sm"
                                       className="h-8 text-xs px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteCook(cook.id)}
-                                      disabled={deletingCookId === cook.id}
+                                      onClick={() => handleDeleteCook(member.id)}
+                                      disabled={deletingCookId === member.id}
                                     >
-                                      {deletingCookId === cook.id ? (
+                                      {deletingCookId === member.id ? (
                                         <Loader2 className="h-3 w-3 animate-spin" />
                                       ) : (
                                         <Trash2 className="h-3 w-3" />
@@ -3881,283 +4299,117 @@ export default function ManagerDashboard() {
                           )}
                         </TabsContent>
 
-                        {/* Waiter Types Tab */}
-                        <TabsContent value="waiter-types" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
+                        <TabsContent value="hybrids" className="mt-0 space-y-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground">
-                              Define waiter roles and their printer routing
+                              {t("manager.hybrids_description", {
+                                defaultValue:
+                                  "Manage mixed personnel with both waiter and cook capabilities.",
+                              })}
                             </p>
                             <Button
-                              onClick={() => setAddWaiterTypeModalOpen(true)}
+                              onClick={() => {
+                                setNewWaiter((prev) => ({ ...prev, hybrid: true }));
+                                setNewWaiterTableSelection(new Set());
+                                setAddModalOpen(true);
+                              }}
                               size="sm"
-                              className="inline-flex items-center gap-2"
+                              className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                             >
-                              <Plus className="h-4 w-4" /> Add type
+                              <Plus className="h-4 w-4" />{" "}
+                              {t("manager.create_hybrid_personnel", {
+                                defaultValue: "Create hybrid",
+                              })}
                             </Button>
                           </div>
-                          {loadingTypes ? (
-                            <DashboardGridSkeleton count={3} className="grid" />
-                          ) : waiterTypes.length === 0 ? (
+                          {loadingWaiters || loadingCooks ? (
+                            <DashboardGridSkeleton count={4} className="grid md:grid-cols-2 lg:grid-cols-3" />
+                          ) : hybridPersonnel.length === 0 ? (
                             <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
-                              <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                              <UtensilsCrossed className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
-                                No waiter types yet. Create types to categorize your waiters.
+                                {t("manager.no_hybrids", {
+                                  defaultValue: "No hybrid personnel yet.",
+                                })}
                               </p>
                             </div>
                           ) : (
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {waiterTypes.map((type) => (
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {hybridPersonnel.map((member) => (
                                 <div
-                                  key={type.id}
-                                  className="border border-border/60 rounded-lg p-3 bg-card flex items-center justify-between gap-3"
+                                  key={member.id}
+                                  className="group border border-primary/30 rounded-lg p-4 bg-primary/5 hover:bg-primary/10 transition-colors"
                                 >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                                      <Users className="h-4 w-4 text-primary" />
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                      <span className="text-sm font-semibold text-primary">
+                                        {(member.displayName || member.email || "?")[0].toUpperCase()}
+                                      </span>
                                     </div>
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
-                                      <p className="text-[10px] text-muted-foreground">
-                                        Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium text-foreground truncate">
+                                          {member.displayName || member.email}
+                                        </p>
+                                        {member.waiterDetail && (
+                                          <span className={cn(
+                                            "h-2 w-2 rounded-full shrink-0",
+                                            member.waiterDetail.shiftOn ? "bg-green-500" : "bg-muted-foreground/30"
+                                          )} title={member.waiterDetail.shiftOn
+                                            ? t("manager.on_shift", {
+                                                defaultValue: "On shift",
+                                              })
+                                            : t("manager.off_shift", {
+                                                defaultValue: "Off shift",
+                                              })} />
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {member.email}
                                       </p>
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <Badge variant="success" className="text-[10px] h-5">
+                                          {t("manager.hybrid_personnel", {
+                                            defaultValue: "Hybrid waiter + cook",
+                                          })}
+                                        </Badge>
+                                        {member.waiterDetail && (
+                                          <Badge variant="outline" className="text-[10px] h-5">
+                                            {member.waiterDetail.assignedTables.length}{" "}
+                                            {t("manager.tables", { defaultValue: "tables" })}
+                                          </Badge>
+                                        )}
+                                        {member.cook?.printerTopic && (
+                                          <Badge variant="secondary" className="text-[10px] h-5">
+                                            {member.cook.printerTopic}
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                                    onClick={() => handleDeleteWaiterType(type.id)}
-                                    disabled={deletingWaiterTypeId === type.id}
-                                  >
-                                    {deletingWaiterTypeId === type.id ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    )}
-                                  </Button>
+                                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/40">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="flex-1 h-8 text-xs"
+                                      onClick={() => openEditHybrid(member)}
+                                    >
+                                      <UtensilsCrossed className="h-3 w-3 mr-1" />{" "}
+                                      {t("manager.hybrid_options", {
+                                        defaultValue: "Options",
+                                      })}
+                                    </Button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
                           )}
                         </TabsContent>
 
-                        {/* Cook Types Tab */}
-                        <TabsContent value="cook-types" className="mt-0 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              Define cook specializations and printer routing
-                            </p>
-                            <Button
-                              onClick={() => setAddCookTypeModalOpen(true)}
-                              size="sm"
-                              className="inline-flex items-center gap-2"
-                            >
-                              <Plus className="h-4 w-4" /> Add type
-                            </Button>
-                          </div>
-                          {loadingTypes ? (
-                            <DashboardGridSkeleton count={3} className="grid" />
-                          ) : cookTypes.length === 0 ? (
-                            <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-muted/20">
-                              <Tag className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
-                              <p className="text-sm text-muted-foreground">
-                                No cook types yet. Create types to categorize your kitchen staff.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {cookTypes.map((type) => (
-                                <div
-                                  key={type.id}
-                                  className="border border-border/60 rounded-lg p-3 bg-card flex items-center justify-between gap-3"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className="h-8 w-8 rounded bg-orange-500/10 flex items-center justify-center shrink-0">
-                                      <ChefHat className="h-4 w-4 text-orange-600" />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-foreground text-sm truncate">{type.title}</p>
-                                      <p className="text-[10px] text-muted-foreground">
-                                        Printer: {type.printerTopic && printerTopics.includes(type.printerTopic) ? type.printerTopic : "none"}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0"
-                                      onClick={() => openEditCookType(type)}
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteCookType(type.id)}
-                                      disabled={deletingCookTypeId === type.id}
-                                    >
-                                      {deletingCookTypeId === type.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </TabsContent>
                       </div>
                     </Tabs>
                   </Card>
 
-                  {/* Workload Distribution Card */}
-                  <Card className="p-4 sm:p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          {t("manager.load", { defaultValue: "Load" })}
-                        </p>
-                        <h3 className="text-lg font-semibold">
-                          {t("manager.workload_distribution", {
-                            defaultValue: "Workload distribution",
-                          })}
-                        </h3>
-                      </div>
-                    </div>
-                    {workloadDistribution.length ? (
-                      <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                        <div className="h-full w-full max-w-2xl mx-auto">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart 
-                              data={workloadDistribution}
-                              margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-                            >
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                              <YAxis
-                                domain={[0, 100]}
-                                tickFormatter={(value) => `${value}%`}
-                                tick={{ fontSize: 12 }}
-                                width={40}
-                              />
-                              <Tooltip
-                                formatter={(
-                                  value: ValueType,
-                                  _name: NameType,
-                                  ctx?: TooltipPayload<ValueType, NameType>
-                                ) => {
-                                  const numericValue =
-                                    typeof value === "number"
-                                      ? value
-                                      : Number(value ?? 0);
-                                  const count =
-                                    typeof ctx?.payload?.count === "number"
-                                      ? ctx.payload.count
-                                      : 0;
-                                  return [
-                                    `${numericValue}% (${count})`,
-                                    "Orders",
-                                  ];
-                                }}
-                              />
-                              <Bar dataKey="percent" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-8">
-                        {t("manager.need_orders_for_workload", {
-                          defaultValue:
-                            "Need order history to calculate workload.",
-                        })}
-                      </p>
-                    )}
-                  </Card>
-
-                  <Card className="p-4 sm:p-6">
-                    <div className="mb-4">
-                      <p className="text-sm text-muted-foreground">
-                        {t("manager.benchmarks", {
-                          defaultValue: "Benchmarks",
-                        })}
-                      </p>
-                      <h3 className="text-lg font-semibold">
-                        {t("manager.performance", {
-                          defaultValue: "Performance",
-                        })}
-                      </h3>
-                    </div>
-                    <div className="overflow-x-auto -mx-4 sm:mx-0">
-                      <table className="w-full text-sm min-w-[480px]">
-                        <thead>
-                          <tr className="text-left text-xs text-muted-foreground border-b">
-                            <th className="py-2 px-4 sm:px-2">
-                              {t("manager.waiter", { defaultValue: "Staff" })}
-                            </th>
-                            <th className="py-2 px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.avg_serve_min", { defaultValue: "Avg Serve" })}</span>
-                              <span className="sm:hidden">Avg</span>
-                            </th>
-                            <th className="py-2 px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.p90_serve_min", { defaultValue: "P90 Serve" })}</span>
-                              <span className="sm:hidden">P90</span>
-                            </th>
-                            <th className="py-2 px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.orders_handled", { defaultValue: "Orders" })}</span>
-                              <span className="sm:hidden">#</span>
-                            </th>
-                            <th className="py-2 px-4 sm:px-2 text-right">
-                              <span className="hidden sm:inline">{t("manager.ready_served", { defaultValue: "Ready→Served" })}</span>
-                              <span className="sm:hidden">%</span>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {waiterDetails.map((detail) => (
-                            <tr
-                              key={detail.waiter.id}
-                              className="border-b last:border-b-0 hover:bg-muted/30"
-                            >
-                              <td className="py-2.5 px-4 sm:px-2 font-medium">
-                                <span className="truncate max-w-[120px] sm:max-w-none block">
-                                  {detail.waiter.displayName || detail.waiter.email}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-2 text-right tabular-nums">
-                                {formatMinutesValue(detail.avgServe)}
-                              </td>
-                              <td className="py-2.5 px-2 text-right tabular-nums">
-                                {formatMinutesValue(detail.p90Serve)}
-                              </td>
-                              <td className="py-2.5 px-2 text-right tabular-nums">{detail.ordersHandled}</td>
-                              <td className="py-2.5 px-4 sm:px-2 text-right tabular-nums">
-                                {detail.readyServedPercent != null
-                                  ? `${detail.readyServedPercent}%`
-                                  : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                          {waiterDetails.length === 0 && (
-                            <tr>
-                              <td
-                                className="py-6 px-4 text-muted-foreground text-center"
-                                colSpan={5}
-                              >
-                                {t("manager.no_waiter_data", {
-                                  defaultValue: "No waiter data yet.",
-                                })}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
 
                   {managerMode === "pro" && (
                     <>
@@ -4315,261 +4567,216 @@ export default function ManagerDashboard() {
                   )}
 
                   <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Floor</p>
-                        <h3 className="text-lg font-semibold">
-                          Tables overview
-                        </h3>
-                      </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <Button
-                          onClick={openCreateTable}
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" /> {t("actions.add_table")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setTablesCollapsed((prev) => !prev)}
-                          aria-label={
-                            tablesCollapsed
-                              ? "Expand tables"
-                              : "Collapse tables"
-                          }
-                        >
-                          {tablesCollapsed ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronUp className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                    {loadingTables ? (
-                      <DashboardGridSkeleton
-                        count={4}
-                        className="grid sm:grid-cols-2"
-                      />
-                    ) : tablesCollapsed ? (
-                      <p className="text-sm text-muted-foreground">
-                        {t("manager.tables_collapsed_hint", {
-                          defaultValue:
-                            "Tables hidden. Expand to manage assignments.",
-                        })}
-                      </p>
-                    ) : tablesOverview.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        {t("manager.no_tables", {
-                          defaultValue:
-                            "No tables yet. Add your first table to get started.",
-                        })}
-                      </p>
-                    ) : (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {tablesOverview.map((table) => (
-                          <div
-                            key={table.id}
-                            className={`border border-border/60 rounded-xl p-4 bg-card space-y-3 ${
-                              table.isActive ? "" : "opacity-70"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-4">
-                              <div>
-                                <p className="font-semibold text-foreground">
-                                  {t("manager.table", {
-                                    defaultValue: "Table",
-                                  })}{" "}
-                                  {table.label}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {table.openOrders} open order
-                                  {table.openOrders === 1 ? "" : "s"}
-                                </p>
-                              </div>
-                              <Badge
-                                variant={
-                                  table.isActive ? "secondary" : "outline"
-                                }
-                              >
-                                {table.isActive
-                                  ? t("manager.active", {
-                                      defaultValue: "Active",
-                                    })
-                                  : t("manager.inactive", {
-                                      defaultValue: "Inactive",
-                                    })}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-col sm:flex-row gap-2 w-full">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                onClick={() => openEditTable(table)}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />{" "}
-                                {t("actions.edit")}
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                onClick={() => handleDeleteTable(table.id)}
-                                disabled={tableDeletingId === table.id}
-                              >
-                                {tableDeletingId === table.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                )}
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          QR tiles
+                          {t("manager.floor", { defaultValue: "Floor" })}
                         </p>
                         <h3 className="text-lg font-semibold">
-                          Bind QR public codes to tables
+                          {t("manager.tables_qr_tiles", {
+                            defaultValue: "Tables and QR tiles",
+                          })}
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                          Assign printed QR tiles to tables so scans map to the
-                          right venue spots.
+                          {t("manager.tables_qr_tiles_description", {
+                            defaultValue:
+                              "Create tables and link each one to a QR tile already assigned from Architect.",
+                          })}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 self-start md:self-auto">
-                        <div className="relative">
-                          <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-                          <Input
-                            value={qrTileSearch}
-                            onChange={(e) => setQrTileSearch(e.target.value)}
-                            placeholder="Search code, label, or table"
-                            className="pl-9 w-full md:w-64"
+                      <div className="flex flex-wrap items-center gap-2 self-start">
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm">
+                          <Checkbox
+                            checked={showInactiveTables}
+                            onCheckedChange={(checked) =>
+                              setShowInactiveTables(Boolean(checked))
+                            }
                           />
-                        </div>
+                          {t("manager.show_inactive_tables", {
+                            defaultValue: "Show inactive ({{count}})",
+                            count: inactiveTableCount,
+                          })}
+                        </label>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => storeId && loadQrTiles(storeId)}
-                          disabled={loadingQrTiles || !storeId}
+                          onClick={async () => {
+                            await loadManagerTables();
+                            if (storeId) await loadQrTiles(storeId);
+                          }}
+                          disabled={loadingTables || loadingQrTiles}
                           className="inline-flex items-center gap-2"
                         >
-                          {loadingQrTiles ? (
+                          {loadingTables || loadingQrTiles ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <RefreshCcw className="h-4 w-4" />
                           )}
-                          Refresh
+                          {t("manager.refresh", { defaultValue: "Refresh" })}
+                        </Button>
+                        <Button
+                          onClick={openCreateTable}
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" /> {t("actions.create_table")}
                         </Button>
                       </div>
                     </div>
-                    {!storeId ? (
-                      <p className="text-sm text-muted-foreground">
-                        Load store info first to manage QR tiles.
-                      </p>
-                    ) : loadingQrTiles ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-border/60 bg-card p-4">
+                        <p className="text-xs text-muted-foreground">
+                          {t("manager.tables", { defaultValue: "Tables" })}
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold">{tablesOverview.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-card p-4">
+                        <p className="text-xs text-muted-foreground">
+                          {t("manager.linked_qr_tiles", {
+                            defaultValue: "Linked QR tiles",
+                          })}
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold">
+                          {Array.from(assignedQrTileByTableId.keys()).length}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-card p-4">
+                        <p className="text-xs text-muted-foreground">
+                          {t("manager.available_qr_tiles", {
+                            defaultValue: "Available QR tiles",
+                          })}
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold">
+                          {qrTiles.filter((tile) => !tile.tableId).length}
+                        </p>
+                      </div>
+                    </div>
+                    {loadingTables || loadingQrTiles ? (
                       <DashboardGridSkeleton
-                        count={3}
-                        className="grid md:grid-cols-2"
+                        count={4}
+                        className="grid sm:grid-cols-2"
                       />
-                    ) : qrTiles.length === 0 ? (
+                    ) : visibleTablesOverview.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        No QR tiles found. Ask your architect to generate tiles,
-                        then bind them here.
-                      </p>
-                    ) : filteredQrTiles.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No tiles match this search.
+                        {inactiveTableCount > 0
+                          ? t("manager.no_active_tables", {
+                              defaultValue:
+                                "No active tables. Check Show inactive to restore or permanently delete tables.",
+                            })
+                          : t("manager.no_tables", {
+                              defaultValue:
+                                "No tables yet. Add your first table to get started.",
+                            })}
                       </p>
                     ) : (
-                      <div className="space-y-3">
-                        {filteredQrTiles.map((tile) => {
-                          const assignedLabel =
-                            tile.tableId && tablesById.get(tile.tableId)?.label
-                              ? tablesById.get(tile.tableId)?.label
-                              : tile.tableLabel ?? null;
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {visibleTablesOverview.map((table) => {
+                          const assignedTile = assignedQrTileByTableId.get(table.id) ?? null;
                           return (
                             <div
-                              key={tile.id}
-                              className="border border-border/60 rounded-xl p-4 bg-card space-y-3"
+                              key={table.id}
+                              className={`rounded-xl border border-border/60 bg-card p-4 space-y-3 ${
+                                table.isActive ? "" : "opacity-70"
+                              }`}
                             >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                <div>
-                                  <p className="font-mono text-sm text-foreground">
-                                    {tile.publicCode}
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="space-y-1">
+                                  <p className="font-semibold text-foreground">
+                                    {t("manager.table", { defaultValue: "Table" })} {table.label}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {tile.label || "Unlabeled"} ·{" "}
-                                    {assignedLabel || "Unassigned"}
+                                    {t("manager.open_orders_count", {
+                                      defaultValue: "{{count}} open orders",
+                                      count: table.openOrders,
+                                    })}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t("manager.qr_tile", {
+                                      defaultValue: "QR tile",
+                                    })}
+                                    :{" "}
+                                    <span className="text-foreground">
+                                      {assignedTile
+                                        ? assignedTile.publicCode
+                                        : t("manager.not_assigned", {
+                                            defaultValue: "Not assigned",
+                                          })}
+                                    </span>
                                   </p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-muted-foreground">
-                                    Active
-                                  </span>
-                                  <Switch
-                                    checked={tile.isActive}
-                                    onCheckedChange={(checked) =>
-                                      handleUpdateQrTile(tile.id, {
-                                        isActive: checked,
-                                      })
-                                    }
-                                    disabled={updatingTileId === tile.id}
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                                <Label className="text-sm text-muted-foreground">
-                                  Assigned table
-                                </Label>
-                                <Select
-                                  value={tile.tableId ?? "unassigned"}
-                                  onValueChange={(value) =>
-                                    handleUpdateQrTile(tile.id, {
-                                      tableId:
-                                        value === "unassigned" ? null : value,
-                                    })
-                                  }
+                                <Badge
+                                  variant={table.isActive ? "secondary" : "outline"}
                                 >
-                                  <SelectTrigger className="w-full sm:w-64">
-                                    <SelectValue placeholder="Pick table" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="unassigned">
-                                      Unassigned
-                                    </SelectItem>
-                                    {sortedTables.map((table) => (
-                                      <SelectItem
-                                        key={table.id}
-                                        value={table.id}
-                                      >
-                                        {table.label}{" "}
-                                        {table.isActive ? "" : "(inactive)"}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  {table.isActive
+                                    ? t("manager.active", { defaultValue: "Active" })
+                                    : t("manager.inactive", { defaultValue: "Inactive" })}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                {table.isActive ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full sm:w-auto"
+                                    onClick={() => openEditTable(table)}
+                                  >
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    {t("actions.edit")}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full sm:w-auto"
+                                    onClick={() => void handleRestoreTable(table)}
+                                    disabled={tableDeletingId === table.id}
+                                  >
+                                    <RefreshCcw className="h-4 w-4 mr-2" />
+                                    {t("manager.restore_table", { defaultValue: "Restore" })}
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => void handleDeleteTable(table)}
+                                  disabled={tableDeletingId === table.id}
+                                >
+                                  {tableDeletingId === table.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                  )}
+                                  {table.isActive
+                                    ? t("actions.delete")
+                                    : t("manager.delete_table_permanently", {
+                                        defaultValue: "Delete permanently",
+                                      })}
+                                </Button>
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     )}
+                    {!storeId ? (
+                      <p className="text-sm text-muted-foreground">
+                        {t("manager.load_store_info_for_qr", {
+                          defaultValue:
+                            "Load store info first to manage QR tiles.",
+                        })}
+                      </p>
+                    ) : qrTiles.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {t("manager.no_qr_tiles", {
+                          defaultValue:
+                            "No QR tiles found. Ask your architect to generate and assign tiles to this store first.",
+                        })}
+                      </p>
+                    ) : null}
                   </Card>
                 </TabsContent>
 
-                <TabsContent value="menu" className="space-y-6">
-                  <DateRangeHeader />
+                <TabsContent value="menu" className="space-y-6 min-w-0 overflow-x-hidden">
                   {managerMode === "pro" && (
                     <div className="grid gap-6 lg:grid-cols-2">
                       <Card className="p-4 sm:p-6">
@@ -4617,10 +4824,9 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
                         {categoryUnits.some((entry) => entry.units > 0) ? (
-                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                            <div className="h-full w-full max-w-xs sm:max-w-sm mx-auto">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
+                          <div className="h-64 sm:h-72 w-full min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
                                   <Tooltip
                                     formatter={(
                                       value: ValueType,
@@ -4640,7 +4846,7 @@ export default function ManagerDashboard() {
                                         : [numericValue.toString(), label];
                                     }}
                                   />
-                                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                                  {!isMobile ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
                                   <Pie
                                     data={categoryUnits.map((c) => ({
                                       name: c.category,
@@ -4652,7 +4858,7 @@ export default function ManagerDashboard() {
                                     dataKey="value"
                                     nameKey="name"
                                     outerRadius={80}
-                                    label
+                                    label={!isMobile}
                                   >
                                     {categoryUnits.map((_, idx) => (
                                       <Cell
@@ -4663,7 +4869,6 @@ export default function ManagerDashboard() {
                                   </Pie>
                                 </PieChart>
                               </ResponsiveContainer>
-                            </div>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-8">
@@ -4691,10 +4896,9 @@ export default function ManagerDashboard() {
                           <ProBadge />
                         </div>
                         {daypartMix.some((entry) => entry.count > 0) ? (
-                          <div className="h-64 sm:h-72 w-full flex items-center justify-center">
-                            <div className="h-full w-full max-w-xs sm:max-w-sm mx-auto">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
+                          <div className="h-64 sm:h-72 w-full min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
                                   <Tooltip
                                     formatter={(
                                       value: ValueType,
@@ -4712,16 +4916,16 @@ export default function ManagerDashboard() {
                                       return [numericValue.toString(), label];
                                     }}
                                   />
-                                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                                  {!isMobile ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
                                   <Pie
                                     data={daypartMix.map((d) => ({
-                                      name: d.daypart,
+                                      name: formatDaypartLabel(d.daypart),
                                       value: d.count,
                                     }))}
                                     dataKey="value"
                                     nameKey="name"
                                     outerRadius={80}
-                                    label
+                                    label={!isMobile}
                                   >
                                     {daypartMix.map((_, idx) => (
                                       <Cell
@@ -4732,7 +4936,6 @@ export default function ManagerDashboard() {
                                   </Pie>
                                 </PieChart>
                               </ResponsiveContainer>
-                            </div>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-8">
@@ -4745,260 +4948,6 @@ export default function ManagerDashboard() {
                       </Card>
                     </div>
                   )}
-
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    <Card className="p-4 sm:p-6">
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {t("manager.top_items_units", {
-                          defaultValue: "Top items (units)",
-                        })}
-                      </p>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-xs text-muted-foreground border-b">
-                              <th className="py-2">
-                                {t("manager.item", { defaultValue: "Item" })}
-                              </th>
-                              <th className="py-2">
-                                {t("manager.units", { defaultValue: "Units" })}
-                              </th>
-                              <th className="py-2">
-                                {t("manager.trend", { defaultValue: "Trend" })}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {topItemsUnits.map((item) => (
-                              <tr
-                                key={item.name}
-                                className="border-b last:border-b-0"
-                              >
-                                <td className="py-2">{item.name}</td>
-                                <td className="py-2 font-semibold">
-                                  {item.units}
-                                </td>
-                                <td className="py-2">
-                                  {(() => {
-                                    const pct =
-                                      menuTrendInfo.deltaPct.get(item.name) ??
-                                      0;
-                                    if (pct > 0.5)
-                                      return (
-                                        <span className="text-primary">
-                                          ↑ {Math.abs(pct).toFixed(1)}%
-                                        </span>
-                                      );
-                                    if (pct < -0.5)
-                                      return (
-                                        <span className="text-destructive">
-                                          ↓ {Math.abs(pct).toFixed(1)}%
-                                        </span>
-                                      );
-                                    return (
-                                      <span className="text-muted-foreground">
-                                        ↔ 0.0%
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                              </tr>
-                            ))}
-                            {topItemsUnits.length === 0 && (
-                              <tr>
-                                <td
-                                  className="py-2 text-muted-foreground"
-                                  colSpan={2}
-                                >
-                                  {t("manager.no_sales_yet", {
-                                    defaultValue: "No sales yet.",
-                                  })}
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </Card>
-
-                    <Card className="p-4 sm:p-6">
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {t("manager.bottom_items_units", {
-                          defaultValue: "Bottom items (units)",
-                        })}
-                      </p>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-xs text-muted-foreground border-b">
-                              <th className="py-2">
-                                {t("manager.item", { defaultValue: "Item" })}
-                              </th>
-                              <th className="py-2">
-                                {t("manager.units", { defaultValue: "Units" })}
-                              </th>
-                              <th className="py-2">
-                                {t("manager.trend", { defaultValue: "Trend" })}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {bottomItemsUnits.map((item) => (
-                              <tr
-                                key={item.name}
-                                className="border-b last:border-b-0"
-                              >
-                                <td className="py-2">{item.name}</td>
-                                <td className="py-2 font-semibold">
-                                  {item.units}
-                                </td>
-                                <td className="py-2">
-                                  {(() => {
-                                    const pct =
-                                      menuTrendInfo.deltaPct.get(item.name) ??
-                                      0;
-                                    if (pct > 0.5)
-                                      return (
-                                        <span className="text-primary">
-                                          ↑ {Math.abs(pct).toFixed(1)}%
-                                        </span>
-                                      );
-                                    if (pct < -0.5)
-                                      return (
-                                        <span className="text-destructive">
-                                          ↓ {Math.abs(pct).toFixed(1)}%
-                                        </span>
-                                      );
-                                    return (
-                                      <span className="text-muted-foreground">
-                                        ↔ 0.0%
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                              </tr>
-                            ))}
-                            {bottomItemsUnits.length === 0 && (
-                              <tr>
-                                <td
-                                  className="py-2 text-muted-foreground"
-                                  colSpan={2}
-                                >
-                                  {t("manager.no_sales_yet", {
-                                    defaultValue: "No sales yet.",
-                                  })}
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </Card>
-                  </div>
-
-                  <Card className="p-4 sm:p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          {t("manager.modifiers", {
-                            defaultValue: "Modifiers",
-                          })}
-                        </p>
-                        <h3 className="text-lg font-semibold">
-                          {t("manager.modifier_attach_rate", {
-                            defaultValue: "Modifier attach rate",
-                          })}
-                        </h3>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div>
-                          <p className="text-4xl font-semibold">
-                            {modifierStats.percent}%
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {modifierStats.withModifiers} of{" "}
-                            {modifierStats.totalItems} order items use at least
-                            one modifier.
-                          </p>
-                        </div>
-                        <div className="w-full sm:w-64 h-2 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full bg-primary transition-all"
-                            style={{ width: `${modifierStats.percent}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-xs text-muted-foreground border-b">
-                              <th className="py-2">
-                                {t("manager.group", { defaultValue: "Group" })}
-                              </th>
-                              <th className="py-2">
-                                {t("manager.attach_percent", {
-                                  defaultValue: "Attach %",
-                                })}
-                              </th>
-                              <th className="py-2">
-                                {t("manager.count", { defaultValue: "Count" })}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(() => {
-                              const total = orderLineItems.length || 1;
-                              const groupCounts = new Map<string, number>();
-                              orderLineItems.forEach((line) => {
-                                const mods = line.selectedModifiers || {};
-                                Object.keys(mods).forEach((modId) => {
-                                  const title =
-                                    modifierLookup.get(modId) || "Modifier";
-                                  groupCounts.set(
-                                    title,
-                                    (groupCounts.get(title) ?? 0) + 1
-                                  );
-                                });
-                              });
-                              const rows = Array.from(groupCounts.entries())
-                                .map(([group, count]) => ({
-                                  group,
-                                  count,
-                                  pct: Math.round((count / total) * 100),
-                                }))
-                                .sort((a, b) => b.count - a.count);
-                              return rows.length ? (
-                                rows.map((r) => (
-                                  <tr
-                                    key={r.group}
-                                    className="border-b last:border-b-0"
-                                  >
-                                    <td className="py-2">{r.group}</td>
-                                    <td className="py-2">{r.pct}%</td>
-                                    <td className="py-2">{r.count}</td>
-                                  </tr>
-                                ))
-                              ) : (
-                                <tr>
-                                  <td
-                                    className="py-2 text-muted-foreground"
-                                    colSpan={3}
-                                  >
-                                    {t("manager.no_modifiers_yet", {
-                                      defaultValue:
-                                        "No modifiers selected yet.",
-                                    })}
-                                  </td>
-                                </tr>
-                              );
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </Card>
 
                   {managerMode === "pro" && (
                     <>
@@ -5023,9 +4972,21 @@ export default function ManagerDashboard() {
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="text-left text-xs text-muted-foreground border-b">
-                                  <th className="py-2">Category</th>
-                                  <th className="py-2">Rising</th>
-                                  <th className="py-2">Falling</th>
+                                  <th className="py-2">
+                                    {t("manager.category", {
+                                      defaultValue: "Category",
+                                    })}
+                                  </th>
+                                  <th className="py-2">
+                                    {t("manager.rising", {
+                                      defaultValue: "Rising",
+                                    })}
+                                  </th>
+                                  <th className="py-2">
+                                    {t("manager.falling", {
+                                      defaultValue: "Falling",
+                                    })}
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -5101,7 +5062,9 @@ export default function ManagerDashboard() {
                                       className="border-b last:border-b-0"
                                     >
                                       <td className="py-2">{r.item}</td>
-                                      <td className="py-2">{r.top}</td>
+                                      <td className="py-2">
+                                        {formatDaypartLabel(r.top)}
+                                      </td>
                                       <td className="py-2">
                                         {r.fit.toFixed(0)}%
                                       </td>
@@ -5196,6 +5159,11 @@ export default function ManagerDashboard() {
               <DialogTitle>
                 {t("manager.edit_waiter", { defaultValue: "Edit waiter" })}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.edit_waiter_description", {
+                  defaultValue: "Update waiter details and table assignments.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             {activeWaiter ? (
               <div className="space-y-6">
@@ -5214,40 +5182,6 @@ export default function ManagerDashboard() {
                       )
                     }
                   />
-                </DialogFormField>
-                <DialogFormField index={1}>
-                  <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
-                  <Select
-                    value={activeWaiter.waiterTypeId ?? "none"}
-                    onValueChange={(value) =>
-                      setActiveWaiter((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              waiterTypeId: value === "none" ? null : value,
-                            }
-                          : prev
-                      )
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={t("manager.select_type", {
-                          defaultValue: "Select type",
-                        })}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        {t("manager.no_type", { defaultValue: "No type" })}
-                      </SelectItem>
-                      {waiterTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </DialogFormField>
                 <div className="grid gap-2">
                   <Label>
@@ -5314,12 +5248,23 @@ export default function ManagerDashboard() {
         <Dialog open={editCookModalOpen} onOpenChange={closeEditCookModal}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit cook</DialogTitle>
+              <DialogTitle>
+                {t("manager.edit_cook", { defaultValue: "Edit cook" })}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.edit_cook_description", {
+                  defaultValue: "Update cook details and printer assignment.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             {activeCook ? (
               <div className="space-y-4">
                 <DialogFormField index={0}>
-                  <Label htmlFor="cook-name">Display name</Label>
+                  <Label htmlFor="cook-name">
+                    {t("manager.display_name", {
+                      defaultValue: "Display name",
+                    })}
+                  </Label>
                   <Input
                     id="cook-name"
                     value={activeCook.displayName}
@@ -5331,28 +5276,35 @@ export default function ManagerDashboard() {
                   />
                 </DialogFormField>
                 <DialogFormField index={1}>
-                  <Label>Type</Label>
+                  <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
                   <Select
-                    value={activeCook.cookTypeId ?? "none"}
+                    value={resolvePrinterValue(activeCook.printerTopic, printerTopics)}
                     onValueChange={(value) =>
                       setActiveCook((prev) =>
                         prev
                           ? {
                               ...prev,
-                              cookTypeId: value === "none" ? null : value,
+                              printerTopic:
+                                value === NO_PRINTER_VALUE ? null : value,
                             }
                           : prev
                       )
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No type</SelectItem>
-                      {cookTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.title}
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", { defaultValue: "No printer" })}
+                      </SelectItem>
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -5376,6 +5328,134 @@ export default function ManagerDashboard() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={hybridModalOpen} onOpenChange={closeHybridModal}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                {t("manager.hybrid_options", { defaultValue: "Hybrid options" })}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.hybrid_options_description", {
+                  defaultValue:
+                    "Update hybrid staff display name, printer, and table assignments.",
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            {activeHybrid ? (
+              <div className="space-y-6">
+                <DialogFormField index={0}>
+                  <Label htmlFor="hybrid-name">
+                    {t("manager.display_name", {
+                      defaultValue: "Display name",
+                    })}
+                  </Label>
+                  <Input
+                    id="hybrid-name"
+                    value={activeHybrid.displayName}
+                    onChange={(e) =>
+                      setActiveHybrid((prev) =>
+                        prev ? { ...prev, displayName: e.target.value } : prev
+                      )
+                    }
+                  />
+                </DialogFormField>
+                <DialogFormField index={1}>
+                  <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
+                  <Select
+                    value={resolvePrinterValue(activeHybrid.printerTopic, printerTopics)}
+                    onValueChange={(value) =>
+                      setActiveHybrid((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              printerTopic:
+                                value === NO_PRINTER_VALUE ? null : value,
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", { defaultValue: "No printer" })}
+                      </SelectItem>
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </DialogFormField>
+                <div className="grid gap-2">
+                  <Label>
+                    {t("manager.assigned_tables", {
+                      defaultValue: "Assigned tables",
+                    })}
+                  </Label>
+                  <ScrollArea className="max-h-56 rounded-lg border">
+                    <div className="p-3 space-y-2">
+                      {tables.map((table) => {
+                        const checked = tableSelection.has(table.id);
+                        const disabled = !table.active && !checked;
+                        return (
+                          <label
+                            key={table.id}
+                            className={`flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm ${
+                              disabled ? "opacity-60 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  handleToggleTable(table.id, Boolean(value))
+                                }
+                                disabled={disabled}
+                              />
+                              <span className="font-medium text-foreground">
+                                {t("manager.table", { defaultValue: "Table" })}{" "}
+                                {table.label}
+                              </span>
+                            </div>
+                            {!table.active ? (
+                              <span className="text-xs text-muted-foreground">
+                                {t("manager.inactive", {
+                                  defaultValue: "Inactive",
+                                })}
+                              </span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => closeHybridModal(false)}>
+                {t("actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleSaveHybrid}
+                disabled={savingHybrid}
+                className="inline-flex items-center gap-2"
+              >
+                {savingHybrid && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t("actions.save_changes")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog
           open={addModalOpen}
           onOpenChange={(open) => {
@@ -5385,18 +5465,39 @@ export default function ManagerDashboard() {
                 email: "",
                 displayName: "",
                 password: "",
-                waiterTypeId: null,
+                printerTopic: null,
+                hybrid: false,
               });
+              setNewWaiterTableSelection(new Set());
             }
           }}
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>{t("actions.add_waiter")}</DialogTitle>
+              <DialogTitle>
+                {newWaiter.hybrid
+                  ? t("manager.create_hybrid_personnel", {
+                      defaultValue: "Create hybrid",
+                    })
+                  : t("actions.add_waiter")}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {newWaiter.hybrid
+                  ? t("manager.create_hybrid_description", {
+                      defaultValue:
+                        "Create a hybrid staff member with printer and table assignments.",
+                    })
+                  : t("manager.create_waiter_description", {
+                      defaultValue:
+                        "Create a waiter and assign tables.",
+                    })}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
-                <Label htmlFor="new-waiter-email">Email</Label>
+                <Label htmlFor="new-waiter-email">
+                  {t("auth.email", { defaultValue: "Email" })}
+                </Label>
                 <Input
                   id="new-waiter-email"
                   type="email"
@@ -5421,38 +5522,86 @@ export default function ManagerDashboard() {
                   }
                 />
               </DialogFormField>
-              <DialogFormField index={2}>
-                <Label>{t("manager.type", { defaultValue: "Type" })}</Label>
-                <Select
-                  value={newWaiter.waiterTypeId ?? "none"}
-                  onValueChange={(value) =>
-                    setNewWaiter((prev) => ({
-                      ...prev,
-                      waiterTypeId: value === "none" ? null : value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={t("manager.select_type", {
-                        defaultValue: "Select type",
-                      })}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      {t("manager.no_type", { defaultValue: "No type" })}
-                    </SelectItem>
-                    {waiterTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.title}
+              {newWaiter.hybrid && (
+                <DialogFormField index={2}>
+                  <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
+                  <Select
+                    value={resolvePrinterValue(newWaiter.printerTopic, printerTopics)}
+                    onValueChange={(value) =>
+                      setNewWaiter((prev) => ({
+                        ...prev,
+                        printerTopic: value === NO_PRINTER_VALUE ? null : value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t("manager.select_printer", {
+                          defaultValue: "Select printer",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_VALUE}>
+                        {t("manager.no_printer", { defaultValue: "No printer" })}
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      {buildPrinterOptions(printerTopics).map((topic) => (
+                        <SelectItem key={topic} value={topic}>
+                          {topic}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </DialogFormField>
+              )}
+              <DialogFormField index={newWaiter.hybrid ? 3 : 2}>
+                <Label>
+                  {t("manager.assigned_tables", {
+                    defaultValue: "Assigned tables",
+                  })}
+                </Label>
+                <ScrollArea className="max-h-44 rounded-lg border">
+                  <div className="p-3 space-y-2">
+                    {tables.map((table) => {
+                      const checked = newWaiterTableSelection.has(table.id);
+                      const disabled = !table.active && !checked;
+                      return (
+                        <label
+                          key={table.id}
+                          className={`flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm ${
+                            disabled ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) =>
+                                handleToggleNewWaiterTable(table.id, Boolean(value))
+                              }
+                              disabled={disabled}
+                            />
+                            <span className="font-medium text-foreground">
+                              {t("manager.table", { defaultValue: "Table" })}{" "}
+                              {table.label}
+                            </span>
+                          </div>
+                          {!table.active ? (
+                            <span className="text-xs text-muted-foreground">
+                              {t("manager.inactive", {
+                                defaultValue: "Inactive",
+                              })}
+                            </span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
               </DialogFormField>
-              <DialogFormField index={3}>
-                <Label htmlFor="new-waiter-password">Password</Label>
+              <DialogFormField index={newWaiter.hybrid ? 4 : 3}>
+                <Label htmlFor="new-waiter-password">
+                  {t("auth.password", { defaultValue: "Password" })}
+                </Label>
                 <Input
                   id="new-waiter-password"
                   type="password"
@@ -5478,7 +5627,11 @@ export default function ManagerDashboard() {
                 className="inline-flex items-center gap-2"
               >
                 {addingWaiter && <Loader2 className="h-4 w-4 animate-spin" />}
-                {t("actions.create_waiter")}
+                {newWaiter.hybrid
+                  ? t("manager.create_hybrid_personnel", {
+                      defaultValue: "Create hybrid",
+                    })
+                  : t("actions.create_waiter")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -5493,18 +5646,27 @@ export default function ManagerDashboard() {
                 email: "",
                 displayName: "",
                 password: "",
-                cookTypeId: null,
+                printerTopic: null,
               });
             }
           }}
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add cook</DialogTitle>
+              <DialogTitle>
+                {t("manager.add_cook", { defaultValue: "Add cook" })}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.create_cook_description", {
+                  defaultValue: "Create a cook and assign a printer.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <DialogFormField index={0}>
-                <Label htmlFor="new-cook-email">Email</Label>
+                <Label htmlFor="new-cook-email">
+                  {t("auth.email", { defaultValue: "Email" })}
+                </Label>
                 <Input
                   id="new-cook-email"
                   type="email"
@@ -5515,7 +5677,11 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={1}>
-                <Label htmlFor="new-cook-name">Display name</Label>
+                <Label htmlFor="new-cook-name">
+                  {t("manager.display_name", {
+                    defaultValue: "Display name",
+                  })}
+                </Label>
                 <Input
                   id="new-cook-name"
                   value={newCook.displayName}
@@ -5528,31 +5694,39 @@ export default function ManagerDashboard() {
                 />
               </DialogFormField>
               <DialogFormField index={2}>
-                <Label>Type</Label>
+                <Label>{t("manager.printer_label", { defaultValue: "Printer" })}</Label>
                 <Select
-                  value={newCook.cookTypeId ?? "none"}
+                  value={resolvePrinterValue(newCook.printerTopic, printerTopics)}
                   onValueChange={(value) =>
                     setNewCook((prev) => ({
                       ...prev,
-                      cookTypeId: value === "none" ? null : value,
+                      printerTopic: value === NO_PRINTER_VALUE ? null : value,
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
+                  >
+                    <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("manager.select_printer", {
+                        defaultValue: "Select printer",
+                      })}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No type</SelectItem>
-                    {cookTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.title}
+                    <SelectItem value={NO_PRINTER_VALUE}>
+                      {t("manager.no_printer", { defaultValue: "No printer" })}
+                    </SelectItem>
+                    {buildPrinterOptions(printerTopics).map((topic) => (
+                      <SelectItem key={topic} value={topic}>
+                        {topic}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </DialogFormField>
               <DialogFormField index={3}>
-                <Label htmlFor="new-cook-password">Password</Label>
+                <Label htmlFor="new-cook-password">
+                  {t("auth.password", { defaultValue: "Password" })}
+                </Label>
                 <Input
                   id="new-cook-password"
                   type="password"
@@ -5576,245 +5750,7 @@ export default function ManagerDashboard() {
                 className="inline-flex items-center gap-2"
               >
                 {addingCook && <Loader2 className="h-4 w-4 animate-spin" />}
-                Create cook
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={addCookTypeModalOpen}
-          onOpenChange={(open) => {
-            setAddCookTypeModalOpen(open);
-            if (!open) {
-              setNewCookType({ title: "", printerTopic: "" });
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add cook type</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <DialogFormField index={0}>
-                <Label htmlFor="cook-type-title">Title</Label>
-                <Input
-                  id="cook-type-title"
-                  value={newCookType.title}
-                  onChange={(e) =>
-                    setNewCookType((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                />
-              </DialogFormField>
-              <DialogFormField index={1}>
-                <Label>Printer topic</Label>
-                <Select
-                  value={newCookType.printerTopic || NO_PRINTER_VALUE}
-                  onValueChange={(value) =>
-                    setNewCookType((prev) => ({
-                      ...prev,
-                      printerTopic: value === NO_PRINTER_VALUE ? "" : value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select printer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
-                    {printerTopics.map((topic) => (
-                      <SelectItem key={topic} value={topic}>
-                        {topic}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {printerTopics.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No printers configured in Architect settings.
-                  </p>
-                ) : null}
-              </DialogFormField>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setAddCookTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleCreateCookType}
-                disabled={addingCookType || !newCookType.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {addingCookType && <Loader2 className="h-4 w-4 animate-spin" />}
-                Create type
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={editCookTypeModalOpen}
-          onOpenChange={(open) => {
-            setEditCookTypeModalOpen(open);
-            if (!open) {
-              setActiveCookType(null);
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Edit cook type</DialogTitle>
-            </DialogHeader>
-            {activeCookType ? (
-              <div className="space-y-4">
-                <DialogFormField index={0}>
-                  <Label htmlFor="edit-cook-type-title">Title</Label>
-                  <Input
-                    id="edit-cook-type-title"
-                    value={activeCookType.title}
-                    onChange={(e) =>
-                      setActiveCookType((prev) =>
-                        prev ? { ...prev, title: e.target.value } : prev
-                      )
-                    }
-                  />
-                </DialogFormField>
-                <DialogFormField index={1}>
-                  <Label>Printer topic</Label>
-                  <Select
-                    value={resolvePrinterValue(activeCookType.printerTopic, printerTopics)}
-                    onValueChange={(value) =>
-                      setActiveCookType((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              printerTopic:
-                                value === NO_PRINTER_VALUE ? "" : value,
-                            }
-                          : prev
-                      )
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select printer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
-                      {buildPrinterOptions(printerTopics).map((topic) => (
-                        <SelectItem key={topic} value={topic}>
-                          {topic}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {printerTopics.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      No printers configured in Architect settings.
-                    </p>
-                  ) : null}
-                </DialogFormField>
-              </div>
-            ) : null}
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setEditCookTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleUpdateCookType}
-                disabled={savingCookType || !activeCookType?.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {savingCookType && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                {t("actions.save_changes")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={addWaiterTypeModalOpen}
-          onOpenChange={(open) => {
-            setAddWaiterTypeModalOpen(open);
-            if (!open) {
-              setNewWaiterType({ title: "", printerTopic: "" });
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add waiter type</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <DialogFormField index={0}>
-                <Label htmlFor="waiter-type-title">Title</Label>
-                <Input
-                  id="waiter-type-title"
-                  value={newWaiterType.title}
-                  onChange={(e) =>
-                    setNewWaiterType((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                />
-              </DialogFormField>
-              <DialogFormField index={1}>
-                <Label htmlFor="waiter-type-topic">Printer topic</Label>
-                <Select
-                  value={newWaiterType.printerTopic || NO_PRINTER_VALUE}
-                  onValueChange={(value) =>
-                    setNewWaiterType((prev) => ({
-                      ...prev,
-                      printerTopic: value === NO_PRINTER_VALUE ? "" : value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select printer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PRINTER_VALUE}>No printer</SelectItem>
-                    {printerTopics.map((topic) => (
-                      <SelectItem key={topic} value={topic}>
-                        {topic}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {printerTopics.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No printers configured in Architect settings.
-                  </p>
-                ) : null}
-              </DialogFormField>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setAddWaiterTypeModalOpen(false)}
-              >
-                {t("actions.cancel")}
-              </Button>
-              <Button
-                onClick={handleCreateWaiterType}
-                disabled={addingWaiterType || !newWaiterType.title.trim()}
-                className="inline-flex items-center gap-2"
-              >
-                {addingWaiterType && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                Create type
+                {t("manager.create_cook", { defaultValue: "Create cook" })}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -5825,7 +5761,12 @@ export default function ManagerDashboard() {
           onOpenChange={(open) => {
             setTableModalOpen(open);
             if (!open) {
-              setTableForm({ id: undefined, label: "", isActive: true });
+              setTableForm({
+                id: undefined,
+                label: "",
+                isActive: true,
+                qrTileId: "unassigned",
+              });
             }
           }}
         >
@@ -5836,6 +5777,11 @@ export default function ManagerDashboard() {
                   ? t("manager.edit_table", { defaultValue: "Edit table" })
                   : t("actions.add_table")}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("manager.table_dialog_description", {
+                  defaultValue: "Create or edit a table and its QR tile.",
+                })}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid gap-2">
@@ -5849,6 +5795,39 @@ export default function ManagerDashboard() {
                     setTableForm((prev) => ({ ...prev, label: e.target.value }))
                   }
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label>{t("manager.qr_tile", { defaultValue: "QR tile" })}</Label>
+                <Select
+                  value={tableForm.qrTileId}
+                  onValueChange={(value) =>
+                    setTableForm((prev) => ({ ...prev, qrTileId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("manager.select_qr_tile", {
+                        defaultValue: "Select QR tile",
+                      })}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">
+                      {t("manager.no_qr_tile", { defaultValue: "No QR tile" })}
+                    </SelectItem>
+                    {tableQrTileOptions.map((tile) => (
+                      <SelectItem key={tile.id} value={tile.id}>
+                        {tile.publicCode}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("manager.qr_tile_picker_hint", {
+                    defaultValue:
+                      "Pick from the QR tiles assigned to this store in Architect.",
+                  })}
+                </p>
               </div>
               <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3 py-2">
                 <div>

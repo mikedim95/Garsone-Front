@@ -62,16 +62,12 @@ export default function ProfileDashboard() {
     }
   }, [isAuthenticated, user, navigate]);
 
-  const staffType = user?.waiterType ?? user?.cookType ?? null;
-  const staffTypeEditable = Boolean(staffType);
-  const staffTypeLabel = staffType?.title ?? "";
   const initialProfile = useMemo(
     () => ({
       displayName: user?.displayName ?? "",
       email: user?.email ?? "",
-      staffTitle: staffTypeLabel,
     }),
-    [staffTypeLabel, user?.displayName, user?.email]
+    [user?.displayName, user?.email]
   );
   const [profileForm, setProfileForm] = useState(initialProfile);
 
@@ -81,15 +77,12 @@ export default function ProfileDashboard() {
 
   const trimmedName = profileForm.displayName.trim();
   const trimmedEmail = profileForm.email.trim();
-  const trimmedStaffTitle = profileForm.staffTitle.trim();
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
   const nameValid = trimmedName.length >= 2;
-  const staffTitleValid = staffTypeEditable ? trimmedStaffTitle.length >= 2 : true;
   const profileDirty =
     trimmedName !== initialProfile.displayName ||
-    trimmedEmail !== initialProfile.email ||
-    trimmedStaffTitle !== initialProfile.staffTitle;
-  const canSaveProfile = profileDirty && nameValid && emailValid && staffTitleValid;
+    trimmedEmail !== initialProfile.email;
+  const canSaveProfile = profileDirty && nameValid && emailValid;
 
   const handleProfileReset = () => {
     setProfileForm(initialProfile);
@@ -103,14 +96,6 @@ export default function ProfileDashboard() {
     }
     if (trimmedEmail && trimmedEmail !== user.email) {
       updates.email = trimmedEmail;
-    }
-    if (staffTypeEditable && trimmedStaffTitle && staffType) {
-      if (user.waiterType) {
-        updates.waiterType = { ...staffType, title: trimmedStaffTitle };
-      }
-      if (user.cookType) {
-        updates.cookType = { ...staffType, title: trimmedStaffTitle };
-      }
     }
     if (Object.keys(updates).length === 0) return;
     updateUser(updates);
@@ -217,7 +202,14 @@ export default function ProfileDashboard() {
   const initials = getInitials(user?.displayName, user?.email);
   const roleLabel = user?.role ? ROLE_LABELS[user.role] || user.role : "User";
   const maskedPassword = "************";
-
+  const dashboardPath =
+    user?.role === "manager"
+      ? "/manager"
+      : user?.role === "waiter"
+        ? "/waiter"
+        : user?.role === "cook"
+          ? "/cook"
+          : "/";
   const handlePasswordModalChange = (open: boolean) => {
     setPasswordModalOpen(open);
     if (!open) handlePasswordReset();
@@ -225,7 +217,7 @@ export default function ProfileDashboard() {
 
   return (
     <PageTransition className={clsx(themedWrapper, "min-h-screen min-h-dvh")}>
-      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
         <DashboardHeader
           supertitle={profileLabel}
           title={title}
@@ -325,45 +317,6 @@ export default function ProfileDashboard() {
                     </Label>
                     <Input id="profile-role" value={roleLabel} disabled />
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="profile-type">
-                      {t("profile.type", { defaultValue: "Type" })}
-                    </Label>
-                    <Input
-                      id="profile-type"
-                      value={profileForm.staffTitle}
-                      disabled={!staffTypeEditable}
-                      onChange={(event) =>
-                        setProfileForm((prev) => ({
-                          ...prev,
-                          staffTitle: event.target.value,
-                        }))
-                      }
-                      placeholder={
-                        staffTypeEditable
-                          ? t("profile.type_placeholder", {
-                              defaultValue: "Staff type",
-                            })
-                          : t("profile.type_unassigned", {
-                              defaultValue: "Assigned by manager",
-                            })
-                      }
-                    />
-                    {!staffTypeEditable && (
-                      <p className="text-xs text-muted-foreground">
-                        {t("profile.type_note", {
-                          defaultValue: "Only managers can change staff types.",
-                        })}
-                      </p>
-                    )}
-                    {staffTypeEditable && !staffTitleValid && (
-                      <p className="text-xs text-destructive">
-                        {t("profile.type_error", {
-                          defaultValue: "Use at least 2 characters.",
-                        })}
-                      </p>
-                    )}
-                  </div>
                 </div>
                 <Separator />
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -398,7 +351,16 @@ export default function ProfileDashboard() {
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="justify-end gap-2">
+              <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate(dashboardPath)}
+                >
+                  {t("profile.back_to_dashboard", {
+                    defaultValue: "Back to dashboard",
+                  })}
+                </Button>
+                <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
                   onClick={handleProfileReset}
@@ -411,6 +373,7 @@ export default function ProfileDashboard() {
                     defaultValue: "Save changes",
                   })}
                 </Button>
+                </div>
               </CardFooter>
             </Card>
           </div>

@@ -11,13 +11,13 @@ import { api, ApiError } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, LayoutGrid, List, UtensilsCrossed } from 'lucide-react';
+import { Clock, LayoutGrid, List, RefreshCcw, UtensilsCrossed } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
 import { PageTransition } from '@/components/ui/page-transition';
 import { DashboardGridSkeleton } from '@/components/ui/dashboard-skeletons';
 import { format, startOfDay, endOfDay, subDays, subHours, isWithinInterval } from 'date-fns';
 import { TableCardView } from '@/components/waiter/TableCardView';
-import { getStoredStoreSlug, setStoredStoreSlug } from '@/lib/storeSlug';
+import { getStoredStoreSlug, resolveStoreDisplayName, setStoredStoreSlug } from '@/lib/storeSlug';
 import { StatusFilter } from '@/components/waiter/StatusFilter';
 import { TimeRangePicker } from '@/components/waiter/TimeRangePicker';
 import { WaiterMenuTab } from './WaiterMenuTab';
@@ -37,6 +37,7 @@ const LS_ACTIVE_TAB_KEY = 'waiter_active_tab';
 
 type ViewMode = 'orders' | 'tables';
 type WaiterTab = 'orders' | 'menu';
+type EmbeddedHybridView = 'menu' | 'tables';
 
 type StatusKey = 'PLACED' | 'PREPARING' | 'READY' | 'SERVED' | 'PAID' | 'CANCELLED' | 'ALL';
 type DateFilterKey = 'today' | 'last24h' | 'week' | 'custom';
@@ -229,7 +230,17 @@ const saveFilter = <T,>(key: string, value: T) => {
   }
 };
 
-export default function WaiterDashboard() {
+interface WaiterDashboardProps {
+  embeddedHybrid?: boolean;
+  embeddedHybridView?: EmbeddedHybridView;
+  hideEmbeddedNavigation?: boolean;
+}
+
+export default function WaiterDashboard({
+  embeddedHybrid = false,
+  embeddedHybridView,
+  hideEmbeddedNavigation = false,
+}: WaiterDashboardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -255,8 +266,7 @@ export default function WaiterDashboard() {
       return '';
     }
   });
-  const waiterPrinterTopic =
-    user?.waiterType?.printerTopic ?? null;
+  const waiterPrinterTopic = null;
   const [storeOrderingMode, setStoreOrderingMode] = useState<OrderingMode>('qr');
   const [lastCallTableId, setLastCallTableId] = useState<string | null>(null);
   
@@ -299,6 +309,16 @@ export default function WaiterDashboard() {
   const [showInactiveTables, setShowInactiveTables] = useState<boolean>(() => 
     getSavedFilter(LS_SHOW_INACTIVE_KEY, false)
   );
+
+  useEffect(() => {
+    if (!embeddedHybridView) return;
+    if (embeddedHybridView === 'menu') {
+      setActiveTab('menu');
+      return;
+    }
+    setActiveTab('orders');
+    setViewMode('tables');
+  }, [embeddedHybridView]);
 
   // Save filters to localStorage when they change
   useEffect(() => {
@@ -415,10 +435,14 @@ export default function WaiterDashboard() {
   );
 
   useEffect(() => {
-    if (!isAuthenticated() || user?.role !== 'waiter') {
+    if (!isAuthenticated() || (user?.role !== 'waiter' && user?.role !== 'hybrid')) {
       navigate('/login');
+      return;
     }
-  }, [isAuthenticated, user, navigate]);
+    if (user?.role === 'hybrid' && !embeddedHybrid) {
+      navigate('/hybrid', { replace: true });
+    }
+  }, [embeddedHybrid, isAuthenticated, user, navigate]);
 
   // Load assignments + store slug
   const fetchAssignments = useCallback(async () => {
@@ -881,22 +905,37 @@ export default function WaiterDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const loadingOrders = !assignmentsLoaded || !shiftLoaded;
-  // Always allow waiter to place orders for their assigned tables
-  const enableWaiterMenu = true;
-  const storeTitle =
-    (() => {
-      try {
-        return localStorage.getItem('STORE_NAME');
-      } catch {
-        return null;
-      }
-    })() || user?.storeSlug || t('waiter.dashboard');
+  const isHybridUser = user?.role === 'hybrid';
+  const enableWaiterMenu = storeOrderingMode === 'waiter' || storeOrderingMode === 'hybrid';
+  const isForcedTablesView = embeddedHybridView === 'tables';
+
+  useEffect(() => {
+    if (assignmentsLoaded && !enableWaiterMenu && activeTab === 'menu') {
+      setActiveTab('orders');
+    }
+  }, [activeTab, assignmentsLoaded, enableWaiterMenu]);
+
+  const storedStoreName = (() => {
+    try {
+      return localStorage.getItem('STORE_NAME');
+    } catch {
+      return null;
+    }
+  })();
+  const storeTitle = resolveStoreDisplayName(
+    storedStoreName,
+    user?.storeSlug,
+    t('waiter.dashboard')
+  );
+  const headerSupertitle = embeddedHybrid
+    ? t('hybrid.dashboard', { defaultValue: 'Hybrid' })
+    : t('waiter.dashboard');
 
   return (
     <PageTransition className={clsx(themedWrapper, 'min-h-screen min-h-dvh')}>
-      <div className="min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col">
+      <div className="dashboard-scrollbars-hidden min-h-screen min-h-dvh dashboard-bg text-foreground flex flex-col overflow-x-hidden">
         <DashboardHeader
-          supertitle={t('waiter.dashboard')}
+          supertitle={headerSupertitle}
           title={storeTitle}
           subtitle={undefined}
           icon="🍽️"
@@ -914,56 +953,86 @@ export default function WaiterDashboard() {
               ) : null}
             </div>
           ) : undefined}
-          burgerActions={null}
+          burgerActions={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          }
         />
 
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 flex-1 w-full">
-          {/* Main Navigation - Orders / Menu */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-            <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-sm border border-border/50 shadow-sm">
-              <button
-                onClick={() => setActiveTab('orders')}
-                className={clsx(
-                  'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
-                  activeTab === 'orders'
-                    ? 'bg-card text-foreground shadow-md'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+        <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 flex-1 min-w-0">
+          {!hideEmbeddedNavigation && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-sm border border-border/50 shadow-sm">
+                <button
+                  onClick={() => setActiveTab('orders')}
+                  className={clsx(
+                    'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
+                    activeTab === 'orders'
+                      ? 'bg-card text-foreground shadow-md'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                  )}
+                >
+                  <List className="w-4 h-4" />
+                  <span>{t('waiter.orders')}</span>
+                  {orderCounts.PLACED + orderCounts.PREPARING + orderCounts.READY > 0 && (
+                    <span className={clsx(
+                      'min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold flex items-center justify-center',
+                      activeTab === 'orders' ? 'bg-primary text-primary-foreground' : 'bg-muted-foreground/20'
+                    )}>
+                      {orderCounts.PLACED + orderCounts.PREPARING + orderCounts.READY}
+                    </span>
+                  )}
+                </button>
+                {enableWaiterMenu && (
+                  <button
+                    onClick={() => setActiveTab('menu')}
+                    className={clsx(
+                      'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
+                      activeTab === 'menu'
+                        ? 'bg-card text-foreground shadow-md'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                    )}
+                  >
+                    <UtensilsCrossed className="w-4 h-4" />
+                    <span>{t('menu.title')}</span>
+                  </button>
                 )}
-              >
-                <List className="w-4 h-4" />
-                <span>{t('waiter.orders')}</span>
-                {orderCounts.PLACED + orderCounts.PREPARING + orderCounts.READY > 0 && (
-                  <span className={clsx(
-                    'min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold flex items-center justify-center',
-                    activeTab === 'orders' ? 'bg-primary text-primary-foreground' : 'bg-muted-foreground/20'
-                  )}>
-                    {orderCounts.PLACED + orderCounts.PREPARING + orderCounts.READY}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab('menu')}
-                className={clsx(
-                  'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
-                  activeTab === 'menu'
-                    ? 'bg-card text-foreground shadow-md'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
-                )}
-              >
-                <UtensilsCrossed className="w-4 h-4" />
-                <span>{t('menu.title')}</span>
-              </button>
+              </div>
+              <span className="text-xs text-muted-foreground px-2">
+                {storeOrderingMode === 'waiter'
+                  ? t('waiter.waiter_only_mode', { defaultValue: 'Waiter-led ordering' })
+                  : storeOrderingMode === 'hybrid'
+                    ? t('waiter.hybrid_mode', { defaultValue: 'Hybrid (QR + waiter)' })
+                    : t('waiter.qr_only_mode', { defaultValue: 'Guest self-order only' })}
+              </span>
             </div>
-            <span className="text-xs text-muted-foreground px-2">
-              {storeOrderingMode === 'waiter'
-                ? t('waiter.waiter_only_mode', { defaultValue: 'Waiter-led ordering' })
-                : t('waiter.hybrid_mode', { defaultValue: 'Hybrid (QR + waiter)' })}
-            </span>
-          </div>
+          )}
 
           {activeTab === 'menu' ? (
             !assignmentsLoaded ? (
               <DashboardGridSkeleton count={3} />
+            ) : !enableWaiterMenu ? (
+              <div className="rounded-2xl border border-border/60 bg-card/70 p-6 text-center shadow-lg">
+                <p className="text-base font-semibold text-foreground">
+                  {t('waiter.menu_unavailable_title', {
+                    defaultValue: 'Manual ordering is disabled',
+                  })}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {t('waiter.menu_unavailable_message', {
+                    defaultValue:
+                      'Enable Browse-only or Hybrid ordering mode to let staff place orders from the menu.',
+                  })}
+                </p>
+              </div>
             ) : (
               <WaiterMenuTab
                 storeSlug={storeSlug}
@@ -978,12 +1047,17 @@ export default function WaiterDashboard() {
               {/* Header with title and date filter */}
               <div className="flex flex-col gap-4 mb-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-1 w-10 bg-gradient-primary rounded-full" />
-                    <h2 className="text-xl sm:text-2xl font-bold text-foreground">{t('waiter.orders')}</h2>
-                    
+                  <div className="flex flex-wrap items-center gap-3 min-w-0">
+                    <div className="h-1 w-10 bg-gradient-primary rounded-full shrink-0" />
+                    <h2 className="text-xl sm:text-2xl font-bold text-foreground truncate">
+                      {isForcedTablesView
+                        ? t('waiter.tables', { defaultValue: 'Tables' })
+                        : t('waiter.orders')}
+                    </h2>
+
                     {/* View Mode Toggle */}
-                    <div className="flex items-center gap-0.5 bg-card border border-border rounded-full p-0.5 shadow-sm ml-2">
+                    {!isForcedTablesView && (
+                    <div className="flex items-center gap-0.5 bg-card border border-border rounded-full p-0.5 shadow-sm sm:ml-2 shrink-0">
                       <button
                         onClick={() => setViewMode('orders')}
                         className={clsx(
@@ -1009,6 +1083,7 @@ export default function WaiterDashboard() {
                         <LayoutGrid className="w-4 h-4" />
                       </button>
                     </div>
+                    )}
                   </div>
                   
                   {/* Time Range Picker */}
@@ -1041,6 +1116,7 @@ export default function WaiterDashboard() {
                   orders={allTableOrders}
                   onUpdateStatus={handleUpdateStatus}
                   onUpdateItemStatus={handleUpdateItemStatus}
+                  mode={isHybridUser ? 'full' : 'waiter'}
                   showInactiveTables={showInactiveTables}
                   onToggleInactive={() => setShowInactiveTables(prev => !prev)}
                 />
@@ -1073,8 +1149,14 @@ export default function WaiterDashboard() {
                       order={order}
                       onUpdateStatus={handleUpdateStatus}
                       onUpdateItemStatus={handleUpdateItemStatus}
-                      mode="waiter"
-                      busy={actingIds.has(`SERVED:${order.id}`) || actingIds.has(`PAID:${order.id}`)}
+                      mode={isHybridUser ? 'full' : 'waiter'}
+                      busy={
+                        actingIds.has(`PREPARING:${order.id}`) ||
+                        actingIds.has(`READY:${order.id}`) ||
+                        actingIds.has(`SERVED:${order.id}`) ||
+                        actingIds.has(`PAID:${order.id}`) ||
+                        actingIds.has(`CANCELLED:${order.id}`)
+                      }
                       highlighted={highlightedIds.has(order.id)}
                     />
                   ))}

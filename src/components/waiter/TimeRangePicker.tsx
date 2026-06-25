@@ -82,13 +82,13 @@ export function TimeRangePicker({
       </PopoverTrigger>
       
       <PopoverContent 
-        className="w-auto p-0 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-2xl overflow-hidden" 
+        className="w-[calc(100vw-1.5rem)] max-w-sm p-0 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-2xl overflow-hidden sm:w-auto"
         align="end"
         sideOffset={8}
       >
         <div className="p-1">
           {/* Preset options */}
-          <div className="flex gap-1 p-2">
+          <div className="flex flex-col gap-1 p-2 sm:flex-row">
             {presets.map((preset) => (
               <motion.button
                 key={preset.key}
@@ -99,7 +99,7 @@ export function TimeRangePicker({
                   }
                 }}
                 className={clsx(
-                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  'w-full px-3 py-2 rounded-lg text-left text-sm font-medium transition-all sm:w-auto sm:py-1.5 sm:text-center',
                   value === preset.key
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -124,7 +124,7 @@ export function TimeRangePicker({
                 <div className="border-t border-border/30 pt-3 pb-2 px-2">
                   {/* Date range display */}
                   <div className="flex items-center justify-between mb-3 px-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
                       <button
                         onClick={() => setSelectingStart(true)}
                         className={clsx(
@@ -136,7 +136,7 @@ export function TimeRangePicker({
                       >
                         {format(new Date(customStart), 'MMM d, yyyy')}
                       </button>
-                      <span className="text-muted-foreground">→</span>
+                      <span className="rotate-90 self-center text-muted-foreground sm:rotate-0">→</span>
                       <button
                         onClick={() => setSelectingStart(false)}
                         className={clsx(
