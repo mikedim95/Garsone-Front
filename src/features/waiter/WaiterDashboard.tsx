@@ -81,6 +81,120 @@ const normalizeOrderingMode = (mode?: string | null): OrderingMode =>
 const centsToCurrency = (value?: number | null) =>
   typeof value === 'number' ? value / 100 : 0;
 
+const pickOptionIds = (value: unknown): string[] => {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => pickOptionIds(entry));
+  }
+  if (isRecord(value)) {
+    if (typeof value.id === 'string') return [value.id];
+  }
+  return [];
+};
+
+const normalizeModifierSelections = (value: unknown): Record<string, string | string[]> => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return normalizeModifierSelections(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.reduce<Record<string, string | string[]>>((acc, entry) => {
+      if (!isRecord(entry)) return acc;
+      const modifierId =
+        typeof entry.modifierId === 'string'
+          ? entry.modifierId
+          : typeof entry.id === 'string'
+            ? entry.id
+            : null;
+      if (!modifierId) return acc;
+      const optionIds = pickOptionIds(
+        entry.modifierOptionId ?? entry.optionId ?? entry.optionIds ?? entry.options
+      );
+      if (optionIds.length === 1) acc[modifierId] = optionIds[0];
+      if (optionIds.length > 1) acc[modifierId] = optionIds;
+      return acc;
+    }, {});
+  }
+  if (isRecord(value)) {
+    if (typeof value.modifierId === 'string') {
+      const optionIds = pickOptionIds(
+        value.modifierOptionId ?? value.optionId ?? value.optionIds ?? value.options
+      );
+      if (optionIds.length === 1) return { [value.modifierId]: optionIds[0] };
+      if (optionIds.length > 1) return { [value.modifierId]: optionIds };
+      return {};
+    }
+    return Object.entries(value).reduce<Record<string, string | string[]>>((acc, [modifierId, option]) => {
+      const optionIds = pickOptionIds(option);
+      if (optionIds.length === 1) acc[modifierId] = optionIds[0];
+      if (optionIds.length > 1) acc[modifierId] = optionIds;
+      return acc;
+    }, {});
+  }
+  return {};
+};
+
+const normalizeModifierLabels = (value: unknown): Record<string, string> => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return normalizeModifierLabels(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.reduce<Record<string, string>>((acc, entry) => {
+      if (!isRecord(entry)) return acc;
+      const modifierId =
+        typeof entry.modifierId === 'string'
+          ? entry.modifierId
+          : typeof entry.id === 'string'
+            ? entry.id
+            : null;
+      const label =
+        typeof entry.title === 'string'
+          ? entry.title
+          : typeof entry.name === 'string'
+            ? entry.name
+            : typeof entry.label === 'string'
+              ? entry.label
+              : null;
+      if (!modifierId || !label) return acc;
+      acc[modifierId] = acc[modifierId] ? `${acc[modifierId]}, ${label}` : label;
+      return acc;
+    }, {});
+  }
+  if (isRecord(value)) {
+    return Object.entries(value).reduce<Record<string, string>>((acc, [modifierId, option]) => {
+      if (!isRecord(option)) return acc;
+      const label =
+        typeof option.label === 'string'
+          ? option.label
+          : typeof option.title === 'string'
+            ? option.title
+            : typeof option.name === 'string'
+              ? option.name
+              : null;
+      if (label) acc[modifierId] = label;
+      return acc;
+    }, {});
+  }
+  return {};
+};
+
+const getSelectedModifiers = (record: Record<string, unknown>) => {
+  const direct = normalizeModifierSelections(record.selectedModifiers);
+  if (Object.keys(direct).length > 0) return direct;
+  const modifiers = normalizeModifierSelections(record.modifiers);
+  if (Object.keys(modifiers).length > 0) return modifiers;
+  return normalizeModifierSelections(record.orderItemOptions);
+};
+
 const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] => {
   const record = isRecord(raw) ? raw : {};
   const orderItemId = typeof record.id === 'string' ? record.id : undefined;
@@ -110,14 +224,12 @@ const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] =
     `${name}-${idx}`;
   if (isRecord(record.item)) {
     const itemRecord = record.item;
-    const modifiersRaw = record.selectedModifiers;
-    const selectedModifiers =
-      isRecord(modifiersRaw)
-        ? Object.entries(modifiersRaw).reduce<Record<string, string>>((acc, [key, value]) => {
-            if (typeof value === 'string') acc[key] = value;
-            return acc;
-          }, {})
-        : {};
+    const selectedModifiers = getSelectedModifiers(record);
+    const selectedModifierLabels = {
+      ...normalizeModifierLabels(record.selectedModifiers),
+      ...normalizeModifierLabels(record.modifiers),
+      ...normalizeModifierLabels(record.orderItemOptions),
+    };
     return {
       item: {
         id: typeof itemRecord.id === 'string' ? itemRecord.id : itemId,
@@ -132,15 +244,23 @@ const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] =
         image: typeof itemRecord.image === 'string' ? itemRecord.image : '',
         category: typeof itemRecord.category === 'string' ? itemRecord.category : '',
         available: itemRecord.available !== false,
+        modifiers: Array.isArray(itemRecord.modifiers) ? itemRecord.modifiers : undefined,
       },
       quantity,
       selectedModifiers,
+      selectedModifierLabels: Object.keys(selectedModifierLabels).length ? selectedModifierLabels : undefined,
       orderItemId,
       status,
       acceptedAt,
       servedAt,
     };
   }
+  const selectedModifiers = getSelectedModifiers(record);
+  const selectedModifierLabels = {
+    ...normalizeModifierLabels(record.selectedModifiers),
+    ...normalizeModifierLabels(record.modifiers),
+    ...normalizeModifierLabels(record.orderItemOptions),
+  };
   return {
     item: {
       id: itemId,
@@ -152,7 +272,8 @@ const normalizeOrderItem = (raw: unknown, idx: number): Order['items'][number] =
       available: true,
     },
     quantity,
-    selectedModifiers: {},
+    selectedModifiers,
+    selectedModifierLabels: Object.keys(selectedModifierLabels).length ? selectedModifierLabels : undefined,
     orderItemId,
     status,
     acceptedAt,

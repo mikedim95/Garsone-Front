@@ -152,7 +152,9 @@ const normalizeItemStatus = (value: unknown): OrderItemStatus | undefined => {
 const getSelectedModifiers = (record: Record<string, unknown>) => {
   const direct = normalizeModifierSelections(record.selectedModifiers);
   if (Object.keys(direct).length > 0) return direct;
-  return normalizeModifierSelections(record.modifiers);
+  const modifiers = normalizeModifierSelections(record.modifiers);
+  if (Object.keys(modifiers).length > 0) return modifiers;
+  return normalizeModifierSelections(record.orderItemOptions);
 };
 
 const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
@@ -195,6 +197,7 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
   const selectedModifierLabels = {
     ...normalizeModifierLabels(record.selectedModifiers),
     ...normalizeModifierLabels(record.modifiers),
+    ...normalizeModifierLabels(record.orderItemOptions),
   };
   return {
     item: {
