@@ -1,129 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { QR_MOCKUP } from '@/lib/mockData';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
-import { api } from '@/lib/api';
-import type { LandingStoreLink } from '@/types';
 import { setStoredStoreSlug } from '@/lib/storeSlug';
 import { useTranslation } from 'react-i18next';
+import {
+  FRONTEND_OFFLINE_MENU_STORE_SLUG,
+  FRONTEND_OFFLINE_MENU_TABLE_ID,
+} from '@/lib/frontendOfflineMenu';
 
-type DemoQRGridProps = {
-  liveUrl?: string | null;
-};
-
-export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
+export const DemoQRGrid = () => {
   const { t } = useTranslation();
-  const [liveUrl, setLiveUrl] = useState<string | null>(providedLiveUrl ?? null);
-  const [stores, setStores] = useState<LandingStoreLink[]>([]);
-  const [loadingStores, setLoadingStores] = useState(false);
-
-  const publicCodeBase = useMemo(() => {
-    const envBase = (import.meta.env.VITE_PUBLIC_CODE_BASE as string | undefined)?.trim();
-    if (envBase && envBase.length > 0) {
-      return envBase.replace(/\/$/, '');
-    }
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin.replace(/\/$/, '')}/q`;
-    }
-    // SSR fallback: prefer a declared public origin, otherwise default to localhost frontend port
-    const originEnv = (import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined)?.trim();
-    const origin = originEnv && originEnv.length > 0 ? originEnv.replace(/\/$/, '') : 'http://localhost:5173';
-    return `${origin}/q`;
+  const offlineMenuUrl = useMemo(() => {
+    const origin =
+      typeof window !== 'undefined'
+        ? window.location.origin.replace(/\/$/, '')
+        : ((import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined)?.trim() || 'http://localhost:5173').replace(/\/$/, '');
+    return `${origin}/${FRONTEND_OFFLINE_MENU_TABLE_ID}`;
   }, []);
-
-  const getBaseOrigin = (storeSlug?: string | null) => {
-    const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN as string | undefined;
-    if (envOrigin && envOrigin.trim().length > 0) {
-      const normalized = envOrigin.replace(/\/$/, '');
-      return normalized.replace('{storeSlug}', storeSlug || '');
-    }
-    if (typeof window !== 'undefined') {
-      const { protocol, hostname, port } = window.location;
-      const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
-      const isLocal = hostname === 'localhost';
-      let host = hostname;
-      // Only swap subdomain when we control the wildcard domain (skip on *.onrender.com to avoid 404s)
-      const allowSubdomain =
-        !hostname.endsWith('onrender.com') &&
-        !hostname.endsWith('render.com') &&
-        hostname.split('.').length > 2;
-      if (storeSlug && !isIp && !isLocal && hostname.includes('.') && allowSubdomain) {
-        const parts = hostname.split('.');
-        parts[0] = storeSlug;
-        host = parts.join('.');
-      }
-      const portPart = port ? `:${port}` : '';
-      return `${protocol}//${host}${portPart}`;
-    }
-    return 'http://localhost:8080';
-  };
-
-  const buildStoreUrl = (store: LandingStoreLink) => {
-    if (store.publicCode) {
-      return `${publicCodeBase}/${store.publicCode}`;
-    }
-    if (store.tableId) {
-      const origin = getBaseOrigin(store.slug);
-      return `${origin}/${store.tableId}`;
-    }
-    return null;
-  };
-
-  useEffect(() => {
-    setLiveUrl(providedLiveUrl ?? null);
-  }, [providedLiveUrl]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoadingStores(true);
-        const res = await api.getLandingStores();
-        if (!mounted) return;
-        setStores(res?.stores ?? []);
-      } catch (error) {
-        console.warn('Failed to fetch landing stores', error);
-      } finally {
-        if (mounted) setLoadingStores(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    if (providedLiveUrl) {
-      return () => {
-        mounted = false;
-      };
-    }
-    (async () => {
-      try {
-        const data = await api.getTables();
-        const actives = (data?.tables || []).filter((t) => t.active);
-        if (actives.length > 0) {
-          const random = actives[Math.floor(Math.random() * actives.length)];
-          if (mounted) setLiveUrl(`${getBaseOrigin()}/${random.id}`);
-        }
-      } catch (error) {
-        console.warn('Failed to fetch tables for DemoQRGrid', error);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [providedLiveUrl]);
-
-  const storeCards = (stores || [])
-    .filter((store) =>
-      store.slug === 'acropolis-street-food' ||
-      store.name?.toLowerCase().includes('acropolis')
-    )
-    .slice(0, 1);
-  const singleCard = storeCards.length === 1;
 
   return (
     <div className="py-32 bg-gradient-card" data-section="demo-qr">
@@ -141,144 +36,44 @@ export const DemoQRGrid = ({ liveUrl: providedLiveUrl }: DemoQRGridProps) => {
         </div>
 
         <div className="mb-20" data-live-qr-anchor>
-          {storeCards.length > 0 ? (
-            <div
-              className={
-                singleCard
-                  ? 'grid gap-8 place-items-center'
-                  : 'grid gap-8 md:grid-cols-2 lg:grid-cols-3'
-              }
-            >
-              {storeCards.map((store) => {
-                const qrUrl = buildStoreUrl(store);
-                const label = store.tableLabel
-                  ? t('landing.demo.table_label', {
-                      label: store.tableLabel,
-                      defaultValue: `Table ${store.tableLabel}`,
-                    })
-                  : t('landing.demo.live_table', { defaultValue: 'Live table' });
-                return (
-                  <div
-                    key={store.id}
-                    className={`group p-8 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2 ${
-                      singleCard ? 'w-full max-w-md mx-auto' : ''
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <h3 className="text-2xl font-bold text-foreground text-left">{store.name}</h3>
-                      <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                        {store.slug}
-                      </span>
-                    </div>
-                    <p className="text-primary font-medium mb-6 text-left">{label}</p>
-                    <div className="flex-1 flex items-center justify-center mb-6">
-                      <div className="glass p-6 rounded-3xl border-2 border-border w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-                        {qrUrl ? (
-                          <QRCodeSVG key={qrUrl} value={qrUrl} size={220} level="H" includeMargin={false} />
-                        ) : (
-                          <div className="text-sm text-primary text-center">
-                            {t('landing.demo.no_active_table', {
-                              defaultValue: 'No active table found',
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 mt-auto rounded-2xl py-5 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
-                  disabled={!qrUrl}
-                  onClick={() => {
-                    try {
-                      setStoredStoreSlug(store.slug || "");
-                    } catch (error) {
-                      console.warn("Failed to persist STORE_SLUG from landing", error);
-                    }
-                    console.log("[DemoQRGrid] card click", {
-                      store: store.slug,
-                      tableId: store.tableId,
-                      publicCode: store.publicCode,
-                      qrUrl,
-                      host: typeof window !== "undefined" ? window.location.origin : "ssr",
-                    });
-                    if (qrUrl) window.location.assign(qrUrl);
-                  }}
-                >
-                  {qrUrl ? (
-                    <>
-                      <ExternalLink className="h-4 w-4" />
-                      {t('landing.demo.open_menu', { defaultValue: 'Open menu' })}
-                    </>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 opacity-70">
-                      <ExternalLink className="h-4 w-4" />
-                      {t('landing.demo.preparing_link', { defaultValue: 'Preparing link' })}
-                    </span>
-                  )}
-                </Button>
-              </div>
-            );
-          })}
-            </div>
-          ) : (
-            <div className="max-w-lg mx-auto">
-              <div className="group p-10 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2">
-                <h3 className="text-2xl font-bold mb-2 text-foreground">
-                  {t('landing.demo.fallback_title', { defaultValue: 'Live Store' })}
-                </h3>
-                <p className="text-primary font-medium mb-8">
-                  {t('landing.demo.fallback_subtitle', {
-                    defaultValue: 'Random active table from the real Garsone backend',
-                  })}
-                </p>
-                <div className="flex-1 flex items-center justify-center mb-8">
-                  <div className="glass p-6 rounded-3xl border-2 border-border w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-                    {liveUrl ? (
-                      <QRCodeSVG key={liveUrl} value={liveUrl} size={220} level="H" includeMargin={false} />
-                    ) : (
-                      <div className="text-sm text-primary text-center">
-                        {loadingStores
-                          ? t('landing.demo.loading_stores', {
-                              defaultValue: 'Loading stores...',
-                            })
-                          : t('landing.demo.fetching_table', {
-                              defaultValue: 'Fetching a table...',
-                            })}
-                      </div>
-                    )}
-                  </div>
+          <div className="max-w-lg mx-auto">
+            <div className="group p-10 text-center bg-card text-card-foreground rounded-3xl border border-border hover:border-primary/60 hover:shadow-2xl transition-all duration-300 h-full flex flex-col hover:-translate-y-2">
+              <h3 className="text-2xl font-bold mb-2 text-foreground">
+                {t('landing.demo.fallback_title', { defaultValue: 'Offline Menu' })}
+              </h3>
+              <p className="text-primary font-medium mb-8">
+                {t('landing.demo.fallback_subtitle', {
+                  defaultValue: 'Frontend-only demo menu stored in the production app',
+                })}
+              </p>
+              <div className="flex-1 flex items-center justify-center mb-8">
+                <div className="glass p-6 rounded-3xl border-2 border-border w-[232px] h-[232px] flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                  <QRCodeSVG key={offlineMenuUrl} value={offlineMenuUrl} size={220} level="H" includeMargin={false} />
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 mt-auto rounded-2xl py-6 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
-                  disabled={!liveUrl}
-                  onClick={() => {
-                    console.log("[DemoQRGrid] fallback live click", {
-                      liveUrl,
-                      host: typeof window !== "undefined" ? window.location.origin : "ssr",
-                    });
-                    if (liveUrl) window.location.assign(liveUrl);
-                  }}
-                >
-                  {liveUrl ? (
-                    <>
-                      <ExternalLink className="h-4 w-4" />
-                      {t('landing.demo.open_live_table', {
-                        defaultValue: 'Open Live Table',
-                      })}
-                    </>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 opacity-70">
-                      <ExternalLink className="h-4 w-4" />
-                      {t('landing.demo.preparing_link_dots', {
-                        defaultValue: 'Preparing link...',
-                      })}
-                    </span>
-                  )}
-                </Button>
               </div>
+              <Button
+                variant="outline"
+                className="w-full gap-2 mt-auto rounded-2xl py-6 hover:border-primary hover:bg-accent/30 transition-all text-foreground"
+                onClick={() => {
+                  try {
+                    setStoredStoreSlug(FRONTEND_OFFLINE_MENU_STORE_SLUG);
+                  } catch (error) {
+                    console.warn("Failed to persist offline STORE_SLUG from landing", error);
+                  }
+                  console.log("[DemoQRGrid] frontend offline menu click", {
+                    offlineMenuUrl,
+                    host: typeof window !== "undefined" ? window.location.origin : "ssr",
+                  });
+                  window.location.assign(offlineMenuUrl);
+                }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                {t('landing.demo.open_live_table', {
+                  defaultValue: 'Open Offline Menu',
+                })}
+              </Button>
             </div>
-          )}
+          </div>
         </div>
 
         <div className="relative max-w-5xl mx-auto">

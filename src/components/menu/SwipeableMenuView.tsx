@@ -51,6 +51,7 @@ interface Props {
   openCartSignal?: number;
   orderPlacedSignal?: number;
   showCartButton?: boolean;
+  browseOnly?: boolean;
   cartBottomOffset?: 'default' | 'raised';
 }
 
@@ -62,6 +63,7 @@ interface ItemGridProps {
   fallbackLabel: string;
   addItemLabel: string;
   active?: boolean;
+  browseOnly?: boolean;
   showPrices?: boolean;
   selectedQuantities: Map<string, number>;
 }
@@ -114,6 +116,7 @@ const ItemGrid = ({
   fallbackLabel,
   addItemLabel,
   active = false,
+  browseOnly = false,
   showPrices = true,
   selectedQuantities,
 }: ItemGridProps) => (
@@ -140,10 +143,12 @@ const ItemGrid = ({
         >
           <button
             type="button"
-            className="block h-full w-full text-left disabled:cursor-not-allowed"
-            onClick={() => onAdd(item)}
-            disabled={unavailable}
-            aria-label={`${addItemLabel}: ${displayName}`}
+            className="block h-full w-full text-left disabled:cursor-default"
+            onClick={() => {
+              if (!browseOnly) onAdd(item);
+            }}
+            disabled={browseOnly || unavailable}
+            aria-label={browseOnly ? displayName : `${addItemLabel}: ${displayName}`}
           >
             <div className="relative aspect-[4/3] overflow-hidden bg-black">
               {item.image ? (
@@ -211,6 +216,7 @@ export const SwipeableMenuView = ({
   showBackButton = true,
   showAllCategory = true,
   showCartButton = true,
+  browseOnly = false,
   cartBottomOffset = 'default',
   primaryCtaLabel,
 }: Props) => {
@@ -453,6 +459,7 @@ export const SwipeableMenuView = ({
   };
 
   const handleAddItemClick = (item: MenuItem) => {
+    if (browseOnly) return;
     if (item.available === false) return;
     onAddItem(item);
   };
@@ -746,6 +753,7 @@ export const SwipeableMenuView = ({
                             fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                             addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                             active
+                            browseOnly={browseOnly}
                             selectedQuantities={selectedQuantities}
                           />
                         ))}
@@ -784,6 +792,7 @@ export const SwipeableMenuView = ({
                                   fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                                   addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                                   active
+                                  browseOnly={browseOnly}
                                   showPrices={!sharedPriceLabel}
                                   selectedQuantities={selectedQuantities}
                                 />
@@ -801,6 +810,7 @@ export const SwipeableMenuView = ({
                         fallbackLabel={t('menu.item', { defaultValue: 'Item' })}
                         addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                         active
+                        browseOnly={browseOnly}
                         selectedQuantities={selectedQuantities}
                       />
                   )}
@@ -871,24 +881,27 @@ export const SwipeableMenuView = ({
             <div aria-hidden="true" />
           )}
 
-          {/* Call Waiter Button */}
-          <motion.button
-            type="button"
-            onClick={handleBellClick}
-            disabled={callStatus === 'pending'}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className={`relative flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 ${
-              callStatus === 'pending'
-                ? 'bg-primary/15 text-primary cursor-wait'
-                : 'bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
-              <span className="absolute inset-0 rounded-full bg-primary/15 animate-ping" />
-            )}
-            <Bell className={`relative h-5 w-5 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
-          </motion.button>
+          {browseOnly ? (
+            <div aria-hidden="true" />
+          ) : (
+            <motion.button
+              type="button"
+              onClick={handleBellClick}
+              disabled={callStatus === 'pending'}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`relative flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 ${
+                callStatus === 'pending'
+                  ? 'bg-primary/15 text-primary cursor-wait'
+                  : 'bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {(callStatus === 'pending' || callStatus === 'accepted' || isRinging) && (
+                <span className="absolute inset-0 rounded-full bg-primary/15 animate-ping" />
+              )}
+              <Bell className={`relative h-5 w-5 ${isRinging ? 'animate-[wiggle_0.5s_ease-in-out_infinite]' : ''}`} />
+            </motion.button>
+          )}
         </motion.div>
       </div>
 

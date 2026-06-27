@@ -656,18 +656,18 @@
       "subtitle": "Ενταχθείτε στα εστιατόρια που χρησιμοποιούν ήδη το Garsone για πιο αποδοτική λειτουργία"
     },
     "demo": {
-      "title": "Δείτε το ζωντανά",
-      "subtitle": "Σκανάρετε ένα live κατάστημα για να μπείτε απευθείας στο πραγματικό μενού του.",
+      "title": "Δείτε το demo",
+      "subtitle": "Σκανάρετε το frontend-only μενού για να μπείτε απευθείας στην εμπειρία πελάτη.",
       "table_label": "Τραπέζι {{label}}",
       "live_table": "Live τραπέζι",
       "no_active_table": "Δεν βρέθηκε ενεργό τραπέζι",
       "open_menu": "Άνοιγμα μενού",
       "preparing_link": "Προετοιμασία συνδέσμου",
-      "fallback_title": "Live κατάστημα",
-      "fallback_subtitle": "Τυχαίο ενεργό τραπέζι από το πραγματικό backend του Garsone",
+      "fallback_title": "Offline μενού",
+      "fallback_subtitle": "Frontend-only demo μενού αποθηκευμένο στην production εφαρμογή",
       "loading_stores": "Φόρτωση καταστημάτων...",
       "fetching_table": "Αναζήτηση τραπεζιού...",
-      "open_live_table": "Άνοιγμα live τραπεζιού",
+      "open_live_table": "Άνοιγμα offline μενού",
       "preparing_link_dots": "Προετοιμασία συνδέσμου...",
       "mockup_alt": "Παράδειγμα QR παραγγελίας"
     },

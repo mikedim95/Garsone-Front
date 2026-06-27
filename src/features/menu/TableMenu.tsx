@@ -31,6 +31,11 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTheme } from "@/components/theme-provider-context";
 import { useCartStore } from "@/store/cartStore";
 import { api, ApiError, API_BASE } from "@/lib/api";
+import {
+  FRONTEND_OFFLINE_MENU_STORE_SLUG,
+  getFrontendOfflineMenuBootstrap,
+  isFrontendOfflineMenuPath,
+} from "@/lib/frontendOfflineMenu";
 import { registerCustomerPushForOrder } from "@/lib/customerPush";
 import { realtimeService } from "@/lib/realtime";
 import { useMenuStore } from "@/store/menuStore";
@@ -742,8 +747,9 @@ export default function TableMenu() {
   const [tableLabel, setTableLabel] = useState<string | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
   const tableLookupCode = tableParam || tableId || null;
+  const isFrontendOnlyMenu = isFrontendOfflineMenuPath(tableLookupCode);
   const activeTableId = tableId;
-  const guestOrderingEnabled = orderingMode !== "waiter";
+  const guestOrderingEnabled = !isFrontendOnlyMenu && orderingMode !== "waiter";
   const usesImmediateGuestCheckout = storeSlug?.trim().toLowerCase() === "noor";
   const isEditingExisting = editingOrderIds.length > 0 || Boolean(editingOrderId);
   const isEditingPendingBatch = editingOrderIds.length > 1;
@@ -1081,7 +1087,7 @@ export default function TableMenu() {
   const [localitySessionId] = useState(() => getLocalitySessionId());
   const deviceContext = getDeviceContext();
   const bootstrapQueryEnabled =
-    Boolean(tableLookupCode) && !isFallbackSlug(storeSlug);
+    Boolean(tableLookupCode) && (isFrontendOnlyMenu || !isFallbackSlug(storeSlug));
   const {
     data: bootstrap,
     isLoading: bootstrapLoading,
@@ -1092,6 +1098,9 @@ export default function TableMenu() {
     queryFn: async () => {
       if (!tableLookupCode) {
         throw new Error("Missing table identifier");
+      }
+      if (isFrontendOnlyMenu) {
+        return getFrontendOfflineMenuBootstrap();
       }
       return api.getMenuBootstrap(tableLookupCode, {
         storeSlug: storeSlug || undefined,
@@ -1110,7 +1119,7 @@ export default function TableMenu() {
   const { data: storeMeta } = useQuery({
     queryKey: ["store-meta", storeSlug || null],
     queryFn: async () => api.getStore(),
-    enabled: Boolean(storeSlug || tableLookupCode),
+    enabled: !isFrontendOnlyMenu && Boolean(storeSlug || tableLookupCode),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     refetchOnMount: false,
@@ -1246,6 +1255,12 @@ export default function TableMenu() {
   }, [bootstrap, preferGreek, setMenuCache]);
 
   useEffect(() => {
+    if (!isFrontendOnlyMenu) return;
+    clearCart();
+    setStoreSlug(FRONTEND_OFFLINE_MENU_STORE_SLUG);
+  }, [clearCart, isFrontendOnlyMenu]);
+
+  useEffect(() => {
     if (!storeMeta?.store) return;
     setOrderingMode(normalizeOrderingMode(storeMeta.store.orderingMode));
     if (storeMeta.store.name && !storeName) {
@@ -1255,7 +1270,7 @@ export default function TableMenu() {
 
   // If no usable storeSlug yet (or only the fallback), try to resolve it via public table lookup
   useEffect(() => {
-    if (isFallbackSlug(storeSlug) && tableLookupCode) {
+    if (!isFrontendOnlyMenu && isFallbackSlug(storeSlug) && tableLookupCode) {
       (async () => {
         try {
           const res = await fetch(
@@ -1282,7 +1297,7 @@ export default function TableMenu() {
         }
       })();
     }
-  }, [storeSlug, tableLookupCode, clearMenuCache]);
+  }, [isFrontendOnlyMenu, storeSlug, tableLookupCode, clearMenuCache]);
 
   useEffect(() => {
     if (lastOrder?.tableLabel) {
@@ -1358,7 +1373,7 @@ export default function TableMenu() {
   }, [dismissedOrderStorageKey]);
 
   useEffect(() => {
-    if (!activeTableId) {
+    if (isFrontendOnlyMenu || !activeTableId) {
       setPlacedOrders([]);
       return;
     }
@@ -1409,7 +1424,7 @@ export default function TableMenu() {
     return () => {
       cancelled = true;
     };
-  }, [activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
+  }, [isFrontendOnlyMenu, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     return computeSubmittedOrderTotal(order);
@@ -2314,7 +2329,7 @@ export default function TableMenu() {
 
   useEffect(() => {
     // subscribe for call acknowledgements for this table
-    if (!activeTableId || !storeSlug) return;
+    if (isFrontendOnlyMenu || !activeTableId || !storeSlug) return;
     let mounted = true;
     const callTopic = `${storeSlug}/waiter/call`;
     const preparingTopicLegacy = `${storeSlug}/orders/prepairing`;
@@ -2422,7 +2437,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(servedTopic);
       realtimeService.unsubscribe(placedTopic);
     };
-  }, [storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible]);
+  }, [isFrontendOnlyMenu, storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible]);
 
   useEffect(() => {
     // Collapse the call CTA while a call is in-flight/accepted
@@ -2667,7 +2682,7 @@ export default function TableMenu() {
               : hasActiveOrderBar && "pb-32"
           )}
         >
-          {!guestOrderingEnabled && (
+          {!guestOrderingEnabled && !isFrontendOnlyMenu && (
             <div className="mb-6 rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
               <p className="text-sm font-semibold text-foreground">
                 {t("menu.waiter_only_title", {
@@ -2737,6 +2752,7 @@ export default function TableMenu() {
               onCallClick={handleFloatingCallClick}
               cartBottomOffset={hasExpandedActiveOrderBar ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
+              browseOnly={isFrontendOnlyMenu}
               showPaymentButton={!usesImmediateGuestCheckout && !isEditingExisting}
             />
           )}

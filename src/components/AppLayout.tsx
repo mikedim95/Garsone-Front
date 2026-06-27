@@ -1,8 +1,6 @@
-import React, { useEffect, useState, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useEffect, useState, useRef, Suspense, lazy } from 'react';
 import { Hero } from './landing/Hero';
 import { Navigation } from './landing/Navigation';
-import { realtimeService } from '@/lib/realtime';
-import { api } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
 
 const AnimatedMockup = lazy(() =>
@@ -38,7 +36,6 @@ const AppLayout: React.FC = () => {
   const { t } = useTranslation();
   const demoRef = useRef<HTMLDivElement | null>(null);
   const [forceDemoVisible, setForceDemoVisible] = useState(false);
-  const [liveUrl, setLiveUrl] = useState<string | null>(null);
 
   const renderLazy = (
     node: React.ReactNode,
@@ -55,46 +52,6 @@ const AppLayout: React.FC = () => {
       {node}
     </Suspense>
   );
-
-  const getBaseOrigin = () => {
-    const envOrigin = import.meta.env.VITE_PUBLIC_BASE_ORIGIN;
-    if (envOrigin && envOrigin.trim().length > 0) {
-      return envOrigin.replace(/\/$/, '');
-    }
-    if (typeof window !== 'undefined') {
-      const { protocol, hostname, port } = window.location;
-      const portPart = port ? `:${port}` : '';
-      return `${protocol}//${hostname}${portPart}`;
-    }
-    return 'http://localhost:8080';
-  };
-
-  const fetchLiveUrl = useCallback(async () => {
-    try {
-      const data = await api.getTables();
-      const actives = (data?.tables || []).filter((t) => t.active);
-      if (actives.length > 0) {
-        const random = actives[Math.floor(Math.random() * actives.length)];
-        const origin = getBaseOrigin();
-        const url = `${origin}/${random.id}`;
-        setLiveUrl(url);
-        return url;
-      }
-    } catch (error) {
-      console.warn('Failed to fetch tables for landing live link', error);
-    }
-    return null;
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    fetchLiveUrl().finally(() => {
-      if (!mounted) return;
-    });
-    return () => {
-      mounted = false;
-    };
-  }, [fetchLiveUrl]);
 
   const scrollToDemoQr = () => {
     setForceDemoVisible(true);
@@ -164,7 +121,7 @@ const AppLayout: React.FC = () => {
       </DeferredSection>
       <div id="demo-qr" ref={demoRef} className="scroll-mt-24">
         <DeferredSection forceVisible={forceDemoVisible} placeholderHeight={1200}>
-          {renderLazy(<DemoQRGrid liveUrl={liveUrl ?? undefined} />, 1200)}
+          {renderLazy(<DemoQRGrid />, 1200)}
         </DeferredSection>
       </div>
       <footer className="relative bg-foreground text-background py-20 overflow-hidden">
