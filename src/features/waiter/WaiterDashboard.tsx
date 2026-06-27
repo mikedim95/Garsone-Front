@@ -52,7 +52,9 @@ type OrderEventPayload = {
 };
 type WaiterCallPayload = {
   tableId?: string;
+  tableLabel?: string;
   action?: string;
+  message?: string;
 };
 type TableWaiter = { id?: string | null };
 interface TableWithWaiters extends Table {
@@ -330,6 +332,18 @@ const isOrderEventPayload = (payload: unknown): payload is OrderEventPayload =>
 
 const isWaiterCallPayload = (payload: unknown): payload is WaiterCallPayload =>
   isRecord(payload) && typeof payload.tableId === 'string';
+
+const showNativeNotification = (title: string, body: string) => {
+  if (
+    typeof window === 'undefined' ||
+    !('Notification' in window) ||
+    window.Notification.permission !== 'granted' ||
+    document.visibilityState === 'visible'
+  ) {
+    return;
+  }
+  new window.Notification(title, { body });
+};
 
 // Helper to get saved filter from localStorage
 const getSavedFilter = <T,>(key: string, defaultValue: T): T => {
@@ -853,7 +867,11 @@ export default function WaiterDashboard({
       }
       if (payload.action === 'called') {
         setLastCallTableId(payload.tableId);
-        toast({ title: t('toasts.waiter_called'), description: t('toasts.table', { table: payload.tableId }) });
+        const title = t('toasts.waiter_called');
+        const tableText = payload.tableLabel || payload.tableId || '';
+        const description = payload.message || t('toasts.table', { table: tableText });
+        toast({ title, description });
+        showNativeNotification(title, description);
       } else if (payload.action === 'cleared') {
         setLastCallTableId((current) => (current === payload.tableId ? null : current));
       }

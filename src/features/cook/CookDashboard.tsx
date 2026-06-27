@@ -304,6 +304,18 @@ const isWaiterCallPayload = (
   printerTopics?: string[];
 } => isRecord(payload) && (payload as any).action === "called";
 
+const showNativeNotification = (title: string, body: string) => {
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window) ||
+    window.Notification.permission !== "granted" ||
+    document.visibilityState === "visible"
+  ) {
+    return;
+  }
+  new window.Notification(title, { body });
+};
+
 interface CookDashboardProps {
   embeddedHybrid?: boolean;
 }
@@ -492,14 +504,17 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
         return;
       }
       const tableText = payload.tableLabel || payload.tableId || "";
+      const title = t("toasts.waiter_called", { defaultValue: "Bell ring" });
+      const description =
+        payload.message ||
+        (tableText
+          ? `Table ${tableText} needs assistance.`
+          : "A table needs assistance.");
       toast({
-        title: t("toasts.waiter_called", { defaultValue: "Bell ring" }),
-        description:
-          payload.message ||
-          (tableText
-            ? `Table ${tableText} needs assistance.`
-            : "A table needs assistance."),
+        title,
+        description,
       });
+      showNativeNotification(title, description);
     };
     realtimeService.connect();
     realtimeService.subscribe(topic, handler);

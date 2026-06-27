@@ -2548,7 +2548,9 @@ export default function TableMenu() {
     }
     try {
       setCalling("pending");
-      await api.callWaiter(activeTableId);
+      await api.callWaiter(activeTableId, undefined, {
+        storeSlug: storeSlug || undefined,
+      });
       toast({
         title: t("menu.call_waiter_success_title", {
           defaultValue: "Waiter called",

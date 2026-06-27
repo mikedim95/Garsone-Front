@@ -561,7 +561,11 @@ export const api = {
   },
   printOrder: (orderId: string) =>
     fetchApi(`/orders/${orderId}/print`, { method: "POST" }),
-  callWaiter: (tableId: string, visit?: string): Promise<OkResponse> =>
+  callWaiter: (
+    tableId: string,
+    visit?: string,
+    opts?: { storeSlug?: string | null }
+  ): Promise<OkResponse> =>
     isOffline()
       ? devMocks.callWaiter(tableId)
       : fetchApi<OkResponse>("/call-waiter", {
@@ -569,7 +573,10 @@ export const api = {
           body: JSON.stringify(
             withVisit({ tableId, ...(visit ? { visit } : {}) })
           ),
-          ...(visit ? { headers: { "x-table-visit": visit } } : {}),
+          headers: {
+            ...(visit ? { "x-table-visit": visit } : {}),
+            ...(opts?.storeSlug ? { "x-store-slug": opts.storeSlug } : {}),
+          },
         }),
   getOrderQueueSummary: (): Promise<OrderQueueSummary> =>
     isOffline()
