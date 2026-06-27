@@ -89,6 +89,19 @@ type TileLifecycle = "inactive" | "unbound" | "venue" | "live";
 type PoolStatusFilter = "all" | TileLifecycle;
 type StoreOnboardForm = StoreOnboardPayload;
 type StoreUserRoleInput = "MANAGER" | "WAITER" | "COOK" | "HYBRID";
+
+const isArchitectDemoStore = (
+  store?: Pick<StoreInfo, "name" | "slug"> | Pick<StoreOverview, "name" | "slug"> | null,
+) => {
+  const name = (store?.name || "").trim().toLowerCase();
+  const slug = (store?.slug || "").trim().toLowerCase();
+  return (
+    slug === "default-store" ||
+    slug === "local-store" ||
+    name === "garsone offline demo" ||
+    name.includes("offline demo")
+  );
+};
 type StoreUserForm = {
   email: string;
   password: string;
@@ -710,7 +723,9 @@ export default function ArchitectQrTiles() {
     setLoadingStores(true);
     try {
       const res = await api.adminListStores();
-      const list = res.stores ?? [];
+      const list = (res.stores ?? []).filter(
+        (store) => !isArchitectDemoStore(store),
+      );
       setStores(list);
       setSelectedStoreId((current) => {
         if (current && list.some((store) => store.id === current))
@@ -953,7 +968,9 @@ export default function ArchitectQrTiles() {
     setLoadingOverview(true);
     try {
       const res = await api.adminListStoreOverview();
-      setOverview(res.stores ?? []);
+      setOverview(
+        (res.stores ?? []).filter((store) => !isArchitectDemoStore(store)),
+      );
     } catch (error) {
       console.error("Failed to load overview", error);
       toast({
