@@ -35,6 +35,12 @@ const urlBase64ToUint8Array = (base64String: string) => {
   return outputArray;
 };
 
+const arrayBufferEquals = (left: ArrayBuffer | null, right: Uint8Array) => {
+  if (!left || left.byteLength !== right.byteLength) return false;
+  const leftView = new Uint8Array(left);
+  return right.every((value, index) => leftView[index] === value);
+};
+
 const authHeaders = (storeSlug?: string | null) => {
   const token = useAuthStore.getState().token;
   const slug = normalizeSlug(storeSlug) || normalizeSlug(getStoredStoreSlug());
@@ -84,16 +90,28 @@ export async function registerStaffPush({
       return false;
     }
 
-    const registration = await navigator.serviceWorker.register(
-      STAFF_PUSH_SW_URL
-    );
+    const applicationServerKey = urlBase64ToUint8Array(config.publicKey);
+    const registration = await navigator.serviceWorker.register(STAFF_PUSH_SW_URL, {
+      updateViaCache: "none",
+    });
+    await registration.update().catch(() => {});
+    const readyRegistration = await navigator.serviceWorker.ready;
     const existingSubscription =
-      await registration.pushManager.getSubscription();
+      await readyRegistration.pushManager.getSubscription();
+    const existingKey = existingSubscription?.options?.applicationServerKey ?? null;
+    if (
+      existingSubscription &&
+      !arrayBufferEquals(existingKey, applicationServerKey)
+    ) {
+      await existingSubscription.unsubscribe().catch(() => false);
+    }
+    const currentSubscription =
+      await readyRegistration.pushManager.getSubscription();
     const subscription =
-      existingSubscription ||
-      (await registration.pushManager.subscribe({
+      currentSubscription ||
+      (await readyRegistration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(config.publicKey),
+        applicationServerKey,
       }));
 
     const response = await fetch(`${API_BASE}/staff/push/subscriptions`, {
@@ -107,6 +125,9 @@ export async function registerStaffPush({
       }),
     });
 
+    if (!response.ok) {
+      console.warn("Staff push subscription save failed", response.status);
+    }
     return response.ok;
   } catch (error) {
     console.warn("Staff push registration failed", error);
