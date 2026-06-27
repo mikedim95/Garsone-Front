@@ -14,6 +14,8 @@ type RegisterStaffPushOptions = {
 
 const STAFF_PUSH_SW_URL = "/sw.js";
 const SERVICE_WORKER_READY_TIMEOUT_MS = 3000;
+const PUSH_SUBSCRIBE_TIMEOUT_MS = 10000;
+let staffPushRegistrationPromise: Promise<boolean> | null = null;
 
 const normalizeSlug = (slug?: string | null) => {
   const value = (slug || "").trim();
@@ -115,6 +117,18 @@ const waitForReadyRegistration = async (
   };
 };
 
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+) =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      window.setTimeout(() => reject(new Error(message)), timeoutMs)
+    ),
+  ]);
+
 const fetchStaffPushConfig = async (storeSlug?: string | null) => {
   const response = await fetch(`${API_BASE}/staff/push/key`, {
     headers: authHeaders(storeSlug),
@@ -128,6 +142,22 @@ const fetchStaffPushConfig = async (storeSlug?: string | null) => {
 };
 
 export async function registerStaffPush({
+  storeSlug,
+  requestPermission = true,
+}: RegisterStaffPushOptions = {}) {
+  if (staffPushRegistrationPromise) {
+    return staffPushRegistrationPromise;
+  }
+  staffPushRegistrationPromise = registerStaffPushInternal({
+    storeSlug,
+    requestPermission,
+  }).finally(() => {
+    staffPushRegistrationPromise = null;
+  });
+  return staffPushRegistrationPromise;
+}
+
+async function registerStaffPushInternal({
   storeSlug,
   requestPermission = true,
 }: RegisterStaffPushOptions = {}) {
@@ -213,12 +243,22 @@ export async function registerStaffPush({
     }
     const currentSubscription =
       await readyRegistration.pushManager.getSubscription();
+    if (!currentSubscription) {
+      await postStaffPushDiagnostic(storeSlug, {
+        stage: "subscribe-start",
+        ok: true,
+      });
+    }
     const subscription =
       currentSubscription ||
-      (await readyRegistration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      }));
+      (await withTimeout(
+        readyRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        }),
+        PUSH_SUBSCRIBE_TIMEOUT_MS,
+        "Push subscription timed out."
+      ));
     await postStaffPushDiagnostic(storeSlug, {
       stage: "subscribed",
       ok: true,
