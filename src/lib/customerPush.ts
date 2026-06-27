@@ -13,7 +13,7 @@ type RegisterCustomerPushOptions = {
   requestPermission?: boolean;
 };
 
-const CUSTOMER_PUSH_SW_URL = "/customer-push-sw.js";
+const CUSTOMER_PUSH_SW_URL = "/sw.js";
 
 const normalizeSlug = (slug?: string | null) => {
   const value = (slug || "").trim();
