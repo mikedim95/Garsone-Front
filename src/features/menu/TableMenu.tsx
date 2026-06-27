@@ -2548,8 +2548,16 @@ export default function TableMenu() {
     }
     try {
       setCalling("pending");
+      console.info("[menu:call-waiter] sending", {
+        tableId: activeTableId,
+        storeSlug: storeSlug || null,
+      });
       await api.callWaiter(activeTableId, undefined, {
         storeSlug: storeSlug || undefined,
+      });
+      console.info("[menu:call-waiter] sent", {
+        tableId: activeTableId,
+        storeSlug: storeSlug || null,
       });
       toast({
         title: t("menu.call_waiter_success_title", {
@@ -2565,6 +2573,7 @@ export default function TableMenu() {
         45000
       );
     } catch (error) {
+      console.error("[menu:call-waiter] failed", error);
       if (error instanceof ApiError && error.status === 403) {
         toast({
           title: t("menu.call_waiter_error_title", {
@@ -2848,6 +2857,7 @@ export default function TableMenu() {
               callStatus={calling}
               callPrompted={callPrompted}
               onCallClick={handleFloatingCallClick}
+              onCallConfirm={handleCallWaiter}
               cartBottomOffset={hasExpandedActiveOrderBar ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
               browseOnly={false}

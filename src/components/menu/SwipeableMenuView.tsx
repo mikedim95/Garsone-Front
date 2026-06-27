@@ -47,6 +47,7 @@ interface Props {
   callStatus?: 'idle' | 'pending' | 'accepted';
   callPrompted?: boolean;
   onCallClick?: () => void;
+  onCallConfirm?: () => void;
   checkoutBusy?: boolean;
   openCartSignal?: number;
   orderPlacedSignal?: number;
@@ -212,6 +213,7 @@ export const SwipeableMenuView = ({
   onImmediateCheckout,
   callStatus = 'idle',
   onCallClick,
+  onCallConfirm,
   checkoutBusy = false,
   openCartSignal = 0,
   orderPlacedSignal = 0,
@@ -537,7 +539,7 @@ export const SwipeableMenuView = ({
   const handleConfirmCall = () => {
     setBellDialogOpen(false);
     setIsRinging(true);
-    onCallClick?.();
+    (onCallConfirm ?? onCallClick)?.();
     setTimeout(() => {
       setIsRinging(false);
     }, 2000);
