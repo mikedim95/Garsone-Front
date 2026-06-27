@@ -749,7 +749,7 @@ export default function TableMenu() {
   const tableLookupCode = tableParam || tableId || null;
   const isFrontendOnlyMenu = isFrontendOfflineMenuPath(tableLookupCode);
   const activeTableId = tableId;
-  const guestOrderingEnabled = !isFrontendOnlyMenu && orderingMode !== "waiter";
+  const guestOrderingEnabled = isFrontendOnlyMenu || orderingMode !== "waiter";
   const usesImmediateGuestCheckout = storeSlug?.trim().toLowerCase() === "noor";
   const isEditingExisting = editingOrderIds.length > 0 || Boolean(editingOrderId);
   const isEditingPendingBatch = editingOrderIds.length > 1;
@@ -1100,7 +1100,7 @@ export default function TableMenu() {
         throw new Error("Missing table identifier");
       }
       if (isFrontendOnlyMenu) {
-        return getFrontendOfflineMenuBootstrap();
+        return getFrontendOfflineMenuBootstrap(languageCode);
       }
       return api.getMenuBootstrap(tableLookupCode, {
         storeSlug: storeSlug || undefined,
@@ -1970,10 +1970,88 @@ export default function TableMenu() {
     } catch {}
   };
 
+  const createFrontendDemoOrder = (note?: string): SubmittedOrderSummary | null => {
+    if (!activeTableId || !menuData) {
+      toast({
+        title: t("menu.toast_error_title", {
+          defaultValue: "Error placing order",
+        }),
+        description: t("menu.missing_table_description", {
+          defaultValue: "Missing table information. Please rescan the QR.",
+        }),
+      });
+      return null;
+    }
+
+    const cartItems = useCartStore.getState().items;
+    if (!cartItems.length) {
+      toast({
+        title: t("menu.cart_empty_title", {
+          defaultValue: "Cart is empty",
+        }),
+        description: t("menu.cart_empty_description", {
+          defaultValue: "Add items to your cart before placing the order.",
+        }),
+      });
+      return null;
+    }
+
+    const orderId = `demo-${Date.now().toString(36)}`;
+    const summary: SubmittedOrderSummary = {
+      id: orderId,
+      tableId: activeTableId,
+      tableLabel: tableLabel || "Demo",
+      createdAt: new Date().toISOString(),
+      status: "PLACED",
+      note,
+      items: cartItems.map((cartItem, index) => ({
+        id: `${orderId}-${index + 1}`,
+        itemId: cartItem.item.id,
+        title:
+          cartItem.item.displayName ||
+          cartItem.item.name ||
+          cartItem.item.title ||
+          t("menu.item", { defaultValue: "Item" }),
+        quantity: cartItem.quantity,
+        unitPriceCents:
+          cartItem.item.priceCents ??
+          Math.round((cartItem.item.price ?? 0) * 100),
+        status: "PLACED",
+      })),
+    };
+
+    setLastOrder(summary);
+    upsertPlacedOrder(summary);
+    clearCart();
+    stopEditingLastOrder();
+    setOrderPlacedSignal((signal) => signal + 1);
+    toast({
+      title: t("order.success_title", { defaultValue: "Order successful" }),
+      description: t("menu.order_status_notification_placed", {
+        defaultValue: "Your demo order was placed.",
+      }),
+    });
+
+    const successParams = new URLSearchParams({
+      tableId: activeTableId,
+      storeSlug: FRONTEND_OFFLINE_MENU_STORE_SLUG,
+    });
+    navigate(`/order/${orderId}/thanks?${successParams.toString()}`);
+    return summary;
+  };
+
   const handleImmediateCheckout = async (
     note?: string
   ): Promise<SubmittedOrderSummary | null> => {
     if (checkoutBusy) return null;
+    if (isFrontendOnlyMenu) {
+      setCheckoutBusy(true);
+      try {
+        return createFrontendDemoOrder(note);
+      } finally {
+        setCheckoutBusy(false);
+      }
+    }
     if (!guestOrderingEnabled) {
       toast({
         title: t("menu.waiter_only_title", {
@@ -2454,6 +2532,20 @@ export default function TableMenu() {
 
   const handleCallWaiter = async () => {
     if (!activeTableId) return;
+    if (isFrontendOnlyMenu) {
+      setCalling("pending");
+      toast({
+        title: t("menu.call_waiter_success_title", {
+          defaultValue: "Waiter called",
+        }),
+        description: t("menu.call_waiter_success_desc", {
+          defaultValue: "A waiter will be with you shortly",
+        }),
+      });
+      window.setTimeout(() => setCalling("accepted"), 900);
+      window.setTimeout(() => setCalling("idle"), 4000);
+      return;
+    }
     try {
       setCalling("pending");
       await api.callWaiter(activeTableId);
@@ -2722,23 +2814,27 @@ export default function TableMenu() {
               onBack={returnToMenuLanding}
               onAddItem={handleAddItem}
               onCheckout={
-                usesImmediateGuestCheckout || isEditingExisting
+                isFrontendOnlyMenu || usesImmediateGuestCheckout || isEditingExisting
                   ? handleImmediateCheckout
                   : handleCheckout
               }
               onImmediateCheckout={
-                usesImmediateGuestCheckout || isEditingExisting
+                isFrontendOnlyMenu || usesImmediateGuestCheckout || isEditingExisting
                   ? undefined
                   : handleImmediateCheckout
               }
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
               showBackButton
-              showAllCategory={!usesImmediateGuestCheckout}
+              showAllCategory={!isFrontendOnlyMenu && !usesImmediateGuestCheckout}
               primaryCtaLabel={
                 isEditingExisting
                   ? t("menu.update_order", {
                       defaultValue: "Update order",
+                    })
+                  : isFrontendOnlyMenu
+                  ? t("menu.submit_order_return_menu", {
+                      defaultValue: "Submit order",
                     })
                   : usesImmediateGuestCheckout
                   ? t("menu.submit_order_return_menu", {
@@ -2752,8 +2848,8 @@ export default function TableMenu() {
               onCallClick={handleFloatingCallClick}
               cartBottomOffset={hasExpandedActiveOrderBar ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
-              browseOnly={isFrontendOnlyMenu}
-              showPaymentButton={!usesImmediateGuestCheckout && !isEditingExisting}
+              browseOnly={false}
+              showPaymentButton={!isFrontendOnlyMenu && !usesImmediateGuestCheckout && !isEditingExisting}
             />
           )}
         </div>

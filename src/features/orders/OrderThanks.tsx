@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import {
+  FRONTEND_OFFLINE_MENU_STORE_SLUG,
+  FRONTEND_OFFLINE_MENU_TABLE_ID,
+} from "@/lib/frontendOfflineMenu";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 export default function OrderThanks() {
@@ -30,6 +34,18 @@ export default function OrderThanks() {
   }, [storeSlug, tableId]);
 
   useEffect(() => {
+    if (
+      tableId === FRONTEND_OFFLINE_MENU_TABLE_ID ||
+      storeSlug === FRONTEND_OFFLINE_MENU_STORE_SLUG
+    ) {
+      try {
+        localStorage.setItem("STORE_NAME", "Garsone Demo Menu");
+        setStoredStoreSlug(FRONTEND_OFFLINE_MENU_STORE_SLUG);
+      } catch (error) {
+        console.warn("Failed to persist offline demo store info", error);
+      }
+      return;
+    }
     let mounted = true;
     (async () => {
       try {
@@ -61,7 +77,7 @@ export default function OrderThanks() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [storeSlug, tableId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex items-center justify-center p-4">

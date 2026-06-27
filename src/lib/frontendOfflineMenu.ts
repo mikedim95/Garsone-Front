@@ -9,10 +9,12 @@ const image = (seed: string) =>
 export const isFrontendOfflineMenuPath = (tableCode?: string | null) =>
   (tableCode || "").trim().toLowerCase() === FRONTEND_OFFLINE_MENU_TABLE_ID;
 
-export const getFrontendOfflineMenuBootstrap = (): MenuBootstrapResponse => ({
+export const getFrontendOfflineMenuBootstrap = (
+  lang: "en" | "el" = "en"
+): MenuBootstrapResponse => ({
   store: {
     id: "frontend-offline-store",
-    name: "Garsone Demo Menu",
+    name: lang === "el" ? "Demo Μενού Garsone" : "Garsone Demo Menu",
     slug: FRONTEND_OFFLINE_MENU_STORE_SLUG,
     currencyCode: "EUR",
     currencySymbol: "€",
