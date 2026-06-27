@@ -71,16 +71,16 @@ export async function registerStaffPush({
   }
 
   try {
-    const config = await fetchStaffPushConfig(storeSlug);
-    if (!config.enabled || !config.publicKey) {
-      return false;
-    }
-
     let permission = window.Notification.permission;
     if (permission === "default" && requestPermission) {
       permission = await window.Notification.requestPermission();
     }
     if (permission !== "granted") {
+      return false;
+    }
+
+    const config = await fetchStaffPushConfig(storeSlug);
+    if (!config.enabled || !config.publicKey) {
       return false;
     }
 

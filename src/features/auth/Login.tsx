@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/store/authStore";
 import { api, ApiError } from "@/lib/api";
+import { registerStaffPush } from "@/lib/staffPush";
 import { formatStoreSlugLabel, setStoredStoreSlug } from "@/lib/storeSlug";
 
 export default function Login() {
@@ -59,6 +60,9 @@ export default function Login() {
         setPassword("");
         return;
       }
+      if (enrichedUser.role === "waiter" || enrichedUser.role === "hybrid") {
+        void registerStaffPush({ storeSlug: loginStoreSlug });
+      }
       if (enrichedUser.role === "architect") navigate("/GarsoneAdmin");
       else if (enrichedUser.role === "manager") navigate("/manager");
       else if (enrichedUser.role === "cook") navigate("/cook");
@@ -97,6 +101,9 @@ export default function Login() {
       await api.changePassword(currentPasswordForChange, newPassword);
       updateUser({ mustChangePassword: false });
       const user = useAuthStore.getState().user;
+      if (user?.role === "waiter" || user?.role === "hybrid") {
+        void registerStaffPush({ storeSlug: user.storeSlug });
+      }
       if (user?.role === "architect") navigate("/GarsoneAdmin");
       else if (user?.role === "manager") navigate("/manager");
       else if (user?.role === "cook") navigate("/cook");
