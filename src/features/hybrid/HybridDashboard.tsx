@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/authStore";
 import CookDashboard from "@/features/cook/CookDashboard";
 import WaiterDashboard from "@/features/waiter/WaiterDashboard";
 import { api } from "@/lib/api";
+import { registerStaffPush } from "@/lib/staffPush";
 import type { OrderingMode } from "@/types";
 
 type HybridView = "orders" | "menu" | "tables";
@@ -42,6 +43,11 @@ export default function HybridDashboard() {
       // ignore
     }
   }, [view]);
+
+  useEffect(() => {
+    if (!isAuthenticated() || user?.role !== "hybrid") return;
+    void registerStaffPush({ storeSlug: user?.storeSlug });
+  }, [isAuthenticated, user?.id, user?.role, user?.storeSlug]);
 
   useEffect(() => {
     if (!isAuthenticated() || user?.role !== "hybrid") return;
