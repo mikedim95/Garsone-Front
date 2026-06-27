@@ -4,6 +4,8 @@ self.addEventListener("push", (event) => {
     body: "Your order status changed.",
     url: "/",
     tag: "order-update",
+    requireInteraction: false,
+    vibrate: [250, 100, 250],
   };
 
   if (event.data) {
@@ -17,10 +19,13 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: "/Garsone_Favicon.svg",
-      badge: "/Garsone_Favicon.svg",
+      icon: payload.icon || "/icon-192.png",
+      badge: payload.badge || "/icon-192.png",
       tag: payload.tag,
       renotify: true,
+      requireInteraction: Boolean(payload.requireInteraction),
+      vibrate: Array.isArray(payload.vibrate) ? payload.vibrate : [250, 100, 250],
+      timestamp: Date.now(),
       data: {
         url: payload.url || "/",
       },

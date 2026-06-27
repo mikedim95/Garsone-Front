@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { realtimeService } from '@/lib/realtime';
+import { registerStaffPush } from '@/lib/staffPush';
 import { useToast } from '@/hooks/use-toast';
 import { Clock, LayoutGrid, List, RefreshCcw, UtensilsCrossed } from 'lucide-react';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
@@ -579,6 +580,11 @@ export default function WaiterDashboard({
       navigate('/hybrid', { replace: true });
     }
   }, [embeddedHybrid, isAuthenticated, user, navigate]);
+
+  useEffect(() => {
+    if (!isAuthenticated() || (user?.role !== 'waiter' && user?.role !== 'hybrid')) return;
+    void registerStaffPush({ storeSlug: user?.storeSlug });
+  }, [isAuthenticated, user?.id, user?.role, user?.storeSlug]);
 
   // Load assignments + store slug
   const fetchAssignments = useCallback(async () => {
