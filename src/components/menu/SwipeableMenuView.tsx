@@ -52,6 +52,7 @@ interface Props {
   orderPlacedSignal?: number;
   showCartButton?: boolean;
   browseOnly?: boolean;
+  imageFit?: 'contain' | 'cover';
   cartBottomOffset?: 'default' | 'raised';
 }
 
@@ -64,6 +65,7 @@ interface ItemGridProps {
   addItemLabel: string;
   active?: boolean;
   browseOnly?: boolean;
+  imageFit?: 'contain' | 'cover';
   showPrices?: boolean;
   selectedQuantities: Map<string, number>;
 }
@@ -117,6 +119,7 @@ const ItemGrid = ({
   addItemLabel,
   active = false,
   browseOnly = false,
+  imageFit = 'contain',
   showPrices = true,
   selectedQuantities,
 }: ItemGridProps) => (
@@ -162,7 +165,7 @@ const ItemGrid = ({
                   decoding="async"
                   {...({ fetchpriority: eagerImage ? 'high' : 'low' } as Record<string, string>)}
                   draggable={false}
-                  className={`menu-card-image h-full w-full object-contain transition-all duration-500 ${
+                  className={`menu-card-image block h-full w-full ${imageFit === 'cover' ? 'object-cover' : 'object-contain'} transition-all duration-500 ${
                     isSelected ? 'brightness-110 saturate-125' : ''
                   }`}
                 />
@@ -217,6 +220,7 @@ export const SwipeableMenuView = ({
   showAllCategory = true,
   showCartButton = true,
   browseOnly = false,
+  imageFit = 'contain',
   cartBottomOffset = 'default',
   primaryCtaLabel,
 }: Props) => {
@@ -754,6 +758,7 @@ export const SwipeableMenuView = ({
                             addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                             active
                             browseOnly={browseOnly}
+                            imageFit={imageFit}
                             selectedQuantities={selectedQuantities}
                           />
                         ))}
@@ -793,6 +798,7 @@ export const SwipeableMenuView = ({
                                   addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                                   active
                                   browseOnly={browseOnly}
+                                  imageFit={imageFit}
                                   showPrices={!sharedPriceLabel}
                                   selectedQuantities={selectedQuantities}
                                 />
@@ -811,6 +817,7 @@ export const SwipeableMenuView = ({
                         addItemLabel={t('menu.add_to_cart', { defaultValue: 'Add to cart' })}
                         active
                         browseOnly={browseOnly}
+                        imageFit={imageFit}
                         selectedQuantities={selectedQuantities}
                       />
                   )}

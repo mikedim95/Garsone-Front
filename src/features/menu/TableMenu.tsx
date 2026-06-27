@@ -2849,6 +2849,7 @@ export default function TableMenu() {
               cartBottomOffset={hasExpandedActiveOrderBar ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
               browseOnly={false}
+              imageFit={usesImmediateGuestCheckout ? "cover" : "contain"}
               showPaymentButton={!isFrontendOnlyMenu && !usesImmediateGuestCheckout && !isEditingExisting}
             />
           )}
