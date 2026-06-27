@@ -129,6 +129,38 @@ const withTimeout = async <T>(
     ),
   ]);
 
+const formatError = (error: unknown) => {
+  if (error instanceof DOMException) {
+    return `${error.name}: ${error.message}`;
+  }
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  return String(error);
+};
+
+const shouldResetPushRegistration = (error: unknown) => {
+  const message = formatError(error).toLowerCase();
+  return (
+    message.includes("registration failed") ||
+    message.includes("push service") ||
+    message.includes("subscription timed out")
+  );
+};
+
+const subscribeForPush = async (
+  registration: ServiceWorkerRegistration,
+  applicationServerKey: Uint8Array
+) =>
+  withTimeout(
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    }),
+    PUSH_SUBSCRIBE_TIMEOUT_MS,
+    "Push subscription timed out."
+  );
+
 const fetchStaffPushConfig = async (storeSlug?: string | null) => {
   const response = await fetch(`${API_BASE}/staff/push/key`, {
     headers: authHeaders(storeSlug),
@@ -249,16 +281,40 @@ async function registerStaffPushInternal({
         ok: true,
       });
     }
-    const subscription =
-      currentSubscription ||
-      (await withTimeout(
-        readyRegistration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey,
-        }),
-        PUSH_SUBSCRIBE_TIMEOUT_MS,
-        "Push subscription timed out."
-      ));
+    let subscription = currentSubscription;
+    if (!subscription) {
+      try {
+        subscription = await subscribeForPush(
+          readyRegistration,
+          applicationServerKey
+        );
+      } catch (subscribeError) {
+        await postStaffPushDiagnostic(storeSlug, {
+          stage: "subscribe-error",
+          ok: false,
+          message: formatError(subscribeError),
+        });
+        if (!shouldResetPushRegistration(subscribeError)) {
+          throw subscribeError;
+        }
+
+        await postStaffPushDiagnostic(storeSlug, {
+          stage: "subscribe-retry",
+          ok: true,
+          message: "Resetting service worker registration before retry.",
+        });
+        await readyRegistration.unregister().catch(() => false);
+        const retryRegistration = await navigator.serviceWorker.register(
+          STAFF_PUSH_SW_URL,
+          { updateViaCache: "none" }
+        );
+        await retryRegistration.update().catch(() => {});
+        subscription = await subscribeForPush(
+          retryRegistration,
+          applicationServerKey
+        );
+      }
+    }
     await postStaffPushDiagnostic(storeSlug, {
       stage: "subscribed",
       ok: true,
@@ -292,7 +348,7 @@ async function registerStaffPushInternal({
     await postStaffPushDiagnostic(storeSlug, {
       stage: "exception",
       ok: false,
-      message: error instanceof Error ? error.message : String(error),
+      message: formatError(error),
     });
     console.warn("Staff push registration failed", error);
     return false;
