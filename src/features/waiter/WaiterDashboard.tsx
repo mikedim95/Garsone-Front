@@ -377,6 +377,7 @@ export default function WaiterDashboard({
 
   const [assignedTableIds, setAssignedTableIds] = useState<Set<string>>(new Set());
   const tableLabelByIdRef = useRef<Map<string, string>>(new Map());
+  const tableActiveByIdRef = useRef<Map<string, boolean>>(new Map());
   const [shiftWindow, setShiftWindow] = useState<{ start?: string; end?: string } | null>(null);
   const [shiftLoaded, setShiftLoaded] = useState(false);
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
@@ -604,12 +605,17 @@ export default function WaiterDashboard({
         sampleTables: tables.slice(0, 3),
       });
       tableLabelByIdRef.current = new Map();
+      tableActiveByIdRef.current = new Map();
       tables.forEach((t) => {
         if (t.id && t.label) tableLabelByIdRef.current.set(t.id, t.label);
+        if (t.id) tableActiveByIdRef.current.set(t.id, t.active !== false && t.isActive !== false);
       });
       const next = new Set<string>();
       assignments.forEach((a) => {
-        if (a.tableId) next.add(a.tableId);
+        if (!a.tableId) return;
+        next.add(a.tableId);
+        if (a.table?.label) tableLabelByIdRef.current.set(a.tableId, a.table.label);
+        if (typeof a.table?.active === 'boolean') tableActiveByIdRef.current.set(a.tableId, a.table.active);
       });
       setAssignedTableIds(next);
       dbg("assignments loaded", {
@@ -919,6 +925,7 @@ export default function WaiterDashboard({
         .map((id) => ({
           id,
           label: tableLabelByIdRef.current.get(id) || id,
+          active: tableActiveByIdRef.current.get(id) ?? true,
         }))
         .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
     [assignedTableIds]
@@ -1235,6 +1242,7 @@ export default function WaiterDashboard({
               ) : viewMode === 'tables' ? (
                 <TableCardView
                   orders={allTableOrders}
+                  assignedTables={assignedTablesList}
                   onUpdateStatus={handleUpdateStatus}
                   onUpdateItemStatus={handleUpdateItemStatus}
                   mode={isHybridUser ? 'full' : 'waiter'}

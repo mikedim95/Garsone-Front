@@ -12,6 +12,7 @@ import { ChefHat, CheckCircle, CreditCard, XCircle, Eye, EyeOff } from 'lucide-r
 
 interface TableCardViewProps {
   orders: Order[];
+  assignedTables?: Array<{ id: string; label: string; active?: boolean }>;
   onUpdateStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   onUpdateItemStatus?: (
     orderId: string,
@@ -52,6 +53,7 @@ const getTablePriorityStatus = (orders: Order[]): OrderStatus | null => {
 
 export function TableCardView({
   orders,
+  assignedTables = [],
   onUpdateStatus,
   onUpdateItemStatus,
   showInactiveTables,
@@ -73,7 +75,17 @@ export function TableCardView({
 
   // Group orders by table
   const tableGroups = useMemo(() => {
-    const groups = new Map<string, { tableId: string; tableLabel: string; orders: Order[] }>();
+    const groups = new Map<string, { tableId: string; tableLabel: string; active?: boolean; orders: Order[] }>();
+
+    assignedTables.forEach((table) => {
+      if (!table.id) return;
+      groups.set(table.id, {
+        tableId: table.id,
+        tableLabel: table.label || table.id,
+        active: table.active,
+        orders: [],
+      });
+    });
     
     orders.forEach(order => {
       const key = order.tableId || 'unknown';
@@ -89,7 +101,7 @@ export function TableCardView({
     return Array.from(groups.values()).sort((a, b) => 
       a.tableLabel.localeCompare(b.tableLabel, undefined, { numeric: true })
     );
-  }, [orders]);
+  }, [assignedTables, orders]);
 
   // Separate active and inactive tables
   const { activeTables, inactiveTables } = useMemo(() => {
@@ -98,7 +110,8 @@ export function TableCardView({
     
     tableGroups.forEach(table => {
       const hasActiveOrders = table.orders.some(o => !['PAID', 'CANCELLED'].includes(o.status));
-      if (hasActiveOrders) {
+      const isAssignedActiveTable = table.orders.length === 0 && table.active !== false;
+      if (hasActiveOrders || isAssignedActiveTable) {
         active.push(table);
       } else {
         inactive.push(table);
@@ -247,6 +260,12 @@ export function TableCardView({
               />
             ))}
           </div>
+        )}
+
+        {!isInactive && tableOrders.length === 0 && (
+          <span className="text-[10px] text-muted-foreground">
+            No orders
+          </span>
         )}
         
         {/* Inactive indicator */}
