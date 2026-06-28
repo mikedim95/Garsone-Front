@@ -2864,7 +2864,7 @@ export default function ManagerDashboard() {
               initial={false}
               animate={{ width: navExpanded ? 224 : 48 }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="hidden sm:flex h-fit flex-col absolute z-40 left-3 top-3 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden"
+              className="hidden sm:flex h-fit flex-col absolute z-40 left-6 top-6 lg:left-8 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm overflow-hidden"
             >
               <div
                 className={clsx(
