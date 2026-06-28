@@ -98,7 +98,12 @@ const isArchitectDemoStore = (
   return (
     slug === "default-store" ||
     slug === "local-store" ||
+    slug === "garsone-offline" ||
+    slug === "frontend-offline-store" ||
+    name === "garsone demo menu" ||
     name === "garsone offline demo" ||
+    name === "demo μενού garsone" ||
+    name.includes("garsone demo") ||
     name.includes("offline demo")
   );
 };

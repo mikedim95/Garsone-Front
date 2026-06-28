@@ -113,12 +113,6 @@ export const Features = () => {
                 </div>
               </div>
               <div className="glass-dark px-8 py-5 rounded-2xl shadow-xl">
-                <div className="font-black text-4xl text-primary-foreground mb-1">0 EUR</div>
-                <div className="text-primary-foreground/70 text-sm font-medium">
-                  {t('landing.features.cta.monthly_fee', { defaultValue: 'Monthly Fee' })}
-                </div>
-              </div>
-              <div className="glass-dark px-8 py-5 rounded-2xl shadow-xl">
                 <div className="font-black text-4xl text-primary-foreground mb-1">inf</div>
                 <div className="text-primary-foreground/70 text-sm font-medium">
                   {t('landing.features.cta.orders', { defaultValue: 'Orders' })}
