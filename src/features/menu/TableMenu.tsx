@@ -707,6 +707,7 @@ export default function TableMenu() {
     return isFallbackSlug(stored) ? "" : stored || "";
   });
   const [orderingMode, setOrderingMode] = useState<OrderingMode>("qr");
+  const [customerOrderRecallEnabled, setCustomerOrderRecallEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
@@ -778,6 +779,7 @@ export default function TableMenu() {
     ? lastOrder ?? visiblePlacedOrders[0] ?? null
     : visiblePlacedOrders[0] ?? null;
   const shouldShowLastOrderButton =
+    customerOrderRecallEnabled &&
     lastOrderButtonVisible &&
     !categorySelected &&
     !activeOrderOpen &&
@@ -854,7 +856,7 @@ export default function TableMenu() {
       : t("menu.no_items", { defaultValue: "No items" });
 
   const minimizeActiveOrderSheet = () => {
-    if (!categorySelected && activeOrder?.id) {
+    if (customerOrderRecallEnabled && !categorySelected && activeOrder?.id) {
       setLastOrderButtonVisible(true);
     }
 
@@ -982,7 +984,7 @@ export default function TableMenu() {
       dismissOrderNotice(order);
       return;
     }
-    if (!categorySelected && order?.id) {
+    if (customerOrderRecallEnabled && !categorySelected && order?.id) {
       setLastOrderButtonVisible(true);
     }
     setActiveOrderOpen(false);
@@ -1025,7 +1027,7 @@ export default function TableMenu() {
     setCategorySelected(false);
     setSelectedCategory(null);
     setActiveOrderOpen(false);
-    if (visiblePlacedOrders.length > 0) {
+    if (customerOrderRecallEnabled && visiblePlacedOrders.length > 0) {
       setLastOrderButtonVisible(true);
     }
   };
@@ -1162,6 +1164,19 @@ export default function TableMenu() {
   }, [guestOrderingEnabled, clearCart]);
 
   useEffect(() => {
+    if (customerOrderRecallEnabled) return;
+    setPlacedOrders([]);
+    setLastOrder(null);
+    setLastOrderButtonVisible(false);
+    setActiveOrderOpen(false);
+    setActiveLineEditor(null);
+    if (isEditingExisting) {
+      clearCart();
+      stopEditingLastOrder();
+    }
+  }, [clearCart, customerOrderRecallEnabled, isEditingExisting]);
+
+  useEffect(() => {
     if (!cartChangeRef.current) {
       cartChangeRef.current = true;
       return;
@@ -1171,9 +1186,10 @@ export default function TableMenu() {
 
   useEffect(() => {
     const shouldShowLastOrder =
+      customerOrderRecallEnabled &&
       new URLSearchParams(location.search).get("highlightLastOrder") === "1";
     setLastOrderButtonVisible(shouldShowLastOrder);
-  }, [location.search]);
+  }, [customerOrderRecallEnabled, location.search]);
 
   useEffect(() => {
     setDismissedOrderIds(readDismissedOrderIds(dismissedOrderStorageKey));
@@ -1212,6 +1228,9 @@ export default function TableMenu() {
       setTableId(bootstrap.table.id);
     }
     setOrderingMode(normalizeOrderingMode(bootstrap.store?.orderingMode));
+    setCustomerOrderRecallEnabled(
+      bootstrap.store?.customerOrderRecallEnabled !== false
+    );
     if (bootstrap.store?.name || bootstrap.store?.slug) {
       const name = bootstrap.store.name || bootstrap.store.slug || null;
       setStoreName(name);
@@ -1263,6 +1282,10 @@ export default function TableMenu() {
   useEffect(() => {
     if (!storeMeta?.store) return;
     setOrderingMode(normalizeOrderingMode(storeMeta.store.orderingMode));
+    setCustomerOrderRecallEnabled(
+      storeMeta.store.customerOrderRecallEnabled !== false &&
+        storeMeta.store.settings?.customerOrderRecallEnabled !== false
+    );
     if (storeMeta.store.name && !storeName) {
       setStoreName(storeMeta.store.name);
     }
@@ -1373,8 +1396,11 @@ export default function TableMenu() {
   }, [dismissedOrderStorageKey]);
 
   useEffect(() => {
-    if (isFrontendOnlyMenu || !activeTableId) {
+    if (isFrontendOnlyMenu || !customerOrderRecallEnabled || !activeTableId) {
       setPlacedOrders([]);
+      setLastOrder(null);
+      setLastOrderButtonVisible(false);
+      setActiveOrderOpen(false);
       return;
     }
     let cancelled = false;
@@ -1424,7 +1450,7 @@ export default function TableMenu() {
     return () => {
       cancelled = true;
     };
-  }, [isFrontendOnlyMenu, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
+  }, [isFrontendOnlyMenu, customerOrderRecallEnabled, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     return computeSubmittedOrderTotal(order);
@@ -1461,6 +1487,7 @@ export default function TableMenu() {
   };
 
   const upsertPlacedOrder = (order: SubmittedOrderSummary) => {
+    if (!customerOrderRecallEnabled) return;
     if (order.status === "PAID") return;
     if (isOrderDismissed(order)) return;
     setPlacedOrders((prev) => {
@@ -1482,6 +1509,7 @@ export default function TableMenu() {
   };
 
   const startEditingLastOrder = () => {
+    if (!customerOrderRecallEnabled) return;
     if (!lastOrder?.id) {
       toast({
         title: t("menu.edit_order_unavailable_title", {
@@ -1624,6 +1652,7 @@ export default function TableMenu() {
   };
 
   const prepareOrderForEditing = (order: SubmittedOrderSummary | null) => {
+    if (!customerOrderRecallEnabled) return null;
     if (!order || !order.id) return null;
     if (order.status && order.status !== "PLACED") {
       toast({
@@ -1676,6 +1705,7 @@ export default function TableMenu() {
     orders: SubmittedOrderSummary[],
     options?: { openCart?: boolean }
   ) => {
+    if (!customerOrderRecallEnabled) return null;
     const editableOrders = orders
       .filter((order) => order.id && order.status === "PLACED")
       .sort((a, b) => {
@@ -1781,6 +1811,7 @@ export default function TableMenu() {
     order: SubmittedOrderSummary | null,
     orderItem: SubmittedOrderItem
   ) => {
+    if (!customerOrderRecallEnabled) return;
     if (!order?.id) return;
     if (order.status !== "PLACED") return;
     if (!menuData?.items?.length) return;
@@ -1802,7 +1833,7 @@ export default function TableMenu() {
     selected: Record<string, string | string[]>,
     qty: number
   ) => {
-    if (!activeLineEditor) return;
+    if (!customerOrderRecallEnabled || !activeLineEditor) return;
     const approval = usesImmediateGuestCheckout
       ? null
       : getStoredLocalityApproval({
@@ -1897,6 +1928,7 @@ export default function TableMenu() {
   };
 
   const handleEditLastOrder = async () => {
+    if (!customerOrderRecallEnabled) return;
     if (!lastOrder || !lastOrder.id) return;
     hideLastOrderButton();
     if (activeTableId) {
@@ -2422,6 +2454,7 @@ export default function TableMenu() {
       await realtimeService.connect();
       const updateStatus = (status: OrderStatus) => (payload: unknown) => {
         if (!mounted || !isOrderEventMessage(payload)) return;
+        if (!customerOrderRecallEnabled) return;
         if (payload.tableId && payload.tableId !== activeTableId) return;
         if (readDismissedOrderIds(dismissedOrderStorageKey).has(payload.orderId)) {
           return;
@@ -2467,6 +2500,7 @@ export default function TableMenu() {
       const handlePlaced = (payload: any) => {
         if (
           !mounted ||
+          !customerOrderRecallEnabled ||
           !payload ||
           (payload as any).tableId !== activeTableId
         )
@@ -2515,7 +2549,7 @@ export default function TableMenu() {
       realtimeService.unsubscribe(servedTopic);
       realtimeService.unsubscribe(placedTopic);
     };
-  }, [isFrontendOnlyMenu, storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible]);
+  }, [isFrontendOnlyMenu, customerOrderRecallEnabled, storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible]);
 
   useEffect(() => {
     // Collapse the call CTA while a call is in-flight/accepted
@@ -2712,7 +2746,7 @@ export default function TableMenu() {
               </button>
               <LanguageSwitcher />
               <AppBurger title={headerTitle} showChildren={false} themeOnly>
-                {lastOrder ? (
+                {customerOrderRecallEnabled && lastOrder ? (
                   <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-4 space-y-3 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -3060,6 +3094,7 @@ export default function TableMenu() {
                           order.status ?? activeOrderStatus
                         );
                         const canEditLine =
+                          customerOrderRecallEnabled &&
                           order.status === "PLACED" &&
                           itemStatus === "PLACED" &&
                           !isSubmittedOrderItemCancelled(item);
