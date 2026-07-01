@@ -391,6 +391,19 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ enabled }),
         }),
+  updateCustomerOrderRecall: (enabled: boolean): Promise<{ store: StoreInfo }> =>
+    isOffline()
+      ? devMocks.getStore().then(({ store }) => ({
+          store: {
+            ...store,
+            customerOrderRecallEnabled: enabled,
+            settings: { ...(store.settings ?? {}), customerOrderRecallEnabled: enabled },
+          },
+        }))
+      : fetchApi<{ store: StoreInfo }>("/manager/store/customer-order-recall", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        }),
   getTables: (): Promise<{ tables: Table[] }> =>
     isOffline()
       ? devMocks.getTables()

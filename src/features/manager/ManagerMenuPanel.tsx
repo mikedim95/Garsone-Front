@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, ImagePlus, X, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ManagerItemSummary, ManagerItemPayload, MenuCategory, Modifier, ModifierOption } from '@/types';
@@ -65,6 +66,8 @@ export const ManagerMenuPanel = () => {
   const [printerTopics, setPrinterTopics] = useState<string[]>([]);
   const [printOnArrival, setPrintOnArrival] = useState(false);
   const [savingPrintOnArrival, setSavingPrintOnArrival] = useState(false);
+  const [customerOrderRecallEnabled, setCustomerOrderRecallEnabled] = useState(true);
+  const [savingCustomerOrderRecall, setSavingCustomerOrderRecall] = useState(false);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -189,6 +192,10 @@ export const ManagerMenuPanel = () => {
       setPrintOnArrival(
         storeRes?.store?.printOnArrival === true ||
           storeRes?.store?.settings?.printOnArrival === true
+      );
+      setCustomerOrderRecallEnabled(
+        storeRes?.store?.customerOrderRecallEnabled !== false &&
+          storeRes?.store?.settings?.customerOrderRecallEnabled !== false
       );
       const rawPrinters =
         (storeRes as any)?.store?.settings?.printers ??
@@ -646,6 +653,40 @@ export const ManagerMenuPanel = () => {
     }
   };
 
+  const toggleCustomerOrderRecall = async (enabled: boolean) => {
+    setSavingCustomerOrderRecall(true);
+    try {
+      await api.updateCustomerOrderRecall(enabled);
+      setCustomerOrderRecallEnabled(enabled);
+      toast({
+        title: t("manager.customer_order_recall_updated", {
+          defaultValue: "Past order recall updated",
+        }),
+        description: enabled
+          ? t("manager.customer_order_recall_enabled_desc", {
+              defaultValue: "Customers can view and edit recent unpaid table orders.",
+            })
+          : t("manager.customer_order_recall_disabled_desc", {
+              defaultValue: "Customers will not see past orders or recall them from the menu.",
+            }),
+      });
+    } catch (error) {
+      toast({
+        title: t("manager.customer_order_recall_update_failed", {
+          defaultValue: "Update failed",
+        }),
+        description:
+          error instanceof Error
+            ? error.message
+            : t("manager.customer_order_recall_update_failed_desc", {
+                defaultValue: "Could not update past order recall.",
+              }),
+      });
+    } finally {
+      setSavingCustomerOrderRecall(false);
+    }
+  };
+
   return (
     <Card className="p-4 sm:p-6">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -686,6 +727,41 @@ export const ManagerMenuPanel = () => {
       </div>
       {panelOpen && (
         <>
+      <div className="mb-4 rounded-lg border border-border/70 bg-card/40 px-4 py-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              {t("manager.customer_order_recall_label", {
+                defaultValue: "Customer past orders",
+              })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t("manager.customer_order_recall_description", {
+                defaultValue:
+                  "Allow guests to see unpaid table orders and recall them for edits.",
+              })}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {savingCustomerOrderRecall ? (
+              <span className="h-4 w-4 rounded-full border-2 border-current/60 border-t-transparent animate-spin" />
+            ) : null}
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              {customerOrderRecallEnabled
+                ? t("manager.enabled", { defaultValue: "On" })
+                : t("manager.disabled", { defaultValue: "Off" })}
+            </span>
+            <Switch
+              checked={customerOrderRecallEnabled}
+              onCheckedChange={toggleCustomerOrderRecall}
+              disabled={savingCustomerOrderRecall}
+              aria-label={t("manager.customer_order_recall_label", {
+                defaultValue: "Customer past orders",
+              })}
+            />
+          </div>
+        </div>
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showDisabled} onChange={(e)=>setShowDisabled(e.target.checked)} />

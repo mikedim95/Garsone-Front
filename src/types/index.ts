@@ -208,9 +208,11 @@ export interface StoreInfo {
   orderingMode?: OrderingMode;
   printers?: string[];
   printOnArrival?: boolean;
+  customerOrderRecallEnabled?: boolean;
   settings?: {
     printers?: string[];
     printOnArrival?: boolean;
+    customerOrderRecallEnabled?: boolean;
     [key: string]: unknown;
   };
 }
