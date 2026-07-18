@@ -1,5 +1,14 @@
 # OrderFlow Frontend (Garsone-Front)
 
+## Docker Hub publishing
+
+Pushes to `main` that change the application or Docker build automatically run
+`.github/workflows/docker-publish.yml`. Add `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` (a write-enabled Docker Hub access token) as repository
+Actions secrets. The workflow publishes the Linux ARM64 image as
+`mikedim95/garsone-front:pi` and `pi-<git-sha>`, and also supports
+manual **Run workflow** dispatches.
+
 Customer ordering experience and staff dashboards for the OrderFlow restaurant
 system. Real-time updates are delivered via the backend WebSocket gateway; the
 backend also publishes the same topics to MQTT for non-browser clients.
