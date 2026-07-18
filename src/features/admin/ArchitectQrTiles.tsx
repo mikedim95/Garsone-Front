@@ -4,7 +4,9 @@ import { useNavigate } from "react-router-dom";
 import {
   Building2,
   Check,
+  Cloud,
   Copy,
+  Database,
   Grid3X3,
   Link as LinkIcon,
   Loader2,
@@ -15,6 +17,7 @@ import {
   Search,
   ServerCog,
   Settings,
+  Square,
   Trash2,
   Wifi,
 } from "lucide-react";
@@ -76,6 +79,7 @@ import type {
   StoreInfo,
   StoreOnboardPayload,
   StoreOverview,
+  VenueDeployment,
 } from "@/types";
 
 type StoreOption = Pick<
@@ -183,6 +187,19 @@ const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
       label: "Printer 1",
     },
   ],
+});
+
+const defaultVenueDeployment = (): VenueDeployment => ({
+  target: "ONLINE",
+  desiredState: "STOPPED",
+  version: 0,
+  appliedVersion: 0,
+  frontendPort: 8080,
+  corePort: 8787,
+  imageNamespace: "mikedim95",
+  imageTag: "pi",
+  status: "ONLINE_ONLY",
+  services: {},
 });
 
 const normalizeRemoteNodeWifi = (
@@ -551,6 +568,11 @@ export default function ArchitectQrTiles() {
     useState<OrderingMode>("qr");
   const [printers, setPrinters] = useState<string[]>([]);
   const [remoteNode, setRemoteNode] = useState<RemoteNode | null>(null);
+  const [venueDeployment, setVenueDeployment] = useState<VenueDeployment>(() =>
+    defaultVenueDeployment(),
+  );
+  const [loadingDeployment, setLoadingDeployment] = useState(false);
+  const [managingDeployment, setManagingDeployment] = useState(false);
   const [pendingNodes, setPendingNodes] = useState<PendingNodeAgent[]>([]);
   const [claimingNodeId, setClaimingNodeId] = useState<string | null>(null);
   const [nodeConfig, setNodeConfig] = useState<RemoteNodeConfig>(() =>
@@ -889,6 +911,25 @@ export default function ArchitectQrTiles() {
     [stores, toast],
   );
 
+  const loadVenueDeployment = useCallback(async (storeId: string) => {
+    if (!storeId) return;
+    setLoadingDeployment(true);
+    try {
+      const res = await api.adminGetStoreDeployment(storeId);
+      setVenueDeployment(res.deployment);
+      if (res.node) setRemoteNode(res.node);
+    } catch (error) {
+      console.error("Failed to load venue deployment", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to load venue deployment",
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setLoadingDeployment(false);
+    }
+  }, [toast]);
+
   const waitForRemoteNodeAck = useCallback(
     async (storeId: string, targetVersion: number) => {
       for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -1080,12 +1121,13 @@ export default function ArchitectQrTiles() {
     setPrinters(selectedStore.printers ?? []);
     void refreshStoreTiles(selectedStore.id);
     void loadRemoteNode(selectedStore.id);
+    void loadVenueDeployment(selectedStore.id);
     void loadStoreUsers(selectedStore.id);
     setEditingStoreUserId(null);
     setStoreUserForm(defaultStoreUserForm());
     setHistoryConfirmation("");
     setHistoryDialogOpen(false);
-  }, [loadRemoteNode, loadStoreUsers, refreshStoreTiles, selectedStore]);
+  }, [loadRemoteNode, loadStoreUsers, loadVenueDeployment, refreshStoreTiles, selectedStore]);
 
   useEffect(() => {
     if (activeTab === "overview") {
@@ -1778,6 +1820,7 @@ export default function ArchitectQrTiles() {
     if (activeTab === "settings") {
       void loadPendingNodes();
       if (selectedStoreId) void loadRemoteNode(selectedStoreId);
+      if (selectedStoreId) void loadVenueDeployment(selectedStoreId);
       if (selectedStoreId) void loadStoreUsers(selectedStoreId);
       if (selectedStoreId) void refreshStoreTiles(selectedStoreId, true);
       return;
@@ -1788,11 +1831,48 @@ export default function ArchitectQrTiles() {
     loadOverview,
     loadPendingNodes,
     loadRemoteNode,
+    loadVenueDeployment,
     loadStoreUsers,
     refreshPoolTiles,
     refreshStoreTiles,
     selectedStoreId,
   ]);
+
+  const handleVenueDeployment = useCallback(async (action: "DEPLOY" | "STOP") => {
+    if (!selectedStoreId) return;
+    setManagingDeployment(true);
+    try {
+      const res = await api.adminManageStoreDeployment(selectedStoreId, {
+        action,
+        frontendPort: venueDeployment.frontendPort,
+        corePort: venueDeployment.corePort,
+        imageNamespace: venueDeployment.imageNamespace,
+        imageTag: venueDeployment.imageTag,
+      });
+      setVenueDeployment(res.deployment);
+      if (res.node) setRemoteNode(res.node);
+      toast({
+        title: action === "DEPLOY" ? "Pi deployment requested" : "Pi stop requested",
+        description: "The node will report service status back to Architect.",
+      });
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        const latest = await api.adminGetStoreDeployment(selectedStoreId);
+        setVenueDeployment(latest.deployment);
+        if (latest.deployment.appliedVersion >= res.deployment.version &&
+          !["PENDING", "DEPLOYING", "STOPPING"].includes(latest.deployment.status)) break;
+      }
+    } catch (error) {
+      console.error("Failed to manage venue deployment", error);
+      toast({
+        variant: "destructive",
+        title: "Venue deployment failed",
+        description: error instanceof ApiError ? error.message : "Please try again.",
+      });
+    } finally {
+      setManagingDeployment(false);
+    }
+  }, [selectedStoreId, toast, venueDeployment]);
 
   const unassignedPoolTiles = useMemo(
     () => poolTiles.filter((tile) => !tile.storeId && !tile.tableId),
@@ -2388,6 +2468,10 @@ export default function ArchitectQrTiles() {
                     <QrCode className="h-4 w-4" />
                     Store QR Tiles
                   </TabsTrigger>
+                  <TabsTrigger value="store-deployment" className="gap-2">
+                    <Database className="h-4 w-4" />
+                    Venue Deployment
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="store-overview" className="space-y-5">
@@ -2762,6 +2846,159 @@ export default function ArchitectQrTiles() {
                           </TableBody>
                         </Table>
                       )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="store-deployment" className="space-y-5">
+                  <Card>
+                    <CardHeader>
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Database className="h-4 w-4 text-primary" />
+                            Venue Deployment
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            Choose where {selectedStore.name} runs and manage its Pi services.
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{venueDeployment.status.replace(/_/g, " ")}</Badge>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => void loadVenueDeployment(selectedStore.id)}
+                            disabled={loadingDeployment}
+                          >
+                            <RefreshCcw className={cn("h-4 w-4", loadingDeployment && "animate-spin")} />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-xl border p-5 text-left transition-colors",
+                            venueDeployment.target === "ONLINE" ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/40",
+                          )}
+                          onClick={() => void handleVenueDeployment("STOP")}
+                          disabled={managingDeployment}
+                        >
+                          <Cloud className="mb-3 h-6 w-6 text-primary" />
+                          <p className="font-semibold">Online database</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            The hosted API and database remain authoritative. Local Pi venue services are stopped.
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-xl border p-5 text-left transition-colors",
+                            venueDeployment.target === "PI" ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/40",
+                          )}
+                          onClick={() => void handleVenueDeployment("DEPLOY")}
+                          disabled={managingDeployment || !remoteNode}
+                        >
+                          <ServerCog className="mb-3 h-6 w-6 text-primary" />
+                          <p className="font-semibold">Local on associated Pi</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Runs PostgreSQL, Garsone Core and Garsone Front on the venue Pi and imports the current venue configuration.
+                          </p>
+                        </button>
+                      </div>
+
+                      <Separator />
+
+                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <Label>Frontend port</Label>
+                          <Input
+                            type="number"
+                            value={venueDeployment.frontendPort}
+                            onChange={(event) => setVenueDeployment((current) => ({ ...current, frontendPort: Number(event.target.value || 8080) }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Core API port</Label>
+                          <Input
+                            type="number"
+                            value={venueDeployment.corePort}
+                            onChange={(event) => setVenueDeployment((current) => ({ ...current, corePort: Number(event.target.value || 8787) }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Image namespace</Label>
+                          <Input
+                            value={venueDeployment.imageNamespace}
+                            onChange={(event) => setVenueDeployment((current) => ({ ...current, imageNamespace: event.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Image tag</Label>
+                          <Input
+                            value={venueDeployment.imageTag}
+                            onChange={(event) => setVenueDeployment((current) => ({ ...current, imageTag: event.target.value }))}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => void handleVenueDeployment("DEPLOY")} disabled={managingDeployment || !remoteNode}>
+                          {managingDeployment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ServerCog className="mr-2 h-4 w-4" />}
+                          Force deploy on Pi
+                        </Button>
+                        <Button variant="outline" onClick={() => void handleVenueDeployment("STOP")} disabled={managingDeployment || venueDeployment.desiredState === "STOPPED"}>
+                          <Square className="mr-2 h-4 w-4" />
+                          Stop local deployment
+                        </Button>
+                      </div>
+
+                      {!remoteNode ? (
+                        <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                          Associate a node with this venue before deploying locally.
+                        </p>
+                      ) : null}
+
+                      <p className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+                        Local deployment imports the current menu, staff accounts, tables, QR assignments, printers, and venue settings. It is an independent snapshot: later online edits require another force deploy, and local order history is not synchronized back to the hosted database.
+                      </p>
+
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                          <p className="text-xs text-muted-foreground">Desired / applied</p>
+                          <p className="mt-2 font-medium">v{venueDeployment.version} / v{venueDeployment.appliedVersion}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                          <p className="text-xs text-muted-foreground">Frontend</p>
+                          {venueDeployment.localUrl ? <a className="mt-2 block break-all text-sm font-medium text-primary underline" href={venueDeployment.localUrl} target="_blank" rel="noreferrer">{venueDeployment.localUrl}</a> : <p className="mt-2 text-sm">Not deployed</p>}
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                          <p className="text-xs text-muted-foreground">Core API</p>
+                          {venueDeployment.apiUrl ? <a className="mt-2 block break-all text-sm font-medium text-primary underline" href={`${venueDeployment.apiUrl}/health`} target="_blank" rel="noreferrer">{venueDeployment.apiUrl}</a> : <p className="mt-2 text-sm">Not deployed</p>}
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                          <p className="text-xs text-muted-foreground">Last report</p>
+                          <p className="mt-2 text-sm font-medium">{venueDeployment.lastReportedAt ? formatDate(venueDeployment.lastReportedAt) : "Never"}</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/60 p-4">
+                        <p className="font-medium">{venueDeployment.message || "No deployment activity yet."}</p>
+                        <div className="mt-3 grid gap-2 md:grid-cols-3">
+                          {["database", "backend", "frontend"].map((service) => {
+                            const detail = venueDeployment.services?.[service];
+                            return (
+                              <div key={service} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2 text-sm">
+                                <span className="capitalize">{service}</span>
+                                <Badge variant="outline" size="sm">{detail?.status || "NOT RUNNING"}</Badge>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>

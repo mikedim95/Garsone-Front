@@ -39,6 +39,7 @@ import type {
   RemoteNodeConfig,
   RemoteNodePrinterTestResponse,
   PendingNodeAgent,
+  VenueDeploymentResponse,
 } from "@/types";
 import { devMocks } from "./devMocks";
 import { isOfflineModeEnabled } from "./offlineMode";
@@ -1179,6 +1180,38 @@ export const api = {
     isOffline()
       ? Promise.resolve({ nodes: [] })
       : fetchApi<{ nodes: RemoteNode[] }>(`/admin/stores/${storeId}/nodes`),
+  adminGetStoreDeployment: (storeId: string): Promise<VenueDeploymentResponse> =>
+    isOffline()
+      ? Promise.resolve({
+          deployment: {
+            target: "ONLINE",
+            desiredState: "STOPPED",
+            version: 0,
+            appliedVersion: 0,
+            frontendPort: 8080,
+            corePort: 8787,
+            imageNamespace: "mikedim95",
+            imageTag: "pi",
+            status: "ONLINE_ONLY",
+            services: {},
+          },
+          node: null,
+        })
+      : fetchApi<VenueDeploymentResponse>(`/admin/stores/${storeId}/deployment`),
+  adminManageStoreDeployment: (
+    storeId: string,
+    data: {
+      action: "DEPLOY" | "STOP";
+      frontendPort?: number;
+      corePort?: number;
+      imageNamespace?: string;
+      imageTag?: string;
+    }
+  ): Promise<VenueDeploymentResponse> =>
+    fetchApi<VenueDeploymentResponse>(`/admin/stores/${storeId}/deployment`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   adminListPendingNodes: (): Promise<{ pendingNodes: PendingNodeAgent[] }> =>
     isOffline()
       ? Promise.resolve({ pendingNodes: [] })

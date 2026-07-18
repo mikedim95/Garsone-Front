@@ -218,6 +218,38 @@ export interface StoreInfo {
 }
 
 export type RemoteNodeStatus = 'PENDING' | 'ONLINE' | 'APPLYING' | 'DEGRADED' | 'ERROR' | 'OFFLINE';
+
+export type VenueDeploymentStatus =
+  | 'ONLINE_ONLY'
+  | 'PENDING'
+  | 'DEPLOYING'
+  | 'RUNNING'
+  | 'STOPPING'
+  | 'STOPPED'
+  | 'ERROR';
+
+export interface VenueDeployment {
+  target: 'ONLINE' | 'PI';
+  desiredState: 'RUNNING' | 'STOPPED';
+  version: number;
+  appliedVersion: number;
+  frontendPort: number;
+  corePort: number;
+  imageNamespace: string;
+  imageTag: string;
+  status: VenueDeploymentStatus;
+  message?: string;
+  localUrl?: string;
+  apiUrl?: string;
+  requestedAt?: string | null;
+  lastReportedAt?: string | null;
+  services?: Record<string, { status?: string; container?: string }>;
+}
+
+export interface VenueDeploymentResponse {
+  deployment: VenueDeployment;
+  node: RemoteNode | null;
+}
 export type RemotePrinterType = '58' | '80';
 
 export interface RemoteNodePrinter {
