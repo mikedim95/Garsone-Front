@@ -2,12 +2,16 @@
 
 ## Docker Hub publishing
 
-Pushes to `main` that change the application or Docker build automatically run
-`.github/workflows/docker-publish.yml`. Add `DOCKERHUB_USERNAME` and
-`DOCKERHUB_TOKEN` (a write-enabled Docker Hub access token) as repository
-Actions secrets. The workflow publishes the Linux ARM64 image as
-`mikedim95/garsone-front:pi` and `pi-<git-sha>`, and also supports
-manual **Run workflow** dispatches.
+Every push to `main` or `stage` verifies the application and publishes a Linux
+ARM64 image through `.github/workflows/docker-publish.yml`. Add
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a write-enabled Docker Hub access
+token) as repository Actions secrets.
+
+`main` publishes `pi`, `stable`, and immutable `stable-<git-sha>` tags. `stage`
+publishes `stage`, `canary`, and immutable `canary-<git-sha>` tags. The workflow
+then uses GitHub OIDC to register the immutable digest with the hosted Core,
+which rolls out only to Pi venues with automatic updates enabled on the
+matching release channel.
 
 Customer ordering experience and staff dashboards for the OrderFlow restaurant
 system. Real-time updates are delivered via the backend WebSocket gateway; the

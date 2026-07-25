@@ -80,6 +80,7 @@ import type {
   StoreOnboardPayload,
   StoreOverview,
   VenueDeployment,
+  VenueDeploymentEvent,
 } from "@/types";
 
 type StoreOption = Pick<
@@ -192,12 +193,16 @@ const defaultRemoteNodeConfig = (): RemoteNodeConfig => ({
 const defaultVenueDeployment = (): VenueDeployment => ({
   target: "ONLINE",
   desiredState: "STOPPED",
+  autoUpdate: true,
+  channel: "STABLE",
   version: 0,
   appliedVersion: 0,
+  dataSyncVersion: 0,
+  appliedDataSyncVersion: 0,
   frontendPort: 8080,
   corePort: 8787,
-  imageNamespace: "mikedim95",
-  imageTag: "pi",
+  desiredCoreImageRef: "mikedim95/garsone-core:pi",
+  desiredFrontImageRef: "mikedim95/garsone-front:pi",
   status: "ONLINE_ONLY",
   services: {},
 });
@@ -571,6 +576,9 @@ export default function ArchitectQrTiles() {
   const [venueDeployment, setVenueDeployment] = useState<VenueDeployment>(() =>
     defaultVenueDeployment(),
   );
+  const [venueDeploymentEvents, setVenueDeploymentEvents] = useState<
+    VenueDeploymentEvent[]
+  >([]);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
   const [managingDeployment, setManagingDeployment] = useState(false);
   const [pendingNodes, setPendingNodes] = useState<PendingNodeAgent[]>([]);
@@ -917,6 +925,7 @@ export default function ArchitectQrTiles() {
     try {
       const res = await api.adminGetStoreDeployment(storeId);
       setVenueDeployment(res.deployment);
+      setVenueDeploymentEvents(res.recentEvents || []);
       if (res.node) setRemoteNode(res.node);
     } catch (error) {
       console.error("Failed to load venue deployment", error);
@@ -1838,7 +1847,9 @@ export default function ArchitectQrTiles() {
     selectedStoreId,
   ]);
 
-  const handleVenueDeployment = useCallback(async (action: "DEPLOY" | "STOP") => {
+  const handleVenueDeployment = useCallback(async (
+    action: "DEPLOY" | "STOP" | "SYNC" | "CONFIGURE",
+  ) => {
     if (!selectedStoreId) return;
     setManagingDeployment(true);
     try {
@@ -1846,19 +1857,31 @@ export default function ArchitectQrTiles() {
         action,
         frontendPort: venueDeployment.frontendPort,
         corePort: venueDeployment.corePort,
-        imageNamespace: venueDeployment.imageNamespace,
-        imageTag: venueDeployment.imageTag,
+        autoUpdate: venueDeployment.autoUpdate,
+        channel: venueDeployment.channel,
+        nodeId: remoteNode?.id,
       });
       setVenueDeployment(res.deployment);
       if (res.node) setRemoteNode(res.node);
       toast({
-        title: action === "DEPLOY" ? "Pi deployment requested" : "Pi stop requested",
+        title:
+          action === "DEPLOY"
+            ? "Pi code deployment requested"
+            : action === "SYNC"
+            ? "Venue data sync requested"
+            : action === "CONFIGURE"
+            ? "Rollout settings saved"
+            : "Pi stop requested",
         description: "The node will report service status back to Architect.",
       });
+      if (action === "CONFIGURE" && res.deployment.desiredState === "STOPPED") {
+        return;
+      }
       for (let attempt = 0; attempt < 60; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
         const latest = await api.adminGetStoreDeployment(selectedStoreId);
         setVenueDeployment(latest.deployment);
+        setVenueDeploymentEvents(latest.recentEvents || []);
         if (latest.deployment.appliedVersion >= res.deployment.version &&
           !["PENDING", "DEPLOYING", "STOPPING"].includes(latest.deployment.status)) break;
       }
@@ -1872,7 +1895,7 @@ export default function ArchitectQrTiles() {
     } finally {
       setManagingDeployment(false);
     }
-  }, [selectedStoreId, toast, venueDeployment]);
+  }, [remoteNode?.id, selectedStoreId, toast, venueDeployment]);
 
   const unassignedPoolTiles = useMemo(
     () => poolTiles.filter((tile) => !tile.storeId && !tile.tableId),
@@ -2912,7 +2935,7 @@ export default function ArchitectQrTiles() {
 
                       <Separator />
 
-                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <Label>Frontend port</Label>
                           <Input
@@ -2930,25 +2953,76 @@ export default function ArchitectQrTiles() {
                           />
                         </div>
                         <div>
-                          <Label>Image namespace</Label>
-                          <Input
-                            value={venueDeployment.imageNamespace}
-                            onChange={(event) => setVenueDeployment((current) => ({ ...current, imageNamespace: event.target.value }))}
+                          <Label>Release channel</Label>
+                          <Select
+                            value={venueDeployment.channel}
+                            onValueChange={(value: "STABLE" | "STAGE") =>
+                              setVenueDeployment((current) => ({
+                                ...current,
+                                channel: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="STABLE">Stable (main)</SelectItem>
+                              <SelectItem value="STAGE">Stage (canary)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+                          <div className="pr-4">
+                            <Label htmlFor="venue-auto-update">Automatic updates</Label>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Install successful releases from this channel.
+                            </p>
+                          </div>
+                          <Switch
+                            id="venue-auto-update"
+                            checked={venueDeployment.autoUpdate}
+                            onCheckedChange={(checked) =>
+                              setVenueDeployment((current) => ({
+                                ...current,
+                                autoUpdate: checked,
+                              }))
+                            }
                           />
                         </div>
-                        <div>
-                          <Label>Image tag</Label>
-                          <Input
-                            value={venueDeployment.imageTag}
-                            onChange={(event) => setVenueDeployment((current) => ({ ...current, imageTag: event.target.value }))}
-                          />
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                          <p className="text-xs font-medium text-muted-foreground">Desired Core image</p>
+                          <p className="mt-1 break-all font-mono text-xs">{venueDeployment.desiredCoreImageRef}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                          <p className="text-xs font-medium text-muted-foreground">Desired Front image</p>
+                          <p className="mt-1 break-all font-mono text-xs">{venueDeployment.desiredFrontImageRef}</p>
                         </div>
                       </div>
 
                       <div className="flex flex-wrap gap-2">
                         <Button onClick={() => void handleVenueDeployment("DEPLOY")} disabled={managingDeployment || !remoteNode}>
                           {managingDeployment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ServerCog className="mr-2 h-4 w-4" />}
-                          Force deploy on Pi
+                          Deploy code on Pi
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => void handleVenueDeployment("SYNC")}
+                          disabled={managingDeployment || !remoteNode || venueDeployment.desiredState !== "RUNNING"}
+                        >
+                          <Database className="mr-2 h-4 w-4" />
+                          Sync venue data
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => void handleVenueDeployment("CONFIGURE")}
+                          disabled={managingDeployment || !remoteNode}
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Save rollout settings
                         </Button>
                         <Button variant="outline" onClick={() => void handleVenueDeployment("STOP")} disabled={managingDeployment || venueDeployment.desiredState === "STOPPED"}>
                           <Square className="mr-2 h-4 w-4" />
@@ -2963,13 +3037,17 @@ export default function ArchitectQrTiles() {
                       ) : null}
 
                       <p className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
-                        Local deployment imports the current menu, staff accounts, tables, QR assignments, printers, and venue settings. It is an independent snapshot: later online edits require another force deploy, and local order history is not synchronized back to the hosted database.
+                        Code releases preserve the Pi database and local order history. Venue data is imported only on the first deployment or when you explicitly select <span className="font-medium text-foreground">Sync venue data</span>. Before every code upgrade, the node keeps a compressed database backup and restores the previous containers if health checks fail.
                       </p>
 
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                         <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                          <p className="text-xs text-muted-foreground">Desired / applied</p>
+                          <p className="text-xs text-muted-foreground">Code desired / applied</p>
                           <p className="mt-2 font-medium">v{venueDeployment.version} / v{venueDeployment.appliedVersion}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                          <p className="text-xs text-muted-foreground">Data sync desired / applied</p>
+                          <p className="mt-2 font-medium">v{venueDeployment.dataSyncVersion} / v{venueDeployment.appliedDataSyncVersion}</p>
                         </div>
                         <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                           <p className="text-xs text-muted-foreground">Frontend</p>
@@ -2982,6 +3060,10 @@ export default function ArchitectQrTiles() {
                         <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                           <p className="text-xs text-muted-foreground">Last report</p>
                           <p className="mt-2 text-sm font-medium">{venueDeployment.lastReportedAt ? formatDate(venueDeployment.lastReportedAt) : "Never"}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                          <p className="text-xs text-muted-foreground">Last DB backup</p>
+                          <p className="mt-2 text-sm font-medium">{venueDeployment.lastBackupAt ? formatDate(venueDeployment.lastBackupAt) : "Never"}</p>
                         </div>
                       </div>
 
@@ -2997,6 +3079,34 @@ export default function ArchitectQrTiles() {
                               </div>
                             );
                           })}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/60 p-4">
+                        <p className="font-medium">Recent rollout activity</p>
+                        <div className="mt-3 space-y-2">
+                          {venueDeploymentEvents.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No rollout events recorded yet.</p>
+                          ) : (
+                            venueDeploymentEvents.slice(0, 8).map((event) => (
+                              <div
+                                key={event.id}
+                                className="flex flex-col gap-1 rounded-md bg-muted/30 px-3 py-2 text-sm md:flex-row md:items-center md:justify-between"
+                              >
+                                <div>
+                                  <span className="font-medium">{event.eventType.replace(/_/g, " ")}</span>
+                                  <span className="ml-2 text-muted-foreground">v{event.version}</span>
+                                  {event.message ? (
+                                    <p className="mt-0.5 text-xs text-muted-foreground">{event.message}</p>
+                                  ) : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" size="sm">{event.status.replace(/_/g, " ")}</Badge>
+                                  <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     </CardContent>

@@ -226,29 +226,50 @@ export type VenueDeploymentStatus =
   | 'RUNNING'
   | 'STOPPING'
   | 'STOPPED'
+  | 'ROLLED_BACK'
   | 'ERROR';
 
 export interface VenueDeployment {
+  id?: string | null;
+  nodeId?: string | null;
   target: 'ONLINE' | 'PI';
   desiredState: 'RUNNING' | 'STOPPED';
+  autoUpdate: boolean;
+  channel: 'STABLE' | 'STAGE';
   version: number;
   appliedVersion: number;
+  dataSyncVersion: number;
+  appliedDataSyncVersion: number;
   frontendPort: number;
   corePort: number;
-  imageNamespace: string;
-  imageTag: string;
+  desiredCoreImageRef: string;
+  desiredFrontImageRef: string;
+  appliedCoreImageRef?: string;
+  appliedFrontImageRef?: string;
   status: VenueDeploymentStatus;
   message?: string;
   localUrl?: string;
   apiUrl?: string;
   requestedAt?: string | null;
   lastReportedAt?: string | null;
+  lastBackupAt?: string | null;
+  lastBackupFile?: string;
   services?: Record<string, { status?: string; container?: string }>;
+}
+
+export interface VenueDeploymentEvent {
+  id: string;
+  version: number;
+  eventType: string;
+  status: string;
+  message?: string | null;
+  createdAt: string;
 }
 
 export interface VenueDeploymentResponse {
   deployment: VenueDeployment;
   node: RemoteNode | null;
+  recentEvents?: VenueDeploymentEvent[];
 }
 export type RemotePrinterType = '58' | '80';
 

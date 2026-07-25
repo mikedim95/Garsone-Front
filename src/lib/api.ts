@@ -1186,12 +1186,16 @@ export const api = {
           deployment: {
             target: "ONLINE",
             desiredState: "STOPPED",
+            autoUpdate: true,
+            channel: "STABLE",
             version: 0,
             appliedVersion: 0,
+            dataSyncVersion: 0,
+            appliedDataSyncVersion: 0,
             frontendPort: 8080,
             corePort: 8787,
-            imageNamespace: "mikedim95",
-            imageTag: "pi",
+            desiredCoreImageRef: "mikedim95/garsone-core:pi",
+            desiredFrontImageRef: "mikedim95/garsone-front:pi",
             status: "ONLINE_ONLY",
             services: {},
           },
@@ -1201,11 +1205,12 @@ export const api = {
   adminManageStoreDeployment: (
     storeId: string,
     data: {
-      action: "DEPLOY" | "STOP";
+      action: "DEPLOY" | "STOP" | "SYNC" | "CONFIGURE";
       frontendPort?: number;
       corePort?: number;
-      imageNamespace?: string;
-      imageTag?: string;
+      autoUpdate?: boolean;
+      channel?: "STABLE" | "STAGE";
+      nodeId?: string;
     }
   ): Promise<VenueDeploymentResponse> =>
     fetchApi<VenueDeploymentResponse>(`/admin/stores/${storeId}/deployment`, {
