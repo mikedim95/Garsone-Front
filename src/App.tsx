@@ -1,5 +1,6 @@
 import { useEffect, Suspense, lazy } from "react";
 import clsx from "clsx";
+import { MotionConfig } from "framer-motion";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,7 +11,6 @@ import {
   Route,
   useLocation,
   Navigate,
-  useParams,
 } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useTheme } from "@/components/theme-provider-context";
@@ -18,8 +18,6 @@ import {
   dashboardThemeClassNames,
   useDashboardTheme,
 } from "@/hooks/useDashboardDark";
-import { API_BASE } from "@/lib/api";
-import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 import "./i18n/config";
 
@@ -39,67 +37,7 @@ const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 const HybridDashboard = lazy(() => import("./pages/HybridDashboard"));
 const ArchitectQrTiles = lazy(() => import("./pages/ArchitectQrTiles"));
 const ProfileDashboard = lazy(() => import("./pages/ProfileDashboard"));
-const PublicCodeRedirect = () => {
-  const location = useLocation();
-  const params = useParams<{ publicCode?: string }>();
-  useEffect(() => {
-    let aborted = false;
-    const run = async () => {
-      const code = (params.publicCode || "").trim().toUpperCase();
-      if (!code) {
-        window.location.replace("/");
-        return;
-      }
-      try {
-        const res = await fetch(
-          `${API_BASE.replace(/\/$/, "")}/q/${encodeURIComponent(code)}`,
-          { headers: { Accept: "application/json" } }
-        );
-        if (!res.ok) throw new Error("Failed to resolve");
-        const data = await res.json();
-        if (!aborted && data?.tableId) {
-          if (data.storeSlug) {
-            try {
-              setStoredStoreSlug(data.storeSlug);
-            } catch {}
-          }
-          const qs = data.storeSlug
-            ? `?storeSlug=${encodeURIComponent(data.storeSlug)}`
-            : "";
-          window.location.replace(`/${data.tableId}${qs}`);
-          return;
-        }
-      } catch {
-        // Fall back to server-side redirect (might include visit token)
-      }
-      if (!aborted) {
-        const dest = `${API_BASE.replace(
-          /\/$/,
-          ""
-        )}/q/${encodeURIComponent(code)}${location.search}${location.hash}`;
-        try {
-          const detail = {
-            code,
-            apiBase: API_BASE,
-            destination: dest,
-            sourcePath: `${location.pathname}${location.search}${location.hash}`,
-            ts: new Date().toISOString(),
-          };
-          console.warn("[qr] Client resolve fallback", detail);
-          window.dispatchEvent(
-            new CustomEvent("qr-client-resolve-fallback", { detail })
-          );
-        } catch {}
-        window.location.replace(dest);
-      }
-    };
-    run();
-    return () => {
-      aborted = true;
-    };
-  }, [location, params.publicCode]);
-  return null;
-};
+const PublicCodeRedirect = lazy(() => import("./features/qr/PublicCodeRedirect"));
 
 const queryClient = new QueryClient();
 
@@ -123,14 +61,17 @@ const BrandedLoadingScreen = () => {
   ]);
   const isLanding = location.pathname === "/";
   const isCustomerMenu =
-    segments.length === 1 && firstSegment && !reservedTopLevels.has(firstSegment);
+    (firstSegment === "q" || firstSegment === "table") ||
+    (segments.length === 1 && firstSegment && !reservedTopLevels.has(firstSegment));
 
   const label = "Garsone";
   let roleLabel: string | null = null;
   if (!isLanding && typeof window !== "undefined") {
     if (!isCustomerMenu) {
-      const storedRole = window.localStorage.getItem("USER_ROLE");
-      if (storedRole) roleLabel = storedRole;
+      try {
+        const storedRole = window.localStorage.getItem("USER_ROLE");
+        if (storedRole) roleLabel = storedRole;
+      } catch { /* Loading still works when browser storage is unavailable. */ }
     }
   }
 
@@ -138,7 +79,7 @@ const BrandedLoadingScreen = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-      <div className="relative flex flex-col items-center gap-4">
+      <div className="relative flex flex-col items-center gap-4" role="status" aria-live="polite">
         <div
           className="pointer-events-none absolute -inset-10 rounded-full bg-gradient-primary opacity-30 blur-3xl animate-pulse"
           aria-hidden="true"
@@ -192,9 +133,7 @@ const AppShell = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter
-            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-          >
+          <BrowserRouter>
             <Suspense fallback={<BrandedLoadingScreen />}>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -230,9 +169,11 @@ const AppShell = () => {
 };
 
 const App = () => (
-  <ThemeProvider defaultTheme="light">
-    <AppShell />
-  </ThemeProvider>
+  <MotionConfig reducedMotion="user">
+    <ThemeProvider defaultTheme="light">
+      <AppShell />
+    </ThemeProvider>
+  </MotionConfig>
 );
 
 export default App;

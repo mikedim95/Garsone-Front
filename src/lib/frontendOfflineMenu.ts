@@ -4,7 +4,7 @@ export const FRONTEND_OFFLINE_MENU_TABLE_ID = "offline-menu";
 export const FRONTEND_OFFLINE_MENU_STORE_SLUG = "garsone-offline";
 
 const image = (seed: string) =>
-  `https://images.unsplash.com/${seed}?auto=format&fit=crop&w=900&q=80`;
+  import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/placeholder.svg' : `https://images.unsplash.com/${seed}?auto=format&fit=crop&w=900&q=80`;
 
 export const isFrontendOfflineMenuPath = (tableCode?: string | null) =>
   (tableCode || "").trim().toLowerCase() === FRONTEND_OFFLINE_MENU_TABLE_ID;

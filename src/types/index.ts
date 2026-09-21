@@ -373,9 +373,6 @@ export interface PendingNodeAgent {
   updatedAt?: string;
 }
 
-export type RemoteNodeStatus = 'PENDING' | 'ONLINE' | 'APPLYING' | 'DEGRADED' | 'ERROR' | 'OFFLINE';
-export type RemotePrinterType = '58' | '80';
-
 export interface RemoteNodePrinter {
   id?: string;
   type: RemotePrinterType;

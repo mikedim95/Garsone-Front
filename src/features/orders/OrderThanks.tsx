@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { api } from "@/lib/api";
 import {
   FRONTEND_OFFLINE_MENU_STORE_SLUG,
@@ -15,6 +15,7 @@ export default function OrderThanks() {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   const { tableId, storeSlug, updated } = useMemo(() => {
     const qs = new URLSearchParams(location.search);
     return {
@@ -80,45 +81,25 @@ export default function OrderThanks() {
   }, [storeSlug, tableId]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30 flex items-center justify-center p-4">
+    <main className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-background via-background to-muted/30 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-6" data-testid="order-confirmation">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="max-w-sm w-full text-center"
+        transition={{ duration: reduceMotion ? 0 : 0.25, ease: "easeOut" }}
+        className="w-full max-w-md rounded-3xl border border-border/70 bg-card p-6 text-center shadow-sm sm:p-9"
       >
         <motion.div
-          initial={{ scale: 0 }}
+          initial={reduceMotion ? false : { scale: 0.92 }}
           animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="relative mx-auto mb-8"
+          transition={{ duration: reduceMotion ? 0 : 0.28, ease: "easeOut" }}
+          className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10"
+          aria-hidden="true"
         >
-          <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.4, type: "spring", stiffness: 300 }}
-            >
-              <CheckCircle
-                className="h-12 w-12 text-primary"
-                strokeWidth={1.5}
-              />
-            </motion.div>
-          </div>
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1.2, opacity: 0 }}
-            transition={{ delay: 0.5, duration: 1, ease: "easeOut" }}
-            className="absolute inset-0 w-24 h-24 mx-auto border-2 border-primary/30 rounded-full"
-          />
+          <CheckCircle className="h-11 w-11 text-primary" strokeWidth={1.6} />
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          <h1 className="text-2xl font-semibold text-foreground mb-2">
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <h1 className="mb-3 break-words text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
             {updated
               ? t("order.updated_success_title", {
                   defaultValue: "Order changed successfully",
@@ -127,22 +108,20 @@ export default function OrderThanks() {
                   defaultValue: "Order successful",
                 })}
           </h1>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
+          <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
+            {updated
+              ? t("order.updated_description", { defaultValue: "Your changes are saved. Return to the menu to follow your order." })
+              : t("order.received_description", { defaultValue: "Your order is saved. Return to the menu to see its status." })}
+          </p>
+        </div>
+        <Button
+          onClick={() => navigate(menuPath)}
+          className="mt-7 h-auto min-h-12 w-full whitespace-normal rounded-xl px-5 py-3 text-base font-semibold leading-snug shadow-sm"
         >
-          <Button
-            onClick={() => navigate(menuPath)}
-            className="mt-8 h-12 rounded-full px-6 font-semibold shadow-lg"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            {t("order.go_back_to_menu", { defaultValue: "Go back to menu" })}
-          </Button>
-        </motion.div>
+          <ArrowLeft className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
+          {t("order.go_back_to_menu", { defaultValue: "Go back to menu" })}
+        </Button>
       </motion.div>
-    </div>
+    </main>
   );
 }

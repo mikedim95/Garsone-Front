@@ -62,6 +62,10 @@ const ENV_API: string | undefined = import.meta.env.VITE_API_URL;
 const isFallbackSlug = (slug?: string | null) =>
   !slug || !slug.trim() || slug.trim().toLowerCase() === "default-store";
 export const API_BASE = (() => {
+  // Container deployments can proxy the API under the current origin.
+  if (ENV_API?.startsWith("/") && !ENV_API.startsWith("//") && typeof window !== "undefined") {
+    return new URL(ENV_API, window.location.origin).toString().replace(/\/+$/, "");
+  }
   // Use env only if it isn't pointing to localhost (which breaks on phones)
   if (
     ENV_API &&
@@ -84,7 +88,7 @@ export function isOffline() {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -303,7 +307,7 @@ type PublicEventPayload = {
   meta?: Record<string, unknown>;
 };
 
-async function fetchApi<T>(
+export async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
@@ -311,11 +315,20 @@ async function fetchApi<T>(
     const slug = getStoredStoreSlug();
     return isFallbackSlug(slug) ? undefined : slug || undefined;
   };
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (options?.signal?.aborted) cancel();
+  else options?.signal?.addEventListener("abort", cancel, { once: true });
+  // A stalled read should offer recovery. Mutations are never retried or timed
+  // out here: the server may already have saved the change or accepted an order.
+  const isRead = !options?.method || ["GET", "HEAD"].includes(options.method.toUpperCase());
+  const timeout = isRead || endpoint === "/auth/signin" ? window.setTimeout(cancel, 20_000) : undefined;
   try {
     const token = useAuthStore.getState().token;
     const storeSlug = getStoreSlug();
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
+      signal: controller.signal,
       headers: {
         ...(options?.body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -324,32 +337,34 @@ async function fetchApi<T>(
       },
     });
 
-    // Check if response is JSON
+    if (response.status === 204) return undefined as T;
     const contentType = response.headers.get("content-type");
     if (!contentType?.includes("application/json")) {
-      throw new ApiError(response.status, "Server returned non-JSON response");
+      throw new ApiError(response.status, response.status === 429
+        ? "Too many requests. Please wait a moment before trying again."
+        : "The service is temporarily unavailable. Please try again shortly.");
     }
 
     if (!response.ok) {
       const error = await response.json();
-      const message = error.error || error.message || "Request failed";
-      console.error("[api] request failed", {
-        endpoint,
-        status: response.status,
-        message,
-        error,
-      });
-      throw new ApiError(response.status, message);
+      const code = typeof error?.error === "string" ? error.error : undefined;
+      const message = response.status === 429
+        ? "Too many requests. Please wait a moment before trying again."
+        : typeof error?.message === "string" && error.message.trim()
+          ? error.message : code || "This request could not be completed. Please try again.";
+      throw new ApiError(response.status, message, code);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    console.error("[api] network/parse failure", {
-      endpoint,
-      error,
-    });
-    throw new ApiError(0, "Network error or invalid response");
+    if (controller.signal.aborted && !options?.signal?.aborted) {
+      throw new ApiError(0, "The service is taking too long to respond. Check your connection and try again.", "REQUEST_TIMEOUT");
+    }
+    throw new ApiError(0, "Could not connect to the service. Check your connection to the venue network and try again.", "NETWORK_ERROR");
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+    options?.signal?.removeEventListener("abort", cancel);
   }
 }
 
@@ -394,7 +409,7 @@ export const api = {
         }),
   updateCustomerOrderRecall: (enabled: boolean): Promise<{ store: StoreInfo }> =>
     isOffline()
-      ? devMocks.getStore().then(({ store }) => ({
+      ? devMocks.getStore().then(({ store }: { store: StoreInfo }) => ({
           store: {
             ...store,
             customerOrderRecallEnabled: enabled,

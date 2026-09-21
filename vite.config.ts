@@ -16,9 +16,6 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  optimizeDeps: {
-    include: ['mqtt'],
-  },
   plugins: [
     react(),
     mode === 'development' && componentTagger(),

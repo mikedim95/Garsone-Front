@@ -5,15 +5,17 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import clsx from "clsx";
 import { createPortal } from "react-dom";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useDragControls, type PanInfo } from "framer-motion";
+import { motion, useDragControls, useReducedMotion, type PanInfo } from "framer-motion";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
 import { SwipeableMenuView } from "@/components/menu/SwipeableMenuView";
+import { invalidCartItem, MAX_ITEM_QUANTITY } from "@/components/menu/orderValidation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -675,6 +677,11 @@ const clearStoredLastOrder = () => {
 export default function TableMenu() {
   const { tableId: tableParam } = useParams();
   const { t, i18n } = useTranslation();
+  const reduceMotion = useReducedMotion();
+  const menuHeaderRef = useRef<HTMLElement>(null);
+  const orderBarRef = useRef<HTMLDivElement>(null);
+  const [menuHeaderHeight, setMenuHeaderHeight] = useState(64);
+  const [secondaryBarSpace, setSecondaryBarSpace] = useState(80);
   const activeLanguage = (
     i18n.resolvedLanguage ||
     i18n.language ||
@@ -722,6 +729,7 @@ export default function TableMenu() {
     cartItem: CartItem;
   } | null>(null);
   const [activeLineSaving, setActiveLineSaving] = useState(false);
+  const activeLineSavingRef = useRef(false);
   const [cartOpenSignal, setCartOpenSignal] = useState(0);
   const [orderPlacedSignal, setOrderPlacedSignal] = useState(0);
   const [editingNote, setEditingNote] = useState<string | undefined>(undefined);
@@ -751,7 +759,7 @@ export default function TableMenu() {
   const isFrontendOnlyMenu = isFrontendOfflineMenuPath(tableLookupCode);
   const activeTableId = tableId;
   const guestOrderingEnabled = isFrontendOnlyMenu || orderingMode !== "waiter";
-  const usesImmediateGuestCheckout = storeSlug?.trim().toLowerCase() === "noor";
+  const usesImmediateGuestCheckout = import.meta.env.VITE_LOCAL_ONLY === "true";
   const isEditingExisting = editingOrderIds.length > 0 || Boolean(editingOrderId);
   const isEditingPendingBatch = editingOrderIds.length > 1;
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
@@ -790,6 +798,18 @@ export default function TableMenu() {
   const activeOrderTone = getStatusTone(activeOrderStatus);
   const hasActiveOrderBar = shouldShowLastOrderButton;
   const hasExpandedActiveOrderBar = false;
+  useEffect(() => {
+    const measure = () => {
+      if (menuHeaderRef.current) setMenuHeaderHeight(Math.ceil(menuHeaderRef.current.getBoundingClientRect().height));
+      if (orderBarRef.current) setSecondaryBarSpace(Math.ceil(orderBarRef.current.getBoundingClientRect().height) + 12);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    if (menuHeaderRef.current) observer.observe(menuHeaderRef.current);
+    if (orderBarRef.current) observer.observe(orderBarRef.current);
+    return () => observer.disconnect();
+  }, [shouldShowLastOrderButton]);
   const activeLineCartItem = activeLineEditor?.cartItem ?? null;
   const activeOrderPlacedTime = new Date(
     activeOrder?.createdAt || Date.now()
@@ -860,8 +880,9 @@ export default function TableMenu() {
       setLastOrderButtonVisible(true);
     }
 
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || reduceMotion) {
       setActiveOrderOpen(false);
+      setActiveOrderSheetMinimizing(false);
       return;
     }
 
@@ -1081,6 +1102,9 @@ export default function TableMenu() {
   const notifiedOrderStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   const cancelledOrderDismissTimersRef = useRef<Map<string, number>>(new Map());
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const checkoutLockRef = useRef(false);
+  const [tableLookupRetry, setTableLookupRetry] = useState(0);
+  const cartContextRef = useRef<string | null>(null);
   const [localityGateOpen, setLocalityGateOpen] = useState(false);
   const localityGatePromiseRef = useRef<Promise<LocalityApproval | null> | null>(
     null
@@ -1095,6 +1119,7 @@ export default function TableMenu() {
     isLoading: bootstrapLoading,
     isFetching: bootstrapFetching,
     error: bootstrapError,
+    refetch: refetchBootstrap,
   } = useQuery({
     queryKey: ["menu-bootstrap", storeSlug || null, tableLookupCode, languageCode],
     queryFn: async () => {
@@ -1116,7 +1141,18 @@ export default function TableMenu() {
     refetchOnReconnect: true,
     refetchOnWindowFocus: false,
     refetchInterval: false,
+    retry: (failureCount, failure) => failureCount < 1 && !(failure instanceof ApiError && failure.status >= 400 && failure.status < 500),
   });
+
+  useEffect(() => {
+    setMenuData(null);
+    setTableId(null);
+    setTableLabel(null);
+    setError(null);
+    setCategorySelected(false);
+    setSelectedCategory(null);
+    setCustomizeOpen(false);
+  }, [tableParam]);
 
   const { data: storeMeta } = useQuery({
     queryKey: ["store-meta", storeSlug || null],
@@ -1206,7 +1242,28 @@ export default function TableMenu() {
 
   useEffect(() => {
     if (!bootstrap?.menu) return;
+    if (!isFrontendOnlyMenu && !bootstrap.table?.id) {
+      setTableId(null);
+      setError(t("menu.table_unavailable", { defaultValue: "This table is unavailable. Please scan its QR code again or ask a member of staff." }));
+      return;
+    }
     const payload = bootstrap.menu;
+    const nextCartContext = bootstrap.table?.id && bootstrap.store?.slug
+      ? `${bootstrap.store.slug}:${bootstrap.table.id}` : null;
+    if (nextCartContext) {
+      let previousContext = cartContextRef.current;
+      try { previousContext ??= localStorage.getItem("cart-table-context"); } catch { /* Storage may be disabled. */ }
+      if (previousContext && previousContext !== nextCartContext && useCartStore.getState().items.length) {
+        clearCart();
+        setEditingNote(undefined);
+        toast({
+          title: t("menu.table_changed_title", { defaultValue: "You’re at a different table" }),
+          description: t("menu.table_changed_cart", { defaultValue: "Your cart was cleared so you can start an order for this table." }),
+        });
+      }
+      cartContextRef.current = nextCartContext;
+      try { localStorage.setItem("cart-table-context", nextCartContext); } catch { /* In-memory scoping still applies. */ }
+    }
     setMenuCache(payload as MenuData);
     setMenuData(
       buildMenuState(
@@ -1294,16 +1351,23 @@ export default function TableMenu() {
   // If no usable storeSlug yet (or only the fallback), try to resolve it via public table lookup
   useEffect(() => {
     if (!isFrontendOnlyMenu && isFallbackSlug(storeSlug) && tableLookupCode) {
+      const controller = new AbortController();
+      let cancelled = false;
+      const timeout = window.setTimeout(() => controller.abort(), 12_000);
       (async () => {
         try {
           const res = await fetch(
             `${API_BASE.replace(/\/$/, "")}/public/table/${encodeURIComponent(
               tableLookupCode
-            )}`
+            )}`, { signal: controller.signal }
           );
-          if (!res.ok) return;
+          if (!res.ok) throw new Error(res.status === 404
+            ? t("menu.table_unavailable", { defaultValue: "This table is unavailable. Please scan its QR code again or ask a member of staff." })
+            : t("menu.connection_error", { defaultValue: "We couldn’t reach the menu. Check your venue Wi-Fi connection and try again." }));
           const data = await res.json();
+          if (cancelled) return;
           if (data?.storeSlug) {
+            setError(null);
             clearMenuCache();
             setStoreSlug(data.storeSlug);
             try {
@@ -1314,13 +1378,19 @@ export default function TableMenu() {
                 })
               );
             } catch {}
-          }
+          } else throw new Error(t("menu.table_unavailable", { defaultValue: "This table is unavailable. Please scan its QR code again or ask a member of staff." }));
         } catch (err) {
+          if (cancelled) return;
           console.warn("Failed to resolve store slug for table", err);
+          setError(err instanceof Error && err.name !== "AbortError" ? err.message
+            : t("menu.connection_error", { defaultValue: "We couldn’t reach the menu. Check your venue Wi-Fi connection and try again." }));
+        } finally {
+          window.clearTimeout(timeout);
         }
       })();
+      return () => { cancelled = true; window.clearTimeout(timeout); controller.abort(); };
     }
-  }, [isFrontendOnlyMenu, storeSlug, tableLookupCode, clearMenuCache]);
+  }, [isFrontendOnlyMenu, storeSlug, tableLookupCode, clearMenuCache, tableLookupRetry, t]);
 
   useEffect(() => {
     if (lastOrder?.tableLabel) {
@@ -1599,7 +1669,12 @@ export default function TableMenu() {
   }, []);
 
   const categories = menuData ? menuData.categories : [];
-  const loading = (bootstrapLoading || bootstrapFetching) && !menuData;
+  const loading = (bootstrapLoading || bootstrapFetching || !bootstrapQueryEnabled) && !menuData && !error;
+  const retryMenu = () => {
+    setError(null);
+    if (bootstrapQueryEnabled) void refetchBootstrap();
+    else setTableLookupRetry(value => value + 1);
+  };
   const filteredItems = menuData
     ? selectedCategory === "all"
       ? menuData.items
@@ -1616,6 +1691,7 @@ export default function TableMenu() {
     t("menu.store_title_fallback", { defaultValue: "Store" });
 
   const handleAddItem = (item: MenuItem) => {
+    if (checkoutLockRef.current || item.available === false || item.isAvailable === false) return;
     if (!guestOrderingEnabled) {
       toast({
         title: t("menu.waiter_only_title", {
@@ -1640,12 +1716,8 @@ export default function TableMenu() {
     if (!customizeItem) return;
     addItem({
       item: customizeItem,
-      quantity: Math.max(1, qty || 1),
+      quantity: Math.min(MAX_ITEM_QUANTITY, Math.max(1, qty || 1)),
       selectedModifiers: selected,
-    });
-    toast({
-      title: t("menu.toast_added_title", { defaultValue: "Added to cart" }),
-      description: customizeItem.name,
     });
     setCustomizeOpen(false);
     setCustomizeItem(null);
@@ -1833,7 +1905,10 @@ export default function TableMenu() {
     selected: Record<string, string | string[]>,
     qty: number
   ) => {
-    if (!customerOrderRecallEnabled || !activeLineEditor) return;
+    if (!customerOrderRecallEnabled || !activeLineEditor || activeLineSavingRef.current) return;
+    activeLineSavingRef.current = true;
+    setActiveLineSaving(true);
+    try {
     const approval = usesImmediateGuestCheckout
       ? null
       : getStoredLocalityApproval({
@@ -1844,8 +1919,6 @@ export default function TableMenu() {
         }) ?? (await requestLocalityApproval());
     if (!usesImmediateGuestCheckout && !approval) return;
 
-    try {
-      setActiveLineSaving(true);
       const response = await api.updateOrderItem(
         activeLineEditor.orderId,
         activeLineEditor.orderItemId,
@@ -1889,6 +1962,7 @@ export default function TableMenu() {
         });
       }
     } finally {
+      activeLineSavingRef.current = false;
       setActiveLineSaving(false);
     }
   };
@@ -2075,12 +2149,14 @@ export default function TableMenu() {
   const handleImmediateCheckout = async (
     note?: string
   ): Promise<SubmittedOrderSummary | null> => {
-    if (checkoutBusy) return null;
+    if (checkoutLockRef.current) return null;
     if (isFrontendOnlyMenu) {
+      checkoutLockRef.current = true;
       setCheckoutBusy(true);
       try {
         return createFrontendDemoOrder(note);
       } finally {
+        checkoutLockRef.current = false;
         setCheckoutBusy(false);
       }
     }
@@ -2120,7 +2196,26 @@ export default function TableMenu() {
       return null;
     }
 
-    const approval = usesImmediateGuestCheckout
+    const invalidItem = invalidCartItem(cartItems, menuData.items);
+    if (invalidItem || cartItems.length > 100) {
+      toast({
+        title: t("menu.review_cart_title", { defaultValue: "Please review your cart" }),
+        description: invalidItem
+          ? t("menu.review_cart_item", { name: invalidItem.item.displayName || invalidItem.item.name || invalidItem.item.title,
+              defaultValue: "Check the availability, quantity and options for {{name}}. Your cart has been kept." })
+          : t("menu.cart_too_large", { defaultValue: "Please keep each order to 100 different selections." }),
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    // Acquire synchronously before approval/push awaits: two clicks in one
+    // render must never submit the same cart twice.
+    checkoutLockRef.current = true;
+    setCheckoutBusy(true);
+    let approval: LocalityApproval | null = null;
+    try {
+    approval = usesImmediateGuestCheckout
       ? null
       : getStoredLocalityApproval({
           tableId: activeTableId,
@@ -2149,18 +2244,10 @@ export default function TableMenu() {
         : {}),
     };
 
-    try {
       void trackOrderEvent(
         "order_submit_attempted",
         approval?.method || "direct_submit"
       );
-      setCheckoutBusy(true);
-      await registerCustomerPushForOrder({
-        tableId: activeTableId,
-        orderId: editingOrderId || undefined,
-        storeSlug: storeSlug || undefined,
-        requestPermission: true,
-      });
       const wasEditing = Boolean(editingOrderId);
       const response = isEditingPendingBatch
         ? await api.editPendingTableOrders(activeTableId, {
@@ -2194,11 +2281,11 @@ export default function TableMenu() {
       }
       setLastOrder(summary);
       upsertPlacedOrder(summary);
-      void registerCustomerPushForOrder({
+      if (!usesImmediateGuestCheckout) void registerCustomerPushForOrder({
         tableId: activeTableId,
         orderId: summary.id || order.id,
         storeSlug: storeSlug || undefined,
-        requestPermission: false,
+        requestPermission: true,
       });
       clearCart();
       stopEditingLastOrder();
@@ -2224,9 +2311,8 @@ export default function TableMenu() {
         storeSlug,
         tableId: activeTableId,
         editingOrderId,
-        payload,
       });
-      const message = error instanceof Error ? error.message : String(error ?? "");
+      const message = error instanceof ApiError ? error.code || error.message : error instanceof Error ? error.message : String(error ?? "");
       if (isEditingExisting && error instanceof ApiError && error.status === 409) {
         handleOrdersAcceptedDuringEdit(editingOrderIds.length ? editingOrderIds : editingOrderId ? [editingOrderId] : []);
         return null;
@@ -2259,28 +2345,27 @@ export default function TableMenu() {
         }
       );
       toast({
-        title: t("menu.toast_error_title", {
-          defaultValue: "Order not placed",
-        }),
-        description:
-          error instanceof Error
-            ? error.message
-            : t("menu.toast_error_description", {
-                defaultValue:
-                  "We could not place your order right now. Please try again.",
-              }),
+        title: error instanceof TypeError || (error instanceof ApiError && error.status === 0)
+          ? t("menu.order_confirmation_pending", { defaultValue: "Order confirmation pending" })
+          : t("menu.order_could_not_be_sent", { defaultValue: "Order could not be sent" }),
+        description: error instanceof TypeError || (error instanceof ApiError && error.status === 0)
+          ? t("menu.order_confirmation_unknown", { defaultValue: "We couldn’t confirm whether your order arrived. Your cart is saved. Please ask a member of staff before submitting again." })
+          : error instanceof Error ? error.message
+          : t("menu.order_failed_cart_saved", { defaultValue: "Your cart is saved. Please check your connection and try again." }),
+        variant: "destructive",
       });
       return null;
     } finally {
+      checkoutLockRef.current = false;
       setCheckoutBusy(false);
     }
   };
 
   const handleCheckout = async (note?: string) => {
-    if (usesImmediateGuestCheckout) {
+    if (usesImmediateGuestCheckout || import.meta.env.VITE_LOCAL_ONLY === "true") {
       return handleImmediateCheckout(note);
     }
-    if (checkoutBusy) return null;
+    if (checkoutLockRef.current) return null;
     if (!guestOrderingEnabled) {
       toast({
         title: t("menu.waiter_only_title", {
@@ -2304,21 +2389,28 @@ export default function TableMenu() {
       return null;
     }
 
+    const cart = useCartStore.getState().items;
+    if (!cart.length || cart.length > 100 || invalidCartItem(cart, menuData.items)) {
+      toast({ title: t("menu.review_cart_title", { defaultValue: "Please review your cart" }),
+        description: t("menu.review_cart_before_payment", { defaultValue: "Check your items, quantities and options before continuing." }), variant: "destructive" });
+      return null;
+    }
+    checkoutLockRef.current = true;
     try {
       setCheckoutBusy(true);
       const cartItems = useCartStore.getState().items;
 
       // Calculate total amount
       const totalCents = cartItems.reduce((sum, item) => {
-        const basePrice = item.item.priceCents;
-        const modifiersPrice = Object.keys(item.selectedModifiers).reduce(
+        const basePrice = item.item.priceCents ?? Math.round((item.item.price ?? 0) * 100);
+        const modifiersPrice = Object.keys(item.selectedModifiers ?? {}).reduce(
           (modSum, modId) => {
             const optionIds = item.selectedModifiers[modId];
             const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
             const options = item.item.modifiers?.find((m) => m.id === modId)?.options ?? [];
             return modSum + ids.reduce((sum, optionId) => {
               const option = options.find((o) => o.id === optionId);
-              return sum + (option?.priceDeltaCents ?? 0);
+              return sum + (option?.priceDeltaCents ?? Math.round((option?.priceDelta ?? 0) * 100));
             }, 0);
           },
           0
@@ -2327,11 +2419,6 @@ export default function TableMenu() {
       }, 0);
 
       const totalAmount = totalCents / 100;
-      await registerCustomerPushForOrder({
-        tableId: activeTableId,
-        storeSlug: storeSlug || undefined,
-        requestPermission: true,
-      });
 
       // Step 1: Get Viva payment checkout URL
       const paymentResponse = await api.getVivaCheckoutUrl(
@@ -2397,6 +2484,7 @@ export default function TableMenu() {
         });
       }
       setCheckoutBusy(false);
+      checkoutLockRef.current = false;
     }
     return null;
   };
@@ -2660,21 +2748,26 @@ export default function TableMenu() {
       : null;
 
   const activeOrderFloatingBar = shouldShowLastOrderButton && activeOrder ? (
-    <div
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
+      data-testid="active-order-floating-bar"
       className={clsx(
         themedWrapper,
-        "pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pb-[env(safe-area-inset-bottom)]"
+        "pointer-events-none fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-3 sm:px-4"
       )}
     >
       <div
+        ref={orderBarRef}
         className={clsx(
-          "pointer-events-auto flex min-h-12 w-full max-w-sm items-center gap-2 rounded-full border px-3 py-2 text-left shadow-xl bg-gradient-to-r",
+          "pointer-events-auto flex min-h-14 w-full max-w-sm items-center gap-2 rounded-2xl border px-3 py-2.5 text-left shadow-xl bg-gradient-to-r",
           activeOrderTone.bar
         )}
       >
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 rounded-xl"
           onClick={handleViewLastOrder}
         >
           <ShoppingBag className="h-4 w-4 shrink-0 text-white/90" />
@@ -2684,7 +2777,7 @@ export default function TableMenu() {
                 defaultValue: "Last order",
               })}
             </span>
-            <span className={clsx("block truncate text-xs", activeOrderTone.text)}>
+            <span className={clsx("line-clamp-2 break-words text-xs leading-snug", activeOrderTone.text)}>
               {activeOrderItemSummary} - EUR {activeOrderTotal.toFixed(2)}
             </span>
           </span>
@@ -2693,7 +2786,7 @@ export default function TableMenu() {
         {activeOrder.status === "CANCELLED" ? (
           <button
             type="button"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/80 hover:bg-white/20 hover:text-white"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/80 hover:bg-white/20 hover:text-white"
             onClick={() => dismissOrderNotice(activeOrder)}
             aria-label={t("menu.dismiss_cancelled_order", {
               defaultValue: "Dismiss canceled order",
@@ -2703,7 +2796,7 @@ export default function TableMenu() {
           </button>
         ) : null}
       </div>
-    </div>
+    </motion.div>
   ) : null;
   const activeOrderFloatingPortal =
     activeOrderFloatingBar && typeof document !== "undefined"
@@ -2712,22 +2805,23 @@ export default function TableMenu() {
 
   return (
     <div
-      className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-hidden")}
+      className={clsx(themedWrapper, "min-h-screen min-h-dvh overflow-x-clip")}
+      style={{ "--menu-header-height": `${menuHeaderHeight}px`, "--menu-secondary-bar-space": `${secondaryBarSpace}px` } as CSSProperties}
     >
-      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-hidden text-foreground flex flex-col">
-        <header className="bg-card/80 backdrop-blur border-b border-border sticky top-0 z-40">
-          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+      <div className="min-h-screen min-h-dvh dashboard-bg overflow-x-clip text-foreground flex flex-col">
+        <header ref={menuHeaderRef} data-testid="menu-header" className="bg-card/95 backdrop-blur border-b border-border sticky top-0 z-40 pt-[env(safe-area-inset-top)]">
+          <div className="max-w-6xl mx-auto flex min-h-16 items-center justify-between gap-3 px-3 py-2.5 sm:px-6 sm:py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               {headerTitle ? (
-                <h1 className="text-2xl font-bold text-primary">
+                <h1 className="min-w-0 break-words [overflow-wrap:anywhere] line-clamp-2 text-lg font-bold leading-tight text-primary sm:text-2xl" title={headerTitle}>
                   {headerTitle}
                 </h1>
               ) : (
-                <Skeleton className="h-8 w-48 rounded-full" />
+                <Skeleton className="h-7 w-32 max-w-full rounded-full" />
               )}
               {/* Table label intentionally hidden per request */}
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex shrink-0 gap-1.5 items-center sm:gap-2">
               <button
                 type="button"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2736,7 +2830,7 @@ export default function TableMenu() {
                     ? "Switch to light theme"
                     : "Switch to dark theme"
                 }
-                className="inline-flex items-center justify-center h-10 w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
+                className="inline-flex shrink-0 items-center justify-center h-11 w-11 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors motion-reduce:transition-none"
               >
                 {theme === "dark" ? (
                   <Moon className="h-5 w-5" />
@@ -2781,9 +2875,9 @@ export default function TableMenu() {
                         (item: SubmittedOrderItem, idx: number) => (
                           <div
                             key={`last-order-${idx}`}
-                            className="flex items-center justify-between text-sm"
+                            className="flex min-w-0 items-start justify-between gap-3 text-sm"
                           >
-                            <span className="font-medium text-foreground">
+                            <span className="min-w-0 break-words font-medium text-foreground">
                               {item?.title ??
                                 item?.item?.name ??
                                 t("menu.last_order_item_fallback", {
@@ -2791,7 +2885,7 @@ export default function TableMenu() {
                                   defaultValue: `Item ${idx + 1}`,
                                 })}
                             </span>
-                            <span className="text-muted-foreground">
+                            <span className="shrink-0 text-muted-foreground">
                               ×{item?.quantity ?? item?.qty ?? 1}
                             </span>
                           </div>
@@ -2811,12 +2905,12 @@ export default function TableMenu() {
 
         <div
           className={clsx(
-            "max-w-6xl mx-auto px-4 py-8 flex-1 w-full",
+            "max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 flex-1 w-full min-w-0",
             hasExpandedActiveOrderBar
               ? categorySelected
                 ? "pb-44"
                 : "pb-28"
-              : hasActiveOrderBar && "pb-32"
+              : hasActiveOrderBar && "pb-[calc(var(--menu-secondary-bar-space,5rem)+1.75rem+env(safe-area-inset-bottom))]"
           )}
         >
           {!guestOrderingEnabled && !isFrontendOnlyMenu && (
@@ -2833,7 +2927,21 @@ export default function TableMenu() {
               </p>
             </div>
           )}
-          {!categorySelected ? (
+          {error ? (
+            <div role="alert" className="mx-auto max-w-md rounded-2xl border border-border/60 bg-card/80 p-6 text-center shadow-sm">
+              <h2 className="mb-2 text-lg font-semibold">{t("menu.unavailable_title", { defaultValue: "Menu unavailable" })}</h2>
+              <p className="mb-5 text-sm text-muted-foreground">{error}</p>
+              <Button onClick={retryMenu} disabled={bootstrapFetching}>
+                {t("actions.retry", { defaultValue: "Retry" })}
+              </Button>
+            </div>
+          ) : !loading && categories.length === 0 ? (
+            <div role="status" className="mx-auto max-w-md py-12 text-center">
+              <h2 className="mb-2 text-lg font-semibold">{t("menu.empty_title", { defaultValue: "The menu is being prepared" })}</h2>
+              <p className="mb-5 text-sm text-muted-foreground">{t("menu.empty_description", { defaultValue: "Please check back shortly or ask a member of staff." })}</p>
+              <Button variant="outline" onClick={retryMenu}>{t("actions.retry", { defaultValue: "Retry" })}</Button>
+            </div>
+          ) : !categorySelected ? (
             <CategorySelectView
               key="category-select"
               categories={categories}
@@ -2843,13 +2951,6 @@ export default function TableMenu() {
                 startFreshOrderFromCategory(catId);
               }}
             />
-          ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-destructive mb-4">{error}</p>
-              <Button onClick={() => window.location.reload()}>
-                {t("actions.retry", { defaultValue: "Retry" })}
-              </Button>
-            </div>
           ) : (
             <SwipeableMenuView
               categories={categories}
@@ -2870,6 +2971,8 @@ export default function TableMenu() {
               }
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
+              note={editingNote ?? ""}
+              onNoteChange={setEditingNote}
               showBackButton
               showAllCategory={!isFrontendOnlyMenu && !usesImmediateGuestCheckout}
               primaryCtaLabel={
@@ -2882,8 +2985,8 @@ export default function TableMenu() {
                       defaultValue: "Submit order",
                     })
                   : usesImmediateGuestCheckout
-                  ? t("menu.submit_order_return_menu", {
-                      defaultValue: "Submit and return to menu",
+                  ? t("menu.place_order_local", {
+                      defaultValue: "Place order",
                     })
                   : undefined
               }
@@ -2896,7 +2999,7 @@ export default function TableMenu() {
               showCartButton={guestOrderingEnabled}
               browseOnly={false}
               imageFit={usesImmediateGuestCheckout ? "cover" : "contain"}
-              showPaymentButton={!isFrontendOnlyMenu && !usesImmediateGuestCheckout && !isEditingExisting}
+              showPaymentButton={import.meta.env.VITE_LOCAL_ONLY !== "true" && !isFrontendOnlyMenu && !usesImmediateGuestCheckout && !isEditingExisting}
             />
           )}
         </div>
@@ -2913,19 +3016,20 @@ export default function TableMenu() {
               dragDirectionLock: true,
               dragConstraints: { top: 0, bottom: 0 },
               dragElastic: { top: 0, bottom: 0.36 },
-              dragListener: true,
+              dragListener: false,
               dragMomentum: false,
               dragTransition: { bounceStiffness: 420, bounceDamping: 36 },
               onDragEnd: handleActiveOrderSheetDragEnd,
-              transition: activeOrderSheetMinimizing
+              transition: reduceMotion ? { duration: 0 } : activeOrderSheetMinimizing
                 ? {
                     duration: ACTIVE_ORDER_MINIMIZE_ANIMATION_MS / 1000,
                     ease: [0.32, 0.72, 0, 1],
                   }
                 : { type: "spring", stiffness: 350, damping: 28, mass: 0.8 },
-              whileDrag: { scale: 0.995 },
+              whileDrag: reduceMotion ? undefined : { scale: 0.995 },
             }}
-            className="!left-1/2 !right-auto !bottom-2 !top-auto h-[min(86dvh,calc(100dvh-1rem))] max-h-[calc(100dvh-1rem)] !w-[calc(100vw-1rem)] !max-w-lg overflow-hidden rounded-3xl border border-border/50 p-0 shadow-2xl ![translate:-50%_0] xl:!bottom-auto xl:!top-1/2 xl:h-[82dvh] xl:max-h-[calc(100dvh-0.75rem)] xl:!w-full xl:rounded-2xl xl:![translate:-50%_-50%]"
+            data-testid="active-order-sheet"
+            className="!left-1/2 !right-auto !bottom-[max(0.5rem,env(safe-area-inset-bottom))] !top-auto h-[min(86dvh,calc(100dvh-1rem))] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] !w-[calc(100vw-1rem)] !max-w-lg overflow-hidden rounded-3xl border border-border/50 p-0 shadow-2xl ![translate:-50%_0] xl:!bottom-auto xl:!top-1/2 xl:h-[82dvh] xl:max-h-[calc(100dvh-0.75rem)] xl:!w-full xl:rounded-2xl xl:![translate:-50%_-50%]"
           >
             <DialogTitle className="sr-only">
               {t("menu.active_order_heading", {
@@ -2941,21 +3045,24 @@ export default function TableMenu() {
               <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl bg-background xl:rounded-2xl">
                 <div
                   className={clsx(
-                    "relative cursor-grab touch-none overflow-hidden bg-gradient-to-r px-5 pb-5 pt-4 text-white active:cursor-grabbing sm:px-6",
+                    "relative shrink-0 overflow-hidden bg-gradient-to-r px-4 pb-4 pt-2 text-white sm:px-6 sm:pb-5 xl:pt-5",
                     activeOrderTone.bar
                   )}
-                  onPointerDown={handleActiveOrderSheetPointerDown}
                 >
-                  <div
-                    className="flex justify-center pb-4"
-                    onPointerDown={handleActiveOrderSheetPointerDown}
-                    aria-hidden="true"
-                  >
-                    <div className="h-1.5 w-12 rounded-full bg-white/35" />
-                  </div>
                   <button
                     type="button"
-                    className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/14 text-white shadow-sm hover:bg-white/22"
+                    data-testid="active-order-drag-handle"
+                    className="mx-auto mb-1 flex min-h-11 max-w-[calc(100%-5rem)] touch-none cursor-grab flex-col items-center justify-center gap-1.5 rounded-lg px-2 text-center active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white xl:hidden"
+                    onPointerDown={handleActiveOrderSheetPointerDown}
+                    onClick={minimizeActiveOrderSheet}
+                    aria-label={t("menu.minimize_order_details", { defaultValue: "Minimize order details" })}
+                  >
+                    <span className="h-1 w-11 rounded-full bg-white/50" aria-hidden="true" />
+                    <span className="text-[11px] leading-tight text-white/80" aria-hidden="true">{t("menu.active_order_drag_hint", { defaultValue: "Swipe down to minimize" })}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/14 text-white shadow-sm hover:bg-white/22"
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={() => closeActiveOrderNotice(activeOrder)}
                     aria-label={
@@ -2968,7 +3075,7 @@ export default function TableMenu() {
                   >
                     <X className="h-4 w-4" />
                   </button>
-                  <div className="min-w-0 pr-12">
+                  <div className="min-w-0 xl:pr-12">
                     <h2 className="mt-1 max-w-full whitespace-normal break-words text-2xl font-bold leading-tight sm:text-3xl">
                       {t("menu.active_order_heading", {
                         defaultValue: "Your active order",
@@ -2992,7 +3099,7 @@ export default function TableMenu() {
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5">
+                <div data-testid="active-order-scroll-content" className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5">
                   {placedLoading ? (
                     <div className="mb-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-xs text-muted-foreground">
                       {t("status.loading", { defaultValue: "Loading..." })}
@@ -3157,7 +3264,7 @@ export default function TableMenu() {
                                     <button
                                       type="button"
                                       onClick={(event) => event.stopPropagation()}
-                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/80 text-muted-foreground hover:text-foreground"
+                                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/80 text-muted-foreground hover:text-foreground"
                                       aria-label={t("menu.item_options", {
                                         item: name,
                                         defaultValue: `Options for ${name}`,
@@ -3210,7 +3317,7 @@ export default function TableMenu() {
                               ) : null}
                               <span
                                 className={clsx(
-                                  "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                                  "inline-flex shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold",
                                   canEditLine
                                     ? "border-primary/60 bg-primary/15 text-primary"
                                     : itemStatusToneByStatus[itemStatus]
@@ -3375,7 +3482,7 @@ export default function TableMenu() {
         )}
 
         {showActiveOrders && !activeOrdersOpen && placedOrders.length > 0 && (
-          <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none">
+          <div className="fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-3 pointer-events-none">
             <Button
               variant="secondary"
               className="pointer-events-auto rounded-full shadow-2xl bg-card/90 border border-border/70 px-4 py-3"

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, LockKeyhole, ShieldCheck, Store, Wifi } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2, LockKeyhole, ShieldCheck, Store, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -19,6 +19,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [currentPasswordForChange, setCurrentPasswordForChange] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -26,10 +28,12 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     try {
       setError("");
       setLoading(true);
-      const { accessToken, user, store } = await api.signIn(email, password);
+      const { accessToken, user, store } = await api.signIn(email.trim(), password);
       const enrichedUser = {
         ...user,
         storeId: user.storeId || store?.id,
@@ -63,11 +67,11 @@ export default function Login() {
       if (enrichedUser.role === "waiter" || enrichedUser.role === "hybrid") {
         void registerStaffPush({ storeSlug: loginStoreSlug });
       }
-      if (enrichedUser.role === "architect") navigate("/GarsoneAdmin");
-      else if (enrichedUser.role === "manager") navigate("/manager");
-      else if (enrichedUser.role === "cook") navigate("/cook");
-      else if (enrichedUser.role === "hybrid") navigate("/hybrid");
-      else navigate("/waiter");
+      if (enrichedUser.role === "architect") navigate("/GarsoneAdmin", { replace: true });
+      else if (enrichedUser.role === "manager") navigate("/manager", { replace: true });
+      else if (enrichedUser.role === "cook") navigate("/cook", { replace: true });
+      else if (enrichedUser.role === "hybrid") navigate("/hybrid", { replace: true });
+      else navigate("/waiter", { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) {
@@ -81,13 +85,15 @@ export default function Login() {
         setError(t("auth.login_failed"));
       }
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword.length < 6) {
+    if (submitting.current) return;
+    if (newPassword.length < 12 || newPassword.length > 72) {
       setError(t("auth.password_min"));
       return;
     }
@@ -95,6 +101,7 @@ export default function Login() {
       setError(t("auth.password_mismatch"));
       return;
     }
+    submitting.current = true;
     try {
       setError("");
       setLoading(true);
@@ -104,27 +111,28 @@ export default function Login() {
       if (user?.role === "waiter" || user?.role === "hybrid") {
         void registerStaffPush({ storeSlug: user.storeSlug });
       }
-      if (user?.role === "architect") navigate("/GarsoneAdmin");
-      else if (user?.role === "manager") navigate("/manager");
-      else if (user?.role === "cook") navigate("/cook");
-      else if (user?.role === "hybrid") navigate("/hybrid");
-      else navigate("/waiter");
+      if (user?.role === "architect") navigate("/GarsoneAdmin", { replace: true });
+      else if (user?.role === "manager") navigate("/manager", { replace: true });
+      else if (user?.role === "cook") navigate("/cook", { replace: true });
+      else if (user?.role === "hybrid") navigate("/hybrid", { replace: true });
+      else navigate("/waiter", { replace: true });
     } catch (err) {
       if (err instanceof ApiError) setError(err.message || t("auth.password_change_failed"));
       else setError(t("auth.password_change_failed"));
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
 
   return (
     <div className="min-h-dvh bg-muted/30 text-foreground">
-      <div className="mx-auto flex min-h-dvh w-full max-w-6xl items-center px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-dvh w-full max-w-6xl items-center px-3 py-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8 lg:px-8">
         <Card
           interactive={false}
           className="w-full overflow-hidden border-border/70 bg-card shadow-xl"
         >
-          <div className="grid min-h-[620px] lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="grid min-w-0 lg:min-h-[620px] lg:grid-cols-[0.95fr_1.05fr]">
             <aside className="hidden bg-neutral-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
               <div>
                 <Link
@@ -182,11 +190,11 @@ export default function Login() {
               </div>
             </aside>
 
-            <main className="flex flex-col justify-center px-6 py-8 sm:px-10 lg:px-14">
+            <main className="flex min-w-0 flex-col justify-center px-5 py-5 sm:px-10 sm:py-8 lg:px-14">
               <div className="mx-auto w-full max-w-md">
                 <Link
                   to="/"
-                  className="mb-8 inline-flex items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+                  className="mb-5 inline-flex items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
                   aria-label="Garsone home"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background">
@@ -195,7 +203,7 @@ export default function Login() {
                   <span className="text-lg font-bold tracking-tight">Garsone</span>
                 </Link>
 
-                <div className="mb-8 flex items-center justify-between gap-4">
+                <div className="mb-6 hidden items-center justify-between gap-4 sm:flex">
                   <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-semibold text-muted-foreground">
                     <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />
                     {t("auth.secure_area")}
@@ -209,13 +217,13 @@ export default function Login() {
                   </Link>
                 </div>
 
-                <div className="mb-8">
-                  <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                <div className="mb-5 sm:mb-8">
+                  <h2 className="break-words text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
                     {mustChangePassword
                       ? t("auth.password_reset_title")
                       : t("auth.staff_access_title")}
                   </h2>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  <p className="mt-2 text-sm leading-5 text-muted-foreground sm:mt-3 sm:leading-6">
                     {mustChangePassword
                       ? t("auth.password_reset_description")
                       : t("auth.staff_access_subtitle")}
@@ -223,7 +231,7 @@ export default function Login() {
                 </div>
 
                 {mustChangePassword ? (
-                  <form onSubmit={handlePasswordChange} className="space-y-5">
+                  <form onSubmit={handlePasswordChange} className="space-y-5" aria-busy={loading}>
                     {error && (
                       <div
                         role="alert"
@@ -234,43 +242,54 @@ export default function Login() {
                       </div>
                     )}
                     <div>
-                      <label className="mb-2 block text-sm font-semibold">
+                      <label htmlFor="login-new-password" className="mb-2 block text-sm font-semibold">
                         {t("auth.new_password")}
                       </label>
                       <Input
                         type="password"
+                        id="login-new-password"
+                        minLength={12}
+                        maxLength={72}
+                        aria-describedby="login-password-policy"
+                        disabled={loading}
                         value={newPassword}
                         onChange={(e) => {
                           setNewPassword(e.target.value);
                           if (error) setError("");
                         }}
-                        className="h-12 rounded-lg"
+                        className="h-12 rounded-lg sm:h-12 sm:text-base"
                         autoComplete="new-password"
                         required
                       />
+                      <p id="login-password-policy" className="mt-2 text-xs text-muted-foreground">{t("auth.password_min")}</p>
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-semibold">
+                      <label htmlFor="login-confirm-password" className="mb-2 block text-sm font-semibold">
                         {t("auth.confirm_password")}
                       </label>
                       <Input
                         type="password"
+                        id="login-confirm-password"
+                        minLength={12}
+                        maxLength={72}
+                        disabled={loading}
                         value={confirmPassword}
                         onChange={(e) => {
                           setConfirmPassword(e.target.value);
                           if (error) setError("");
                         }}
-                        className="h-12 rounded-lg"
+                        className="h-12 rounded-lg sm:h-12 sm:text-base"
                         autoComplete="new-password"
                         required
                       />
                     </div>
                     <Button type="submit" className="h-12 w-full rounded-lg text-base" disabled={loading}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
                       {loading ? t("auth.updating") : t("auth.set_password")}
                     </Button>
                   </form>
                 ) : (
-                  <form onSubmit={handleSubmit} className="space-y-5">
+                  <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading}>
                     {error && (
                       <div
                         role="alert"
@@ -281,40 +300,55 @@ export default function Login() {
                       </div>
                     )}
                     <div>
-                      <label className="mb-2 block text-sm font-semibold">
+                      <label htmlFor="login-email" className="mb-2 block text-sm font-semibold">
                         {t("auth.email")}
                       </label>
                       <Input
                         type="email"
+                        id="login-email"
+                        disabled={loading}
                         value={email}
                         onChange={(e) => {
                           setEmail(e.target.value);
                           if (error) setError("");
                         }}
                         placeholder={t("auth.email_placeholder")}
-                        className="h-12 rounded-lg"
-                        autoComplete="email"
+                        className="h-12 rounded-lg sm:h-12 sm:text-base"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        spellCheck={false}
                         required
                       />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-semibold">
+                      <label htmlFor="login-password" className="mb-2 block text-sm font-semibold">
                         {t("auth.password")}
                       </label>
+                      <div className="relative">
                       <Input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
+                        id="login-password"
+                        disabled={loading}
                         value={password}
                         onChange={(e) => {
                           setPassword(e.target.value);
                           if (error) setError("");
                         }}
                         placeholder={t("auth.password_placeholder")}
-                        className="h-12 rounded-lg"
+                        className="h-12 rounded-lg sm:h-12 sm:text-base"
                         autoComplete="current-password"
+                        style={{ paddingRight: "3.25rem" }}
                         required
                       />
+                      <Button type="button" variant="ghost" size="icon" className="absolute right-0.5 top-0.5 h-11 w-11"
+                        disabled={loading} aria-label={showPassword ? t("auth.hide_password", { defaultValue: "Hide password" }) : t("auth.show_password", { defaultValue: "Show password" })}
+                        aria-pressed={showPassword} aria-controls="login-password" onClick={() => setShowPassword(value => !value)}>
+                        {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                      </Button>
+                      </div>
                     </div>
                     <Button type="submit" className="h-12 w-full rounded-lg text-base" disabled={loading}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
                       {loading ? t("auth.signing_in") : t("auth.sign_in")}
                     </Button>
                   </form>

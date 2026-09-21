@@ -155,7 +155,7 @@ const subscribeForPush = async (
   withTimeout(
     registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey,
+      applicationServerKey: new Uint8Array(applicationServerKey),
     }),
     PUSH_SUBSCRIBE_TIMEOUT_MS,
     "Push subscription timed out."

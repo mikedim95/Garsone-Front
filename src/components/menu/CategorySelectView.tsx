@@ -1,6 +1,7 @@
 import type { MenuCategory } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
+import { motion, useReducedMotion } from 'framer-motion';
 
 interface Props {
   categories: Array<Pick<MenuCategory, 'id' | 'title' | 'imageUrl'>>;
@@ -21,6 +22,7 @@ const categoryGradients = [
 export const CategorySelectView = ({ categories, onSelect, loading, variant = 'default' }: Props) => {
   const { t } = useTranslation();
   const isNoor = variant === 'noor';
+  const reduceMotion = useReducedMotion();
 
   const getNoorGradient = (idx: number) =>
     idx % 2 === 0
@@ -29,22 +31,22 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
 
   if (loading) {
     return (
-      <div className={isNoor ? "px-2 py-6" : "px-4 py-6"}>
-        <h2 className={isNoor ? "text-2xl font-extrabold text-center mb-8 text-white" : "text-2xl font-bold text-center mb-8 text-foreground"}>
+      <div className="mx-auto max-w-2xl py-2 sm:py-3" role="status" aria-busy="true">
+        <h2 className="mb-5 text-center text-xl font-bold leading-snug text-foreground sm:mb-6 sm:text-2xl">
           {t('menu.choose_category', { defaultValue: 'What are you craving?' })}
         </h2>
 
-        <div className={isNoor ? "grid grid-cols-2 gap-4 max-w-xl mx-auto" : "grid grid-cols-2 gap-4 max-w-lg mx-auto"}>
+        <div className="mx-auto grid max-w-xl grid-cols-2 gap-3 sm:gap-4">
           {Array.from({ length: isNoor ? 4 : 6 }).map((_, idx) => {
             const gradient = isNoor ? getNoorGradient(idx) : categoryGradients[idx % categoryGradients.length];
             return (
               <div
                 key={`cat-skeleton-${idx}`}
                 className={`
-                  relative aspect-square ${isNoor ? 'rounded-[22px]' : 'rounded-3xl'}
+                  relative aspect-[6/5] rounded-2xl sm:aspect-square sm:rounded-3xl
                   bg-gradient-to-br ${gradient}
                   border ${isNoor ? 'border-white/10' : 'border-border/40'} backdrop-blur-sm
-                  shadow-lg overflow-hidden
+                  shadow-sm overflow-hidden
                   flex flex-col items-center justify-end gap-3 p-4
                 `}
               >
@@ -62,34 +64,40 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
   }
 
   return (
-    <div className={isNoor ? "relative px-2 py-6" : "px-4 py-6"}>
+    <section className="relative mx-auto max-w-2xl py-2 sm:py-3" aria-labelledby="menu-category-heading" data-testid="category-selection">
       {isNoor && (
         <>
-          <div className="pointer-events-none absolute -left-20 top-10 h-48 w-48 rounded-full bg-fuchsia-700/20 blur-3xl" />
-          <div className="pointer-events-none absolute -right-16 bottom-0 h-40 w-40 rounded-full bg-purple-700/20 blur-3xl" />
+          <div className="pointer-events-none absolute inset-x-5 top-10 h-40 rounded-full bg-primary/5 blur-3xl" />
         </>
       )}
-      <h2 className={isNoor ? "relative text-2xl font-extrabold text-center mb-8 text-white" : "text-2xl font-bold text-center mb-8 text-foreground"}>
+      <h2 id="menu-category-heading" className="relative mb-5 text-center text-xl font-bold leading-snug text-foreground sm:mb-6 sm:text-2xl">
         {t('menu.choose_category', { defaultValue: 'What are you craving?' })}
       </h2>
 
-      <div className={isNoor ? "relative grid grid-cols-2 gap-4 max-w-xl mx-auto" : "grid grid-cols-2 gap-4 max-w-lg mx-auto"}>
+      <div className="relative mx-auto grid max-w-xl grid-cols-2 gap-3 sm:gap-4">
         {categories.map((cat, idx) => {
           const gradient = isNoor ? getNoorGradient(idx) : categoryGradients[idx % categoryGradients.length];
           const imageUrl = cat.imageUrl?.trim();
 
           return (
-            <button
+            <motion.button
               key={cat.id}
               type="button"
               onClick={() => onSelect(cat.id)}
+              aria-label={cat.title}
+              title={cat.title}
+              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileTap={reduceMotion ? undefined : { scale: 0.98, transition: { duration: 0.1, delay: 0 } }}
+              transition={{ duration: reduceMotion ? 0 : 0.2, delay: reduceMotion ? 0 : Math.min(idx * 0.025, 0.12), ease: 'easeOut' }}
               className={`
-                group relative aspect-square ${isNoor ? 'rounded-[22px]' : 'rounded-3xl'}
+                group relative min-w-0 aspect-[6/5] rounded-2xl sm:aspect-square sm:rounded-3xl
                 bg-gradient-to-br ${gradient}
                 border ${isNoor ? 'border-white/10' : 'border-border/40'} backdrop-blur-sm
-                ${isNoor ? 'shadow-[0_18px_45px_rgba(0,0,0,0.28)] hover:border-fuchsia-400/40' : 'shadow-lg hover:shadow-2xl hover:border-primary/40'}
-                transition-all duration-300 overflow-hidden
-                flex flex-col items-center justify-end gap-3 p-4
+                ${isNoor ? 'shadow-md hover:border-fuchsia-400/40' : 'shadow-sm hover:shadow-md hover:border-primary/40'}
+                transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none overflow-hidden
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background
+                flex flex-col items-center justify-end gap-3 p-3 sm:p-4
               `}
             >
               {imageUrl ? (
@@ -97,14 +105,9 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
                   <img
                     src={imageUrl}
                     alt=""
-                    className="absolute inset-0 h-full w-full scale-110 object-cover blur-sm transition-transform duration-500 group-hover:scale-125"
+                    className="absolute inset-0 h-full w-full object-cover opacity-85 transition-transform duration-300 motion-reduce:transition-none motion-safe:group-hover:scale-[1.03]"
                     loading={idx < 4 ? 'eager' : 'lazy'}
-                  />
-                  <img
-                    src={imageUrl}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover opacity-75 transition-transform duration-500 group-hover:scale-105"
-                    loading={idx < 4 ? 'eager' : 'lazy'}
+                    decoding="async"
                   />
                 </>
               ) : (
@@ -113,17 +116,17 @@ export const CategorySelectView = ({ categories, onSelect, loading, variant = 'd
 
               <div className={isNoor ? "absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent transition-opacity duration-300" : "absolute inset-0 bg-gradient-to-t from-background/90 via-background/35 to-transparent transition-opacity duration-300 group-hover:from-background/80"} />
               
-              <span className={isNoor ? "relative z-10 text-sm font-bold text-white text-center leading-tight line-clamp-2" : "relative z-10 text-sm font-semibold text-foreground text-center leading-tight line-clamp-2"}>
+              <span className={isNoor ? "relative z-10 w-full text-sm font-bold text-white text-center leading-snug break-words [overflow-wrap:anywhere] line-clamp-3 sm:text-base" : "relative z-10 w-full text-sm font-semibold text-foreground text-center leading-snug break-words [overflow-wrap:anywhere] line-clamp-3 sm:text-base"}>
                 {cat.title}
               </span>
 
               {!imageUrl && (
                 <div className={isNoor ? "absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-fuchsia-500/10 group-hover:bg-fuchsia-500/20 transition-all duration-500" : "absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-all duration-500"} />
               )}
-            </button>
+            </motion.button>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 };

@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
-import { motion, AnimatePresence, type MotionProps } from "framer-motion"
+import { motion, type MotionProps } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 
@@ -42,6 +42,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       asChild
+      data-dialog-content=""
       // Allow outside-tap close on touch/small screens, keep desktop behavior.
       onInteractOutside={(e) => {
         if (typeof window !== "undefined") {
@@ -54,24 +55,19 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-        transition={{ 
-          type: "spring", 
-          stiffness: 350, 
-          damping: 25,
-          mass: 0.8
-        }}
+        initial={motionProps ? { opacity: 0, scale: 0.985, y: 8 } : false}
+        animate={motionProps ? { opacity: 1, scale: 1, y: 0 } : undefined}
+        transition={{ duration: 0.18, ease: [0.2, 0.7, 0.2, 1] }}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg [translate:-50%_-50%] gap-4 border border-border/40 bg-background p-6 shadow-lg sm:rounded-lg max-h-[90dvh] overflow-y-auto",
+          "fixed left-1/2 top-1/2 z-50 grid min-w-0 w-[calc(100%-1.5rem)] max-w-lg [translate:-50%_-50%] gap-4 rounded-2xl border border-border/40 bg-background p-5 shadow-xl max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)] overflow-y-auto overscroll-contain",
+          !motionProps && "dialog-motion",
           className
         )}
         {...motionProps}
       >
         {children}
         {!hideCloseButton && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <DialogPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground ring-offset-background transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
@@ -111,7 +107,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "flex min-w-0 flex-col space-y-1.5 pr-8 text-left",
       className
     )}
     {...props}
@@ -126,7 +122,7 @@ const DialogFooter = ({
   <div
     className={cn(
       // Sticky footer across all dialogs
-      "sticky bottom-0 bg-background/95 border-t border-border/40 pt-3 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "sticky bottom-0 min-w-0 bg-background border-t border-border/40 pt-3 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end [&>button]:min-h-11 [&>button]:h-auto [&>button]:whitespace-normal [&>button]:break-words",
       className
     )}
     {...props}
@@ -141,7 +137,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight text-foreground",
+      "min-w-0 break-words text-lg font-semibold leading-snug tracking-tight text-foreground",
       className
     )}
     {...props}
@@ -155,7 +151,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("min-w-0 break-words text-sm leading-relaxed text-muted-foreground", className)}
     {...props}
   />
 ))

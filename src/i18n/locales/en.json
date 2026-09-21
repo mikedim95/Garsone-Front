@@ -1,4 +1,16 @@
 {
+    "qr_scan": {
+        "loading_title": "Opening your table",
+        "loading_description": "Your menu will be ready in a moment.",
+        "connection_title": "We couldn’t reach the menu",
+        "connection_description": "Check that you’re connected to the venue Wi-Fi, then try again. Your QR code is still here.",
+        "unassigned_title": "Your table is being set up",
+        "unassigned_description": "Ask a member of staff to activate this table, then check again.",
+        "unavailable_title": "This QR code is unavailable",
+        "unavailable_description": "Ask a member of staff for the current QR code for your table.",
+        "retry": "Try again",
+        "check_again": "Check again"
+    },
     "hero":  {
                  "title":  "Modern Restaurant Ordering",
                  "subtitle":  "Scan, Order, Enjoy — No App Required",
@@ -18,6 +30,43 @@
                     "roles_desc":  "Waiter & Manager views"
                  },
     "menu":  {
+        "category_navigation": "Category navigation",
+        "previous_category": "Previous category",
+        "next_category": "Next category",
+        "category_position": "{{current}} of {{total}}",
+        "swipe_categories": "Swipe or use arrows",
+        "go_to_category": "Show {{category}}",
+        "order_controls": "Order controls",
+        "open_cart": "Open cart, {{count}} items",
+        "cart_updated": "Cart: {{count}} items, {{total}}",
+        "minimize_cart": "Close cart",
+        "drag_cart_hint": "Drag down to close",
+        "minimize_order_details": "Minimize order details",
+        "active_order_drag_hint": "Swipe down to minimize",
+        "customize_item": "Choose your options and quantity.",
+        "modifier_selection_error": "Check the number of selected options",
+        "modifier_minimum": "Choose at least {{count}}",
+        "modifier_exactly": "Choose {{count}}",
+        "modifier_range": "Choose {{min}}–{{max}}",
+        "clear_selection": "Clear selection",
+        "sending_order": "Sending order…",
+        "pay_at_venue": "Order and pay at the venue",
+        "table_unavailable": "This table is unavailable. Please scan its QR code again or ask a member of staff.",
+        "table_changed_title": "You’re at a different table",
+        "table_changed_cart": "Your cart was cleared so you can start an order for this table.",
+        "connection_error": "We couldn’t reach the menu. Check your venue Wi-Fi connection and try again.",
+        "review_cart_title": "Please review your cart",
+        "review_cart_item": "Check the availability, quantity and options for {{name}}. Your cart has been kept.",
+        "cart_too_large": "Please keep each order to 100 different selections.",
+        "order_confirmation_pending": "Order confirmation pending",
+        "order_could_not_be_sent": "Order could not be sent",
+        "order_confirmation_unknown": "We couldn’t confirm whether your order arrived. Your cart is saved. Please ask a member of staff before submitting again.",
+        "order_failed_cart_saved": "Your cart is saved. Please check your connection and try again.",
+        "review_cart_before_payment": "Check your items, quantities and options before continuing.",
+        "unavailable_title": "Menu unavailable",
+        "empty_title": "The menu is being prepared",
+        "empty_description": "Please check back shortly or ask a member of staff.",
+        "place_order_local": "Place order",
                  "title":  "Menu",
                  "add_to_cart":  "Add to Cart",
                  "cart":  "Cart",
@@ -151,6 +200,8 @@
                   "order_group_fallback": "Order {{index}}"
               },
     "order":  {
+        "updated_description": "Your changes are saved. Return to the menu to follow your order.",
+        "received_description": "Your order is saved. Return to the menu to see its status.",
                   "success_title":  "Order successful",
                   "updated_success_title":  "Order changed successfully",
                   "go_back_to_menu":  "Go back to menu"
@@ -336,7 +387,6 @@
                     "revenue_by_day": "Revenue by day",
                     "categories": "Categories",
                     "revenue_by_category": "Revenue by category",
-                    "revenue_by_day": "Revenue by day",
                     "revenue_by_hour": "Revenue by hour",
                     "revenue_by_daypart": "Revenue by daypart",
                     "top_items_revenue": "Top 5 items by revenue",
@@ -462,6 +512,8 @@
                     "custom": "Custom"
                 },
     "auth":  {
+        "show_password": "Show password",
+        "hide_password": "Hide password",
                  "login":  "Login",
                  "email":  "Email",
                  "password":  "Password",
@@ -490,7 +542,7 @@
                  "invalid_credentials":  "Invalid email or password.",
                  "network_error":  "Cannot reach the server. Check network or server status.",
                  "login_failed":  "Login failed. Please try again.",
-                 "password_min":  "New password must be at least 6 characters.",
+                 "password_min":  "Use 12–72 characters for your new password.",
                  "password_mismatch":  "New passwords do not match.",
                  "password_change_failed":  "Password change failed. Please try again."
              },
@@ -603,6 +655,9 @@
                    "status_changed":  "Status changed to {{status}}"
                },
     "app":  {
+        "theme_settings": "Appearance",
+        "theme_only": "Theme",
+        "options": "Options",
                 "quick_actions":  "Quick Actions",
                 "navigation":  "Navigation",
                 "preferences":  "Preferences"

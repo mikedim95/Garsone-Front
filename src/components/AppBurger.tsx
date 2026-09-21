@@ -33,7 +33,7 @@ export const AppBurger = ({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
-          className={`relative inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-lg border border-border/60 bg-card/80 hover:bg-accent transition-colors duration-150 ${className}`}
+          className={`relative inline-flex shrink-0 items-center justify-center h-11 w-11 rounded-full border border-border/60 bg-card/80 hover:bg-accent transition-colors duration-150 ${className}`}
           aria-label="Open menu"
         >
           {/* Animated burger */}
@@ -45,7 +45,7 @@ export const AppBurger = ({
       <SheetContent
         side="right"
         className={clsx(
-          'w-[320px] sm:w-[360px] bg-background text-foreground rounded-2xl border-border/80 shadow-2xl my-4 mr-4 h-auto max-h-[80vh] overflow-y-auto',
+          'w-[calc(100%-1.5rem)] max-w-[360px] bg-background text-foreground rounded-2xl border-border/80 shadow-2xl !top-[calc(env(safe-area-inset-top)+0.75rem)] !bottom-auto !right-3 h-auto max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)] overflow-y-auto overscroll-contain',
           themedSheet
         )}
       >

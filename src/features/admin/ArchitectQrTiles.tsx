@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Cloud,
   Copy,
   Database,
@@ -39,6 +41,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -67,6 +73,7 @@ import { PageTransition } from "@/components/ui/page-transition";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
+import ArchitectQrEvents from "./ArchitectQrEvents";
 import type {
   ArchitectStoreUser,
   OrderingMode,
@@ -87,6 +94,65 @@ type StoreOption = Pick<
   StoreInfo,
   "id" | "name" | "slug" | "orderingMode" | "printers"
 >;
+
+function ArchitectSectionTabs({ value, label, children }: { value: string; label: string; children: ReactNode }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const updateEdges = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const next = { left: container.scrollLeft > 2, right: container.scrollWidth - container.clientWidth - container.scrollLeft > 2 };
+    setEdges((current) => current.left === next.left && current.right === next.right ? current : next);
+  }, []);
+  const revealActiveTab = useCallback((animate: boolean) => {
+    const container = containerRef.current;
+    const active = container?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+    if (!container || !active) return;
+    const bounds = container.getBoundingClientRect();
+    const selected = active.getBoundingClientRect();
+    const delta = selected.left < bounds.left + 4 ? selected.left - bounds.left - 4 : selected.right > bounds.right - 4 ? selected.right - bounds.right + 4 : 0;
+    if (delta && container.scrollWidth > container.clientWidth + 2) {
+      container.scrollTo({ left: container.scrollLeft + delta, behavior: animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
+    }
+    updateEdges();
+  }, [updateEdges]);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let lastWidth = -1;
+    let resizeFrame: number | null = null;
+    const observer = new ResizeObserver(() => {
+      updateEdges();
+      const width = container.clientWidth;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+      // Resize can add overflow arrows and change available width again. Reveal
+      // after that layout settles, without animating or reacting to user scroll.
+      resizeFrame = window.requestAnimationFrame(() => { resizeFrame = null; revealActiveTab(false); });
+    });
+    observer.observe(container); updateEdges();
+    return () => { observer.disconnect(); if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame); };
+  }, [updateEdges, revealActiveTab]);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => revealActiveTab(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [value, revealActiveTab]);
+  const scroll = (direction: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.scrollBy({ left: direction * Math.max(120, container.clientWidth * 0.7), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  };
+  const overflow = edges.left || edges.right;
+  return <div className="flex min-w-0 w-full items-center gap-1 lg:w-auto">
+    {overflow && <Button type="button" variant="ghost" size="icon" className="h-11 w-7 shrink-0 rounded-lg lg:hidden" aria-label={`Scroll ${label.toLowerCase()} left`} disabled={!edges.left} onClick={() => scroll(-1)}><ChevronLeft className="h-4 w-4" /></Button>}
+    <TabsList ref={containerRef} aria-label={label} onScroll={updateEdges} className="relative !h-auto min-w-0 flex-1 !flex-nowrap !justify-start gap-1 overflow-x-auto scrollbar-hide lg:flex-initial lg:!flex-wrap lg:overflow-visible [&_[role=tab]]:min-h-11 [&_[role=tab]]:shrink-0">
+      {children}
+    </TabsList>
+    {overflow && <Button type="button" variant="ghost" size="icon" className="h-11 w-7 shrink-0 rounded-lg lg:hidden" aria-label={`Scroll ${label.toLowerCase()} right`} disabled={!edges.right} onClick={() => scroll(1)}><ChevronRight className="h-4 w-4" /></Button>}
+  </div>;
+}
+
 type ActiveTab = "pool" | "settings" | "overview";
 type GenerateScope = "pool" | "store";
 type GenerateMethod = "random" | "manual";
@@ -522,6 +588,10 @@ export default function ArchitectQrTiles() {
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("pool");
+  const [storeTab, setStoreTab] = useState("store-overview");
+  const [qrEventsDirty, setQrEventsDirty] = useState(false);
+  const [qrEventsBusy, setQrEventsBusy] = useState(false);
+  const [pendingQrNavigation, setPendingQrNavigation] = useState<(() => void) | null>(null);
   const [poolTiles, setPoolTiles] = useState<QRTile[]>([]);
   const [storeTiles, setStoreTiles] = useState<QRTile[]>([]);
   const [overview, setOverview] = useState<StoreOverview[]>([]);
@@ -634,7 +704,7 @@ export default function ArchitectQrTiles() {
 
   const buildPublicUrl = useCallback(
     (code: string) => {
-      const fallback = "https://www.garsone.gr/q";
+      const fallback = `${window.location.origin}/q`;
       const base = (publicResolverBase || fallback).replace(/\/$/, "");
       return `${base}/${code}`;
     },
@@ -1106,7 +1176,7 @@ export default function ArchitectQrTiles() {
       setPublicResolverBase(`${window.location.origin.replace(/\/$/, "")}/q`);
       return;
     }
-    setPublicResolverBase("https://www.garsone.gr/q");
+    setPublicResolverBase("/q");
   }, []);
 
   useEffect(() => {
@@ -2022,20 +2092,29 @@ export default function ArchitectQrTiles() {
     setDialogOpen(true);
   };
 
+  const requestQrNavigation = (action: () => void) => {
+    if (qrEventsBusy) {
+      toast({ title: "Please wait for the QR event action to finish" });
+      return;
+    }
+    if (qrEventsDirty) setPendingQrNavigation(() => action);
+    else action();
+  };
+
   const handleStoreSelect = (value: string) => {
     if (value === ADD_STORE_VALUE) {
       setStoreDialogOpen(true);
       return;
     }
-    setSelectedStoreId(value);
+    if (value !== selectedStoreId) requestQrNavigation(() => setSelectedStoreId(value));
   };
 
   return (
     <PageTransition className="min-h-screen bg-background text-foreground">
       <DashboardHeader
-        supertitle="Architect"
+        supertitle={<span className="hidden sm:inline">Architect</span>}
         title="Garsone Architect"
-        subtitle={headerSubtitle}
+        subtitle={<span className="hidden sm:inline">{headerSubtitle}</span>}
         icon="GA"
         tone="secondary"
         burgerActions={
@@ -2075,14 +2154,16 @@ export default function ArchitectQrTiles() {
         }
       />
 
-      <div className="mx-auto max-w-7xl px-4 py-6">
+      <div className="mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-6">
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as ActiveTab)}
-          className="space-y-6"
+          onValueChange={(value) => {
+            if (value !== activeTab) requestQrNavigation(() => setActiveTab(value as ActiveTab));
+          }}
+          className="space-y-3 sm:space-y-6"
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <TabsList className="w-full justify-start lg:w-auto">
+          <div className="flex min-w-0 flex-col gap-2 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <ArchitectSectionTabs value={activeTab} label="Architect sections">
               <TabsTrigger value="pool" className="gap-2">
                 <QrCode className="h-4 w-4" />
                 QR Pool
@@ -2095,9 +2176,9 @@ export default function ArchitectQrTiles() {
                 <Building2 className="h-4 w-4" />
                 Garsone Overview
               </TabsTrigger>
-            </TabsList>
+            </ArchitectSectionTabs>
 
-            <div className="flex flex-wrap gap-2">
+            <div className={cn("flex flex-wrap gap-2", activeTab === "settings" && storeTab === "store-qr-events" && "hidden sm:flex")}>
               <Button
                 variant="outline"
                 size="sm"
@@ -2422,26 +2503,26 @@ export default function ArchitectQrTiles() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="settings" className="space-y-5">
+          <TabsContent value="settings" className="space-y-3 sm:space-y-5">
             <Card>
-              <CardHeader className="pb-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-base">
+              <CardHeader className="p-3 sm:p-6 sm:pb-4">
+                <div className="flex min-w-0 items-center gap-2 sm:flex-col sm:items-stretch sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="shrink-0">
+                    <CardTitle className="flex items-center gap-1.5 text-sm sm:gap-2 sm:text-base">
                       <Building2 className="h-4 w-4 text-primary" />
                       Store
                     </CardTitle>
-                    <CardDescription className="mt-1">
+                    <CardDescription className="mt-1 hidden sm:block">
                       Pick the store to configure, or create a new one.
                     </CardDescription>
                   </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 lg:flex-initial">
                     <Select
                       value={selectedStoreId}
                       onValueChange={handleStoreSelect}
                       disabled={loadingStores}
                     >
-                      <SelectTrigger className="h-9 w-full sm:w-64">
+                      <SelectTrigger aria-label="Select store" className="h-11 min-w-0 flex-1 sm:h-9 sm:w-64 sm:flex-initial">
                         <SelectValue placeholder="Select store" />
                       </SelectTrigger>
                       <SelectContent>
@@ -2461,10 +2542,12 @@ export default function ArchitectQrTiles() {
                     <Button
                       variant="outline"
                       size="sm"
+                      aria-label="Create store"
+                      className="h-11 w-11 shrink-0 p-0 sm:h-9 sm:w-auto sm:px-3"
                       onClick={() => setStoreDialogOpen(true)}
                     >
-                      <Plus className="mr-1.5 h-4 w-4" />
-                      Create store
+                      <Plus className="h-4 w-4 sm:mr-1.5" />
+                      <span className="hidden sm:inline">Create store</span>
                     </Button>
                   </div>
                 </div>
@@ -2477,8 +2560,10 @@ export default function ArchitectQrTiles() {
                 </CardContent>
               </Card>
             ) : (
-              <Tabs defaultValue="store-overview" className="space-y-5">
-                <TabsList className="w-full justify-start lg:w-auto">
+              <Tabs value={storeTab} onValueChange={(value) => {
+                if (value !== storeTab) requestQrNavigation(() => setStoreTab(value));
+              }} className="space-y-3 sm:space-y-5">
+                <ArchitectSectionTabs value={storeTab} label="Store sections">
                   <TabsTrigger value="store-overview" className="gap-2">
                     <Grid3X3 className="h-4 w-4" />
                     Store Overview
@@ -2491,11 +2576,15 @@ export default function ArchitectQrTiles() {
                     <QrCode className="h-4 w-4" />
                     Store QR Tiles
                   </TabsTrigger>
+                  <TabsTrigger value="store-qr-events" className="gap-2">
+                    <QrCode className="h-4 w-4" />
+                    Event QR Codes
+                  </TabsTrigger>
                   <TabsTrigger value="store-deployment" className="gap-2">
                     <Database className="h-4 w-4" />
                     Venue Deployment
                   </TabsTrigger>
-                </TabsList>
+                </ArchitectSectionTabs>
 
                 <TabsContent value="store-overview" className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -2871,6 +2960,10 @@ export default function ArchitectQrTiles() {
                       )}
                     </CardContent>
                   </Card>
+                </TabsContent>
+
+                <TabsContent value="store-qr-events" className="space-y-5">
+                  <ArchitectQrEvents key={selectedStore.id} store={selectedStore} tiles={storeTiles} onDirtyChange={setQrEventsDirty} onBusyChange={setQrEventsBusy} />
                 </TabsContent>
 
                 <TabsContent value="store-deployment" className="space-y-5">
@@ -4484,6 +4577,26 @@ export default function ArchitectQrTiles() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(pendingQrNavigation)} onOpenChange={(open) => { if (!open) setPendingQrNavigation(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave your unsaved event?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your QR event has changes that have not been saved. Keep editing to save them, or discard them before leaving.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const action = pendingQrNavigation;
+              setPendingQrNavigation(null);
+              setQrEventsDirty(false);
+              action?.();
+            }}>Discard changes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={Boolean(previewQr)}

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppBurger } from '@/components/AppBurger';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -27,6 +27,16 @@ export const DashboardHeader = ({
   rightContent,
 }: DashboardHeaderProps) => {
   const navigate = useNavigate();
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const update = () => document.documentElement.style.setProperty('--dashboard-header-height', `${header.getBoundingClientRect().height}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--dashboard-header-height'); };
+  }, []);
   const { user, logout, isAuthenticated } = useAuthStore();
   const gradientClass =
     {
@@ -53,10 +63,10 @@ export const DashboardHeader = ({
   };
 
   return (
-    <header className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-40 shadow-sm">
+    <header ref={headerRef} className="bg-card/95 backdrop-blur-lg border-b border-border sticky top-0 z-40 pt-[env(safe-area-inset-top)] shadow-sm">
       <div className="max-w-7xl mx-auto px-2 min-[360px]:px-4 py-3 sm:py-5 flex items-center justify-between gap-1 min-[360px]:gap-3 sm:gap-4">
         <div className="flex items-center gap-2 min-[360px]:gap-4 min-w-0 flex-1">
-          <div className={`w-9 h-9 min-[360px]:w-10 min-[360px]:h-10 sm:w-12 sm:h-12 rounded-xl ${gradientClass} flex items-center justify-center shadow-lg flex-shrink-0`}>
+          <div className={`hidden min-[360px]:flex w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${gradientClass} items-center justify-center shadow-sm flex-shrink-0`}>
             <span className="text-xl sm:text-2xl md:text-3xl">{icon}</span>
           </div>
           <div className="min-w-0">
@@ -65,11 +75,11 @@ export const DashboardHeader = ({
                 {supertitle}
               </p>
             ) : null}
-            <h1 className={`text-lg sm:text-xl md:text-2xl font-bold ${titleColorClass} truncate`}>
+            <h1 title={title} className={`text-base sm:text-xl md:text-2xl font-bold ${titleColorClass} truncate`}>
               {title}
             </h1>
             {subtitle && (
-              <p className="text-sm text-muted-foreground truncate">{subtitle}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{subtitle}</p>
             )}
           </div>
         </div>
@@ -83,7 +93,7 @@ export const DashboardHeader = ({
             type="button"
             onClick={toggleTheme}
             aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-            className="inline-flex items-center justify-center h-9 w-9 min-[360px]:h-10 min-[360px]:w-10 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
+            className="inline-flex shrink-0 items-center justify-center h-11 w-11 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors"
           >
             {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
           </button>

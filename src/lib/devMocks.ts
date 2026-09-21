@@ -397,7 +397,7 @@ function load(): Db {
     priceCents: 350,
     categoryId: catCoffee.id,
     isAvailable: true,
-    imageUrl: 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/local-store/Cup-Of-Creamy-Coffee.png',
+    imageUrl: (import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/placeholder.svg' : 'https://oupwquepcjydgevdfnlm.supabase.co/storage/v1/object/public/assets/local-store/Cup-Of-Creamy-Coffee.png'),
     printerTopic: catCoffee.printerTopic ?? null,
   };
   const itemCro: Item = { id: uid('item'), title: 'Croissant', description: 'Buttery & flaky', priceCents: 300, categoryId: catPastry.id, isAvailable: true, printerTopic: catPastry.printerTopic ?? null };

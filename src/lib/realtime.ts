@@ -1,5 +1,6 @@
 import { useAuthStore } from "@/store/authStore";
 import { API_BASE, isOffline as apiIsOffline } from "./api";
+import { getStoredStoreSlug } from "./storeSlug";
 
 type RealtimeMessage = unknown; // Messages vary per topic; callers narrow as needed.
 type RealtimeCallback = (message: RealtimeMessage) => void;
@@ -387,8 +388,17 @@ function buildWebSocketUrl(): string | null {
   } else if (API_BASE.startsWith("http://")) {
     wsBase = API_BASE.replace("http://", "ws://");
   }
-  const url = new URL("/events/ws", wsBase);
+  const url = new URL(`${wsBase.replace(/\/+$/, "")}/events/ws`);
   if (token) url.searchParams.set("token", token);
+  else if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    const storeSlug = params.get("storeSlug") || getStoredStoreSlug();
+    const tableId = window.location.pathname.match(/(?:^\/|\/table\/)([0-9a-f-]{36})(?:\/|$)/i)?.[1];
+    if (storeSlug && tableId) {
+      url.searchParams.set("storeSlug", storeSlug);
+      url.searchParams.set("tableId", tableId);
+    }
+  }
   return url.toString();
 }
 
