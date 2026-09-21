@@ -181,7 +181,9 @@ const ItemGrid = ({
         >
           <button
             type="button"
-            className="block h-full w-full text-left disabled:cursor-default [@media(max-height:500px)_and_(orientation:landscape)]:flex [@media(max-height:500px)_and_(orientation:landscape)]:items-stretch"
+            // Native block buttons center shorter content inside stretched grid rows.
+            // Explicit flex alignment keeps every image flush with the card's top.
+            className="flex h-full w-full flex-col justify-start text-left disabled:cursor-default [@media(max-height:500px)_and_(orientation:landscape)]:flex-row [@media(max-height:500px)_and_(orientation:landscape)]:items-stretch"
             onClick={() => {
               if (!browseOnly) onAdd(item);
             }}
@@ -190,7 +192,7 @@ const ItemGrid = ({
               browseOnly ? displayName : `${addItemLabel}: ${displayName}`
             }
           >
-            <div className="relative aspect-[4/3] overflow-hidden bg-muted [@media(max-height:500px)_and_(orientation:landscape)]:aspect-auto [@media(max-height:500px)_and_(orientation:landscape)]:min-h-24 [@media(max-height:500px)_and_(orientation:landscape)]:w-24 [@media(max-height:500px)_and_(orientation:landscape)]:shrink-0">
+            <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-muted [@media(max-height:500px)_and_(orientation:landscape)]:aspect-auto [@media(max-height:500px)_and_(orientation:landscape)]:min-h-24 [@media(max-height:500px)_and_(orientation:landscape)]:w-24">
               {item.image ? (
                 <img
                   src={item.image}
