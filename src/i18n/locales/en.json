@@ -33,8 +33,6 @@
         "category_navigation": "Category navigation",
         "previous_category": "Previous category",
         "next_category": "Next category",
-        "category_position": "{{current}} of {{total}}",
-        "swipe_categories": "Swipe or use arrows",
         "go_to_category": "Show {{category}}",
         "order_controls": "Order controls",
         "open_cart": "Open cart, {{count}} items",

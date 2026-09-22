@@ -993,41 +993,26 @@ export const SwipeableMenuView = ({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="min-w-0 text-center">
-              <p className="text-xs leading-4 text-muted-foreground">
-                <span aria-live="polite" aria-atomic="true">
-                  {t("menu.category_position", {
-                    current: safeSelectedIndex + 1,
-                    total: allCategories.length,
-                    defaultValue: "{{current}} of {{total}}",
+            <div className="flex min-w-0 items-center justify-center">
+              {categoryIndicators.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className="flex h-7 w-7 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={t("menu.go_to_category", {
+                    category: category.title,
+                    defaultValue: "Show {{category}}",
                   })}
-                </span>
-                <span aria-hidden="true"> · </span>
-                {t("menu.swipe_categories", {
-                  defaultValue: "Swipe or use arrows",
-                })}
-              </p>
-              <div className="flex items-center justify-center">
-                {categoryIndicators.map((category) => (
-                  <button
-                    key={category.id}
-                    type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={t("menu.go_to_category", {
-                      category: category.title,
-                      defaultValue: "Show {{category}}",
-                    })}
-                    aria-current={
-                      category.id === activeCategoryId ? "true" : undefined
-                    }
-                    onClick={() => handleCategorySelect(category.id)}
-                  >
-                    <span
-                      className={`h-1.5 rounded-full transition-[width,background-color] duration-200 motion-reduce:transition-none ${category.id === activeCategoryId ? "w-5 bg-primary" : "w-1.5 bg-muted-foreground/35"}`}
-                    />
-                  </button>
-                ))}
-              </div>
+                  aria-current={
+                    category.id === activeCategoryId ? "true" : undefined
+                  }
+                  onClick={() => handleCategorySelect(category.id)}
+                >
+                  <span
+                    className={`h-1.5 rounded-full transition-[width,background-color] duration-200 motion-reduce:transition-none ${category.id === activeCategoryId ? "w-5 bg-primary" : "w-1.5 bg-muted-foreground/35"}`}
+                  />
+                </button>
+              ))}
             </div>
             <Button
               type="button"

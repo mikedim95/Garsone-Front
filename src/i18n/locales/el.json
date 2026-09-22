@@ -33,8 +33,6 @@
     "category_navigation": "Πλοήγηση κατηγοριών",
     "previous_category": "Προηγούμενη κατηγορία",
     "next_category": "Επόμενη κατηγορία",
-    "category_position": "{{current}} από {{total}}",
-    "swipe_categories": "Σύρετε ή πατήστε τα βέλη",
     "go_to_category": "Εμφάνιση: {{category}}",
     "order_controls": "Ενέργειες παραγγελίας",
     "open_cart": "Άνοιγμα καλαθιού, {{count}} προϊόντα",
