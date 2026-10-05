@@ -24,8 +24,6 @@ import {
   Bell,
   Loader2,
   X,
-  CreditCard,
-  Zap,
   Pencil,
   CheckCircle2,
 } from "lucide-react";
@@ -67,12 +65,9 @@ interface Props {
   onBack: () => void;
   onAddItem: (item: MenuItem) => void;
   onCheckout: (note?: string) => void | Promise<any>;
-  onImmediateCheckout?: (note?: string) => void | Promise<any>;
-  showPaymentButton?: boolean;
   showBackButton?: boolean;
   showAllCategory?: boolean;
   primaryCtaLabel?: string;
-  secondaryCtaLabel?: string;
   callButtonLabel?: string | null;
   callStatus?: "idle" | "pending" | "accepted";
   callPrompted?: boolean;
@@ -254,7 +249,6 @@ export const SwipeableMenuView = ({
   onBack,
   onAddItem,
   onCheckout,
-  onImmediateCheckout,
   callStatus = "idle",
   onCallClick,
   onCallConfirm,
@@ -263,7 +257,6 @@ export const SwipeableMenuView = ({
   onNoteChange,
   openCartSignal = 0,
   orderPlacedSignal = 0,
-  showPaymentButton = true,
   showBackButton = true,
   showAllCategory = true,
   showCartButton = true,
@@ -655,14 +648,6 @@ export const SwipeableMenuView = ({
   const handleCheckout = async () => {
     if (checkoutBusy) return;
     const res = await onCheckout(orderNote);
-    if (res) {
-      setOrderNote("");
-    }
-  };
-
-  const handleImmediateCheckout = async () => {
-    if (checkoutBusy || !onImmediateCheckout) return;
-    const res = await onImmediateCheckout(orderNote);
     if (res) {
       setOrderNote("");
     }
@@ -1652,11 +1637,7 @@ export const SwipeableMenuView = ({
                         </span>
                       ) : (
                         <>
-                          {showPaymentButton ? (
-                            <CreditCard className="h-5 w-5 mr-2" />
-                          ) : (
-                            <ShoppingCart className="h-5 w-5 mr-2" />
-                          )}
+                          <ShoppingCart className="h-5 w-5 mr-2" />
                           <span className="min-w-0 break-words [overflow-wrap:anywhere]">
                             {primaryCtaLabel ||
                               t("menu.checkout", {
@@ -1666,19 +1647,6 @@ export const SwipeableMenuView = ({
                         </>
                       )}
                     </Button>
-                    {showPaymentButton && onImmediateCheckout && (
-                      <Button
-                        onClick={handleImmediateCheckout}
-                        disabled={checkoutBusy}
-                        variant="outline"
-                        aria-label={t("menu.pay_at_venue", {
-                          defaultValue: "Order and pay at the venue",
-                        })}
-                        className="h-auto min-h-12 shrink-0"
-                      >
-                        <Zap className="h-5 w-5" />
-                      </Button>
-                    )}
                   </div>
                 </div>
               )}

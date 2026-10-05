@@ -1,6 +1,6 @@
 import type { CartItem, MenuItem, MenuCategory } from '@/types';
 import { Button } from '../ui/button';
-import { ShoppingCart, X, Pencil, Bell, Loader2, CreditCard, Zap } from 'lucide-react';
+import { ShoppingCart, X, Pencil, Bell, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCartStore } from '@/store/cartStore';
 import { Card } from '../ui/card';
@@ -19,10 +19,7 @@ interface Props {
   selectedCategory: string;
   onAddItem: (item: MenuItem) => void;
   onCheckout: (note?: string) => void | Promise<any>;
-  onImmediateCheckout?: (note?: string) => void | Promise<any>;
-  showPaymentButton?: boolean;
   primaryCtaLabel?: string;
-  secondaryCtaLabel?: string;
   callButtonLabel?: string | null;
   callStatus?: 'idle' | 'pending' | 'accepted';
   callPrompted?: boolean;
@@ -45,7 +42,6 @@ export const ElegantMenuView = ({
   selectedCategory,
   onAddItem,
   onCheckout,
-  onImmediateCheckout,
   callButtonLabel,
   callStatus = 'idle',
   callPrompted = false,
@@ -53,14 +49,12 @@ export const ElegantMenuView = ({
   checkoutBusy = false,
   openCartSignal = 0,
   orderPlacedSignal = 0,
-  showPaymentButton = true,
   showCallButton = true,
   autoOpenCart = false,
   showCartButton = true,
   floatingCartPosition = 'right',
   cartBottomOffset = 'default',
   primaryCtaLabel,
-  secondaryCtaLabel,
 }: Props) => {
   const { t } = useTranslation();
   const cartItems = useCartStore((state) => state.items);
@@ -206,14 +200,6 @@ export const ElegantMenuView = ({
   const handleCheckout = async () => {
     if (checkoutBusy) return;
     const res = await onCheckout(orderNote);
-    if (res) {
-      setOrderNote('');
-    }
-  };
-
-  const handleImmediateCheckout = async () => {
-    if (checkoutBusy || !onImmediateCheckout) return;
-    const res = await onImmediateCheckout(orderNote);
     if (res) {
       setOrderNote('');
     }
@@ -638,7 +624,6 @@ export const ElegantMenuView = ({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {showPaymentButton && (
                     <Button
                       onClick={handleCheckout}
                       disabled={checkoutBusy}
@@ -650,24 +635,10 @@ export const ElegantMenuView = ({
                         <Loader2 className="h-4 w-4 animate-spin" />
                       </span>
                       <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
-                        <CreditCard className="h-4 w-4" />
-                        {primaryCtaLabel ?? t('menu.pay_with_viva', { defaultValue: 'Pay with Viva' })}
+                        <ShoppingCart className="h-4 w-4" />
+                        {primaryCtaLabel ?? t('menu.place_order_local', { defaultValue: 'Place order' })}
                       </span>
                     </Button>
-                  )}
-                  {onImmediateCheckout && (
-                    <Button
-                      onClick={handleImmediateCheckout}
-                      disabled={checkoutBusy}
-                      variant="secondary"
-                      className="w-full h-10 rounded-full font-medium text-sm transition-all duration-300"
-                    >
-                      <span className={`flex items-center gap-2 ${checkoutBusy ? 'opacity-0' : 'opacity-100'}`}>
-                        <Zap className="h-4 w-4" />
-                        {secondaryCtaLabel ?? t('menu.quick_order', { defaultValue: 'Place order now' })}
-                      </span>
-                    </Button>
-                  )}
                 </div>
               </div>
             )}

@@ -22,7 +22,7 @@ backend also publishes the same topics to MQTT for non-browser clients.
 - QR/table ordering and menu browsing
 - Staff dashboards: waiter, cook, manager, architect (QR tiles)
 - Real-time order status and call-waiter alerts via WebSocket topics
-- Viva Smart Checkout redirect flow
+- Cart checkout with one Place order button; orders submit directly without online payment or NFC scanning
 - Multi-language UI (English, Greek)
 - Optional offline/demo mode (VITE_OFFLINE or localStorage OFFLINE=1)
 - Web app manifest and icons included (no service worker/offline caching yet)
@@ -48,7 +48,6 @@ backend also publishes the same topics to MQTT for non-browser clients.
 - Prisma ORM
 - PostgreSQL
 - MQTT broker + WebSocket gateway for realtime
-- Viva Smart Checkout integration
 
 ## Installation
 
@@ -65,9 +64,6 @@ Dev server defaults to `http://localhost:8080` (see `vite.config.ts`).
 - `/login` - Staff authentication
 - `/:tableId` - Customer menu
 - `/order/:orderId/thanks` - Order confirmation
-- `/payment-complete` - Payment redirect landing
-- `/payment-success` - Payment success
-- `/payment-failed` - Payment failure
 - `/q/:publicCode` - Public QR redirect
 - `/waiter` - Waiter dashboard
 - `/cook` - Cook dashboard

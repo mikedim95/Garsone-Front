@@ -17,7 +17,9 @@ node tests/qr-events-browser-smoke.mjs
 node tests/qr-scan-browser-smoke.mjs
 ```
 
-For local checkout, serve with `VITE_API_URL=/api` and `VITE_LOCAL_ONLY=true` on
+Run the guest checkout suite in both cloud (`VITE_LOCAL_ONLY=false`) and local
+(`VITE_LOCAL_ONLY=true`) modes. It verifies a single submit action, no payment/NFC
+requests, cart recovery and duplicate-click prevention. For local checkout, serve with `VITE_API_URL=/api` and `VITE_LOCAL_ONLY=true` on
 `http://127.0.0.1:18181`, then run:
 
 ```sh

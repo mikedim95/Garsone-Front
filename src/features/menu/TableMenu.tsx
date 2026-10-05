@@ -69,11 +69,8 @@ import { Sun, Moon } from "lucide-react";
 import { getStoredStoreSlug, setStoredStoreSlug } from "@/lib/storeSlug";
 import { useQuery } from "@tanstack/react-query";
 import {
-  clearStoredLocalityApproval,
   getDeviceContext,
   getLocalitySessionId,
-  getStoredLocalityApproval,
-  type LocalityApproval,
 } from "@/lib/locality";
 
 const ModifierDialog = lazy(() =>
@@ -81,12 +78,6 @@ const ModifierDialog = lazy(() =>
     default: mod.ModifierDialog,
   }))
 );
-const LocalityApprovalModal = lazy(() =>
-  import("@/components/menu/LocalityApprovalModal").then((mod) => ({
-    default: mod.LocalityApprovalModal,
-  }))
-);
-
 type CategorySummary = Pick<
   MenuCategory,
   "id" | "title" | "titleEn" | "titleEl" | "imageUrl"
@@ -759,7 +750,7 @@ export default function TableMenu() {
   const isFrontendOnlyMenu = isFrontendOfflineMenuPath(tableLookupCode);
   const activeTableId = tableId;
   const guestOrderingEnabled = isFrontendOnlyMenu || orderingMode !== "waiter";
-  const usesImmediateGuestCheckout = import.meta.env.VITE_LOCAL_ONLY === "true";
+  const isLocalInstallation = import.meta.env.VITE_LOCAL_ONLY === "true";
   const isEditingExisting = editingOrderIds.length > 0 || Boolean(editingOrderId);
   const isEditingPendingBatch = editingOrderIds.length > 1;
   const lastOrderStatus = lastOrder?.status ?? "PLACED";
@@ -1094,7 +1085,6 @@ export default function TableMenu() {
   );
   const paintMarkRef = useRef(false);
   const dataMarkRef = useRef(false);
-  const cartChangeRef = useRef(false);
   const lastOrderRef = useRef<SubmittedOrderSummary | null>(null);
   const placedOrdersRef = useRef<SubmittedOrderSummary[]>([]);
   const categorySelectedRef = useRef(false);
@@ -1105,11 +1095,6 @@ export default function TableMenu() {
   const checkoutLockRef = useRef(false);
   const [tableLookupRetry, setTableLookupRetry] = useState(0);
   const cartContextRef = useRef<string | null>(null);
-  const [localityGateOpen, setLocalityGateOpen] = useState(false);
-  const localityGatePromiseRef = useRef<Promise<LocalityApproval | null> | null>(
-    null
-  );
-  const localityGateResolveRef = useRef<((approval: LocalityApproval | null) => void) | null>(null);
   const [localitySessionId] = useState(() => getLocalitySessionId());
   const deviceContext = getDeviceContext();
   const bootstrapQueryEnabled =
@@ -1211,14 +1196,6 @@ export default function TableMenu() {
       stopEditingLastOrder();
     }
   }, [clearCart, customerOrderRecallEnabled, isEditingExisting]);
-
-  useEffect(() => {
-    if (!cartChangeRef.current) {
-      cartChangeRef.current = true;
-      return;
-    }
-    clearStoredLocalityApproval();
-  }, [cartItems]);
 
   useEffect(() => {
     const shouldShowLastOrder =
@@ -1768,7 +1745,7 @@ export default function TableMenu() {
     setEditingOrderId(order.id || null);
     setEditingOrderIds(order.id ? [order.id] : []);
     setEditingNote(order.note ?? "");
-    setSelectedCategory(selectedCategory || (usesImmediateGuestCheckout ? categories[0]?.id : "all") || "all");
+    setSelectedCategory(selectedCategory || (isLocalInstallation ? categories[0]?.id : "all") || "all");
     setCategorySelected(true);
     return mappedItems;
   };
@@ -1848,7 +1825,7 @@ export default function TableMenu() {
     setEditingNote(editableOrders.find((order) => order.note)?.note ?? "");
     setSelectedCategory(
       selectedCategory ||
-        (usesImmediateGuestCheckout ? categories[0]?.id : "all") ||
+        (isLocalInstallation ? categories[0]?.id : "all") ||
         "all"
     );
     setCategorySelected(true);
@@ -1909,28 +1886,12 @@ export default function TableMenu() {
     activeLineSavingRef.current = true;
     setActiveLineSaving(true);
     try {
-    const approval = usesImmediateGuestCheckout
-      ? null
-      : getStoredLocalityApproval({
-          tableId: activeTableId || "",
-          storeSlug: storeSlug || null,
-          purpose: "ORDER_SUBMIT",
-          sessionId: localitySessionId,
-        }) ?? (await requestLocalityApproval());
-    if (!usesImmediateGuestCheckout && !approval) return;
-
       const response = await api.updateOrderItem(
         activeLineEditor.orderId,
         activeLineEditor.orderItemId,
         {
           quantity: Math.max(0, qty),
           modifiers: selected,
-          ...(approval
-            ? {
-                localityApprovalToken: approval.token,
-                localitySessionId,
-              }
-            : {}),
         }
       );
       const summary = toOrderSummary(response.order);
@@ -1940,7 +1901,6 @@ export default function TableMenu() {
         next.unshift(summary);
         return next;
       });
-      if (approval) clearStoredLocalityApproval();
       setActiveLineEditor(null);
       setActiveOrderOpen(true);
       toast({
@@ -2035,26 +1995,6 @@ export default function TableMenu() {
     loadOrderIntoCart(lastOrder);
   };
 
-  const resolveLocalityGate = (approval: LocalityApproval | null) => {
-    setLocalityGateOpen(false);
-    if (localityGateResolveRef.current) {
-      localityGateResolveRef.current(approval);
-    }
-    localityGateResolveRef.current = null;
-    localityGatePromiseRef.current = null;
-  };
-
-  const requestLocalityApproval = () => {
-    if (localityGatePromiseRef.current) {
-      return localityGatePromiseRef.current;
-    }
-    setLocalityGateOpen(true);
-    localityGatePromiseRef.current = new Promise((resolve) => {
-      localityGateResolveRef.current = resolve;
-    });
-    return localityGatePromiseRef.current;
-  };
-
   const trackOrderEvent = async (
     event: Parameters<typeof api.trackPublicEvent>[0]["event"],
     method?: string,
@@ -2146,7 +2086,7 @@ export default function TableMenu() {
     return summary;
   };
 
-  const handleImmediateCheckout = async (
+  const handleCheckout = async (
     note?: string
   ): Promise<SubmittedOrderSummary | null> => {
     if (checkoutLockRef.current) return null;
@@ -2209,52 +2149,31 @@ export default function TableMenu() {
       return null;
     }
 
-    // Acquire synchronously before approval/push awaits: two clicks in one
+    // Acquire synchronously before the request: two clicks in one
     // render must never submit the same cart twice.
     checkoutLockRef.current = true;
     setCheckoutBusy(true);
-    let approval: LocalityApproval | null = null;
     try {
-    approval = usesImmediateGuestCheckout
-      ? null
-      : getStoredLocalityApproval({
-          tableId: activeTableId,
-          storeSlug: storeSlug || null,
-          purpose: "ORDER_SUBMIT",
-          sessionId: localitySessionId,
-        }) ?? (await requestLocalityApproval());
-
-    if (!usesImmediateGuestCheckout && !approval) {
-      return null;
-    }
-
-    const payload: CreateOrderPayload = {
-      tableId: activeTableId,
-      items: cartItems.map((item) => ({
-        itemId: item.item.id,
-        quantity: item.quantity,
-        modifiers: JSON.stringify(item.selectedModifiers),
-      })),
-      ...(note ? { note } : {}),
-      ...(approval
-        ? {
-            localityApprovalToken: approval.token,
-            localitySessionId,
-          }
-        : {}),
-    };
+      // Checkout sends the cart directly; no payment redirect or tag scan is needed.
+      const payload: CreateOrderPayload = {
+        tableId: activeTableId,
+        items: cartItems.map((item) => ({
+          itemId: item.item.id,
+          quantity: item.quantity,
+          modifiers: JSON.stringify(item.selectedModifiers),
+        })),
+        ...(note ? { note } : {}),
+      };
 
       void trackOrderEvent(
         "order_submit_attempted",
-        approval?.method || "direct_submit"
+        "direct_submit"
       );
       const wasEditing = Boolean(editingOrderId);
       const response = isEditingPendingBatch
         ? await api.editPendingTableOrders(activeTableId, {
             items: payload.items,
             note: payload.note,
-            localityApprovalToken: payload.localityApprovalToken,
-            localitySessionId: payload.localitySessionId,
             orderIds: editingOrderIds,
           })
         : editingOrderId
@@ -2281,7 +2200,7 @@ export default function TableMenu() {
       }
       setLastOrder(summary);
       upsertPlacedOrder(summary);
-      if (!usesImmediateGuestCheckout) void registerCustomerPushForOrder({
+      if (!isLocalInstallation) void registerCustomerPushForOrder({
         tableId: activeTableId,
         orderId: summary.id || order.id,
         storeSlug: storeSlug || undefined,
@@ -2289,12 +2208,9 @@ export default function TableMenu() {
       });
       clearCart();
       stopEditingLastOrder();
-      if (approval) {
-        clearStoredLocalityApproval();
-      }
       void trackOrderEvent(
         "order_submit_succeeded",
-        approval?.method || "direct_submit"
+        "direct_submit"
       );
       const successParams = new URLSearchParams({ tableId: activeTableId });
       if (storeSlug) {
@@ -2306,7 +2222,7 @@ export default function TableMenu() {
       navigate(`/order/${summary.id}/thanks?${successParams.toString()}`);
       return summary;
     } catch (error) {
-      console.error("Immediate checkout failed:", {
+      console.error("Checkout failed:", {
         error,
         storeSlug,
         tableId: activeTableId,
@@ -2317,29 +2233,9 @@ export default function TableMenu() {
         handleOrdersAcceptedDuringEdit(editingOrderIds.length ? editingOrderIds : editingOrderId ? [editingOrderId] : []);
         return null;
       }
-      if (
-        error instanceof ApiError &&
-        error.status === 403 &&
-        (message.includes("LOCALITY_APPROVAL_INVALID") ||
-          message.includes("LOCALITY_APPROVAL_REQUIRED"))
-      ) {
-        clearStoredLocalityApproval();
-        toast({
-          title: t("menu.toast_error_title", {
-            defaultValue: "Approval expired",
-          }),
-          description: t("menu.toast_error_description", {
-            defaultValue: "Please scan the table tag again to submit.",
-          }),
-        });
-        void trackOrderEvent("order_submit_failed", approval?.method, {
-          reason: message,
-        });
-        return null;
-      }
       void trackOrderEvent(
         "order_submit_failed",
-        approval?.method || "direct_submit",
+        "direct_submit",
         {
         reason: message,
         }
@@ -2359,134 +2255,6 @@ export default function TableMenu() {
       checkoutLockRef.current = false;
       setCheckoutBusy(false);
     }
-  };
-
-  const handleCheckout = async (note?: string) => {
-    if (usesImmediateGuestCheckout || import.meta.env.VITE_LOCAL_ONLY === "true") {
-      return handleImmediateCheckout(note);
-    }
-    if (checkoutLockRef.current) return null;
-    if (!guestOrderingEnabled) {
-      toast({
-        title: t("menu.waiter_only_title", {
-          defaultValue: "Ordering with waiter only",
-        }),
-        description: t("menu.waiter_only_desc", {
-          defaultValue: "Please ask your waiter to place the order.",
-        }),
-      });
-      return null;
-    }
-    if (!activeTableId || !menuData) {
-      toast({
-        title: t("menu.toast_error_title", {
-          defaultValue: "Error placing order",
-        }),
-        description: t("menu.toast_error_description", {
-          defaultValue: "Missing table information. Please rescan the QR.",
-        }),
-      });
-      return null;
-    }
-
-    const cart = useCartStore.getState().items;
-    if (!cart.length || cart.length > 100 || invalidCartItem(cart, menuData.items)) {
-      toast({ title: t("menu.review_cart_title", { defaultValue: "Please review your cart" }),
-        description: t("menu.review_cart_before_payment", { defaultValue: "Check your items, quantities and options before continuing." }), variant: "destructive" });
-      return null;
-    }
-    checkoutLockRef.current = true;
-    try {
-      setCheckoutBusy(true);
-      const cartItems = useCartStore.getState().items;
-
-      // Calculate total amount
-      const totalCents = cartItems.reduce((sum, item) => {
-        const basePrice = item.item.priceCents ?? Math.round((item.item.price ?? 0) * 100);
-        const modifiersPrice = Object.keys(item.selectedModifiers ?? {}).reduce(
-          (modSum, modId) => {
-            const optionIds = item.selectedModifiers[modId];
-            const ids = Array.isArray(optionIds) ? optionIds : [optionIds];
-            const options = item.item.modifiers?.find((m) => m.id === modId)?.options ?? [];
-            return modSum + ids.reduce((sum, optionId) => {
-              const option = options.find((o) => o.id === optionId);
-              return sum + (option?.priceDeltaCents ?? Math.round((option?.priceDelta ?? 0) * 100));
-            }, 0);
-          },
-          0
-        );
-        return sum + (basePrice + modifiersPrice) * item.quantity;
-      }, 0);
-
-      const totalAmount = totalCents / 100;
-
-      // Step 1: Get Viva payment checkout URL
-      const paymentResponse = await api.getVivaCheckoutUrl(
-        activeTableId,
-        totalAmount,
-        `Order for Table ${tableLabel || activeTableId}`
-      );
-
-      // Step 2: Store order data temporarily in sessionStorage
-      const pendingOrder = {
-        tableId: activeTableId,
-        storeSlug: storeSlug || null,
-        expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutes
-        items: cartItems.map((item) => ({
-          itemId: item.item.id,
-          quantity: item.quantity,
-          modifiers: JSON.stringify(item.selectedModifiers),
-        })),
-        note: note ?? "",
-        paymentSessionId: paymentResponse.sessionId,
-        totalCents: totalCents,
-      };
-
-      const pendingOrderJson = JSON.stringify(pendingOrder);
-      // Persist in both sessionStorage (primary) and localStorage (fallback) to survive cross-origin redirects
-      try {
-        window.sessionStorage.setItem("pending-order", pendingOrderJson);
-      } catch (e) {
-        console.warn("Failed to store pending order in sessionStorage", e);
-      }
-      try {
-        window.localStorage.setItem("pending-order", pendingOrderJson);
-      } catch (e) {
-        console.warn("Failed to store pending order in localStorage", e);
-      }
-
-      // Step 3: Redirect to Viva payment
-      window.location.href = paymentResponse.checkoutUrl;
-
-      return null;
-    } catch (error) {
-      console.error("Failed to initiate payment:", error);
-      if (error instanceof ApiError && error.status === 403) {
-        toast({
-          title: t("menu.toast_error_title", {
-            defaultValue: "Session expired",
-          }),
-          description: t("menu.toast_error_description", {
-            defaultValue: "Scan the table QR again to start a new order.",
-          }),
-        });
-      } else {
-        toast({
-          title: t("menu.toast_error_title", {
-            defaultValue: "Error initiating payment",
-          }),
-          description:
-            error instanceof Error
-              ? error.message
-              : t("menu.toast_error_description", {
-                  defaultValue: "Failed to initiate payment. Please try again.",
-                }),
-        });
-      }
-      setCheckoutBusy(false);
-      checkoutLockRef.current = false;
-    }
-    return null;
   };
 
   const notifyOrderStatusChange = (
@@ -2946,7 +2714,7 @@ export default function TableMenu() {
               key="category-select"
               categories={categories}
               loading={loading}
-              variant={usesImmediateGuestCheckout ? "noor" : "default"}
+              variant={isLocalInstallation ? "noor" : "default"}
               onSelect={(catId) => {
                 startFreshOrderFromCategory(catId);
               }}
@@ -2959,36 +2727,19 @@ export default function TableMenu() {
               onCategoryChange={(catId) => setSelectedCategory(catId)}
               onBack={returnToMenuLanding}
               onAddItem={handleAddItem}
-              onCheckout={
-                isFrontendOnlyMenu || usesImmediateGuestCheckout || isEditingExisting
-                  ? handleImmediateCheckout
-                  : handleCheckout
-              }
-              onImmediateCheckout={
-                isFrontendOnlyMenu || usesImmediateGuestCheckout || isEditingExisting
-                  ? undefined
-                  : handleImmediateCheckout
-              }
+              onCheckout={handleCheckout}
               orderPlacedSignal={orderPlacedSignal}
               checkoutBusy={checkoutBusy}
               note={editingNote ?? ""}
               onNoteChange={setEditingNote}
               showBackButton
-              showAllCategory={!isFrontendOnlyMenu && !usesImmediateGuestCheckout}
+              showAllCategory={!isFrontendOnlyMenu && !isLocalInstallation}
               primaryCtaLabel={
                 isEditingExisting
                   ? t("menu.update_order", {
                       defaultValue: "Update order",
                     })
-                  : isFrontendOnlyMenu
-                  ? t("menu.submit_order_return_menu", {
-                      defaultValue: "Submit order",
-                    })
-                  : usesImmediateGuestCheckout
-                  ? t("menu.place_order_local", {
-                      defaultValue: "Place order",
-                    })
-                  : undefined
+                  : t("menu.place_order_local", { defaultValue: "Place order" })
               }
               callButtonLabel={callButtonLabel}
               callStatus={calling}
@@ -2998,8 +2749,7 @@ export default function TableMenu() {
               cartBottomOffset={hasExpandedActiveOrderBar ? "raised" : "default"}
               showCartButton={guestOrderingEnabled}
               browseOnly={false}
-              imageFit={usesImmediateGuestCheckout ? "cover" : "contain"}
-              showPaymentButton={import.meta.env.VITE_LOCAL_ONLY !== "true" && !isFrontendOnlyMenu && !usesImmediateGuestCheckout && !isEditingExisting}
+              imageFit={isLocalInstallation ? "cover" : "contain"}
             />
           )}
         </div>
@@ -3495,20 +3245,6 @@ export default function TableMenu() {
             </Button>
           </div>
         )}
-
-        {localityGateOpen ? (
-          <Suspense fallback={null}>
-            <LocalityApprovalModal
-              open={localityGateOpen}
-              tableId={activeTableId || ""}
-              storeSlug={storeSlug || null}
-              sessionId={localitySessionId}
-              purpose="ORDER_SUBMIT"
-              onCancel={() => resolveLocalityGate(null)}
-              onApproved={(approval) => resolveLocalityGate(approval)}
-            />
-          </Suspense>
-        ) : null}
 
         <Suspense fallback={null}>
           <ModifierDialog

@@ -564,9 +564,7 @@ export function WaiterMenuTab({
                 selectedCategory={selectedCategory || "all"}
                 onAddItem={handleAddItem}
                 onCheckout={handlePlaceOrder}
-                onImmediateCheckout={handlePlaceOrder}
-                showPaymentButton={false}
-                secondaryCtaLabel={t("waiter.place_order_cta", {
+                primaryCtaLabel={t("waiter.place_order_cta", {
                   defaultValue: "Place order",
                 })}
                 orderPlacedSignal={orderPlacedSignal}

@@ -8,8 +8,6 @@ import {
   ShoppingCart,
   Trash2,
   Pencil,
-  CreditCard,
-  Zap,
 } from "lucide-react";
 import {
   Dialog,
@@ -53,7 +51,6 @@ const getItemName = (item: {
 
 interface CartProps {
   onCheckout: (note?: string) => Promise<SubmittedOrderSummary | null>;
-  onImmediateCheckout?: (note?: string) => Promise<SubmittedOrderSummary | null>;
   editing?: boolean;
   activeOrderId?: string | null;
   activeOrderNote?: string;
@@ -61,7 +58,7 @@ interface CartProps {
   onAbandonEdit?: () => void;
 }
 
-export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
+export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
   const { t } = useTranslation();
   const { items, removeItem, getTotal } = useCartStore();
 
@@ -538,36 +535,10 @@ export const Cart = ({ onCheckout, onImmediateCheckout, editing, activeOrderId, 
                 disabled={placing}
                 className="w-full inline-flex items-center justify-center gap-2"
               >
-                <CreditCard className="h-4 w-4" />
-                {placing ? "Redirecting…" : "Pay with Viva"}
+                <ShoppingCart className="h-4 w-4" />
+                {placing ? t("menu.sending_order", { defaultValue: "Sending order…" }) : t("menu.place_order_local", { defaultValue: "Place order" })}
               </Button>
               
-              {onImmediateCheckout && (
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    try {
-                      setLastSubmitWasEdit(isEditingExisting);
-                      setPlacing(true);
-                      const result = await onImmediateCheckout(note || undefined);
-                      setReviewOpen(false);
-                      setQueueAhead(null);
-                      setNote("");
-                      if (result) {
-                        setSubmittedOrder(result);
-                        setSuccessOpen(true);
-                      }
-                    } finally {
-                      setPlacing(false);
-                    }
-                  }}
-                  disabled={placing}
-                  className="w-full inline-flex items-center justify-center gap-2"
-                >
-                  <Zap className="h-4 w-4" />
-                  {placing ? "Placing…" : "Place order now"}
-                </Button>
-              )}
             </div>
             
             <Button

@@ -1,4 +1,4 @@
-// Run against VITE_LOCAL_ONLY=true VITE_API_URL=/api (e.g. Vite on 18181).
+// Run against VITE_API_URL=/api in both cloud and local modes (e.g. Vite on 18181).
 // All API data is synthetic and all API requests are mocked, including writes.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -109,6 +109,8 @@ try {
     await page.screenshot({ path: process.env.GUEST_SCREENSHOT_FILE, fullPage: true, animations: 'disabled' });
   }
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Guest checkout should fit a mobile viewport');
+  assert.equal(await dialog.locator('[data-testid=cart-checkout-footer] button').count(), 1, 'Checkout has one submit action');
+  assert.equal(await dialog.getByText(/Viva|NFC|scan.*tag/i).count(), 0);
   await dialog.getByRole('button', { name: 'Place order', exact: true }).evaluate(button => { button.click(); button.click(); });
   await firstOrderRequest;
   assert.equal(orderPosts, 1, 'Rapid clicks must produce exactly one order request');
@@ -124,6 +126,10 @@ try {
   await page.waitForURL(`**/order/${orderId}/thanks?**`);
   assert.equal(orderPosts, 2);
   assert.equal(postedPayload.note, 'Please bring two cups.');
+  assert.equal(postedPayload.paymentSessionId, undefined);
+  assert.equal(postedPayload.localityApprovalToken, undefined);
+  assert.equal(postedPayload.localitySessionId, undefined);
+  assert.equal(requests.some(({ path }) => /payment|locality/.test(path)), false, 'No payment or tag approval requests');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('cart-storage')).state.items.length), 0);
 
   nullTable = true;
@@ -132,5 +138,5 @@ try {
   await page.getByText('This table is unavailable. Please scan its QR code again or ask a member of staff.', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpected, []);
-  console.log('Guest menu browser checks passed: error/retry, table validity, modifier bounds, note persistence, duplicate prevention, frozen checkout, draft recovery, local submit.');
+  console.log('Guest menu browser checks passed: error/retry, table validity, modifier bounds, note persistence, duplicate prevention, frozen checkout, draft recovery, direct submit without payment or NFC.');
 } finally { await browser.close(); }

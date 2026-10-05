@@ -272,21 +272,6 @@ type RemoteNodeSaveResponse = {
   token?: string | null;
   tokenOnlyShownOnce?: boolean;
 };
-type LocalityApprovalPayload = {
-  publicCode: string;
-  tableId: string;
-  purpose?: "ORDER_SUBMIT";
-  sessionId: string;
-  method?: "nfc" | "qr" | "link";
-};
-type LocalityApprovalResponse = {
-  approvalToken: string;
-  expiresAt: string;
-  purpose: string;
-  method?: string;
-  storeSlug?: string | null;
-  tableId?: string | null;
-};
 type PublicEventPayload = {
   event:
     | "locality_gate_opened"
@@ -712,8 +697,6 @@ export const api = {
     data: {
       quantity: number;
       modifiers?: Record<string, string | string[]>;
-      localityApprovalToken?: string;
-      localitySessionId?: string;
     }
   ): Promise<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }> =>
     isOffline()
@@ -1315,44 +1298,6 @@ export const api = {
             body: JSON.stringify(printer),
           }
         ),
-
-  // Payment: Viva payment
-  getVivaCheckoutUrl: (
-    tableId: string,
-    amount: number,
-    description?: string
-  ): Promise<{
-    checkoutUrl: string;
-    sessionId: string;
-    amount: number;
-    tableId: string;
-  }> =>
-    isOffline()
-      ? Promise.resolve({
-          checkoutUrl: "https://demo.vivapayments.com/web/checkout?demo=true",
-          sessionId: `demo_${tableId}_${Date.now()}`,
-          amount,
-          tableId,
-        })
-      : fetchApi(`/payment/viva/checkout-url`, {
-          method: "POST",
-          body: JSON.stringify({
-            tableId,
-            amount,
-            amountCents: Math.round(amount * 100),
-            description,
-          }),
-        }),
-
-  createLocalityApproval: (
-    data: LocalityApprovalPayload
-  ): Promise<LocalityApprovalResponse> =>
-    isOffline()
-      ? devMocks.createLocalityApproval(data)
-      : fetchApi<LocalityApprovalResponse>("/locality/approve", {
-          method: "POST",
-          body: JSON.stringify(data),
-        }),
 
   trackPublicEvent: (data: PublicEventPayload): Promise<{ ok: boolean }> =>
     isOffline()
