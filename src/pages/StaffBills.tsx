@@ -25,7 +25,7 @@ const actionClass = "h-auto min-h-11 min-w-0 whitespace-normal break-words py-2.
 const legacyUnpaid = (order: LegacyBillOrder) => order.status !== "CANCELLED" && order.status !== "PAID" && !order.paidAt && !["COMPLETED", "PAID", "SUCCEEDED"].includes(order.paymentStatus);
 type VisitAction = { type: "close"; visit: BillVisit } | { type: "transfer"; visit: BillVisit } | { type: "adopt"; tableId: string; tableLabel: string; orders: LegacyBillOrder[] };
 
-export default function StaffBills() {
+export function StaffBillsPanel({ embedded = false }: { embedded?: boolean }) {
   const { user, token } = useAuthStore();
   const { i18n } = useTranslation();
   const language = (i18n.resolvedLanguage || i18n.language).startsWith("el") ? "el" : "en";
@@ -80,7 +80,17 @@ export default function StaffBills() {
   const emptyTables = (tables.data?.tables || []).filter(table => table.active !== false && table.isActive !== false && table.id !== visit?.tableId && !(openList.data?.visits || []).some(active => active.tableId === table.id) && !(openList.data?.legacyOrders || []).some(order => order.tableId === table.id && legacyUnpaid(order)));
   const servicePending = Boolean(visit?.orders.some(order => !["SERVED", "PAID", "CANCELLED"].includes(order.status)));
 
-  const chooseVisit = useCallback((id: string | null) => { setParams(id ? { visitId: id } : {}, { replace: false }); setError(null); setSuccess(null); }, [setParams]);
+  const setVisitParam = useCallback((id: string | null, replace = false) => {
+    // Bill selection must retain the Manager dashboard tab and unrelated filters.
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.delete("visitId");
+      next.delete("tableId");
+      if (id) next.set("visitId", id);
+      return next;
+    }, { replace });
+  }, [setParams]);
+  const chooseVisit = useCallback((id: string | null) => { setVisitParam(id); setError(null); setSuccess(null); }, [setVisitParam]);
   const refreshAll = useCallback(async () => {
     await Promise.all([queryClient.invalidateQueries({ queryKey: ["billing-visits"] }), queryClient.invalidateQueries({ queryKey: ["billing-visit"] }), queryClient.invalidateQueries({ queryKey: ["billing-tables"] })]);
   }, [queryClient]);
@@ -96,9 +106,9 @@ export default function StaffBills() {
   useEffect(() => {
     if (!visitId && tableId && openList.data) {
       const current = openList.data.visits.find(value => value.tableId === tableId);
-      if (current) setParams({ visitId: current.id }, { replace: true });
+      if (current) setVisitParam(current.id, true);
     }
-  }, [visitId, tableId, openList.data, setParams]);
+  }, [visitId, tableId, openList.data, setVisitParam]);
   useEffect(() => {
     if (!allowed || !visitId) { setPending(null); setStorageError(false); return; }
     const read = () => {
@@ -184,7 +194,7 @@ export default function StaffBills() {
         updated = (await billingApi.adopt(current, legacySelection)).visit;
       }
       queryClient.setQueryData(["billing-visit", user?.storeSlug, user?.id, updated.id], { visit: updated });
-      setParams({ visitId: updated.id }, { replace: true });
+      setVisitParam(updated.id, true);
       setSuccess(action.type === "close" ? copy.closedSuccess : action.type === "transfer" ? copy.moved : copy.added);
       setAction(null); await refreshAll();
     } catch (failure) {
@@ -201,13 +211,17 @@ export default function StaffBills() {
     <div className="mt-3 flex min-w-0 flex-wrap items-end justify-between gap-2"><span className="text-xs text-muted-foreground">{summary.status === "CLOSED" ? copy.closed : copy.due}</span><span className="break-words text-lg font-semibold tabular-nums">{money(summary.outstandingCents, summary.currencyCode)}</span></div>
   </button>;
 
-  return <div className="min-h-dvh bg-background text-foreground">
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-xl"><div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-3 sm:px-6">
-      {visitId ? <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" aria-label={copy.allTables} onClick={() => chooseVisit(null)}><ArrowLeft aria-hidden className="h-5 w-5" /></Button> : <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" asChild><Link to={backPath} aria-label={copy.back}><ArrowLeft aria-hidden className="h-5 w-5" /></Link></Button>}
-      <div className="min-w-0 flex-1"><h1 className="break-words text-lg font-semibold tracking-tight sm:text-xl">{visit ? `${copy.table} ${visit.tableLabel}` : copy.title}</h1>{visit && <p className="text-xs text-muted-foreground">{copy.bill}</p>}</div>
-      <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" aria-label={copy.refresh} disabled={list.isFetching || detail.isFetching} onClick={() => void refreshAll()}><RefreshCw aria-hidden className={cn("h-4 w-4", (list.isFetching || detail.isFetching) && "animate-spin motion-reduce:animate-none")} /></Button><LanguageSwitcher />
-    </div></header>
-    <main className="mx-auto grid max-w-6xl gap-5 px-3 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+  const HeaderTag = embedded ? "div" : "header";
+  const TitleTag = embedded ? "h2" : "h1";
+  const ContentTag = embedded ? "div" : "main";
+
+  return <div className={embedded ? "min-w-0 text-foreground" : "min-h-dvh bg-background text-foreground"}>
+    <HeaderTag className={embedded ? "mb-4" : "sticky top-0 z-40 border-b border-border/70 bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-xl"}><div className={embedded ? "flex items-center gap-2" : "mx-auto flex max-w-6xl items-center gap-2 px-3 py-3 sm:px-6"}>
+      {visitId ? <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" aria-label={copy.allTables} onClick={() => chooseVisit(null)}><ArrowLeft aria-hidden className="h-5 w-5" /></Button> : !embedded && <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" asChild><Link to={backPath} aria-label={copy.back}><ArrowLeft aria-hidden className="h-5 w-5" /></Link></Button>}
+      <div className="min-w-0 flex-1"><TitleTag className="break-words text-lg font-semibold tracking-tight sm:text-xl">{visit ? `${copy.table} ${visit.tableLabel}` : copy.title}</TitleTag>{visit && <p className="text-xs text-muted-foreground">{copy.bill}</p>}</div>
+      <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full" aria-label={copy.refresh} disabled={list.isFetching || detail.isFetching} onClick={() => void refreshAll()}><RefreshCw aria-hidden className={cn("h-4 w-4", (list.isFetching || detail.isFetching) && "animate-spin motion-reduce:animate-none")} /></Button>{!embedded && <LanguageSwitcher />}
+    </div></HeaderTag>
+    <ContentTag className={embedded ? "grid min-w-0 gap-5 lg:grid-cols-[19rem_minmax(0,1fr)]" : "mx-auto grid max-w-6xl gap-5 px-3 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:grid-cols-[19rem_minmax(0,1fr)]"}>
       <aside className={cn("min-w-0 space-y-4", visitId && "hidden lg:block")} aria-label={copy.allTables}>
         <div className="relative"><Search aria-hidden className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" /><Input className="h-11 pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder={copy.search} aria-label={copy.search} /></div>
         <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">{[false, true].map(value => <button key={String(value)} type="button" aria-pressed={closed === value} onClick={() => { setClosed(value); chooseVisit(null); }} className={cn("min-h-11 rounded-lg px-3 py-2 text-sm font-medium", closed === value && "bg-card shadow-sm")}>{value ? copy.closed : copy.open}</button>)}</div>
@@ -236,7 +250,7 @@ export default function StaffBills() {
           <p className="text-xs text-muted-foreground">{copy.startedAt} · <time dateTime={visit.openedAt}>{date(visit.openedAt)}</time></p>
         </>}
       </section>
-    </main>
+    </ContentTag>
     {paymentVisit && <BillPaymentDialog key={paymentVisit.id} visit={paymentVisit} language={language} currentRevision={visit?.revision ?? paymentVisit.revision} onClose={() => setPaymentVisit(null)} onSaved={saved} onPending={value => { setPending(value); setPendingMissing(false); }} onRefresh={() => void refreshAll()} />}
     <Dialog open={Boolean(action)} onOpenChange={open => { if (!open && !lock.current) { setAction(null); setError(null); } }}><DialogContent hideCloseButton={working} onEscapeKeyDown={event => { if (lock.current) event.preventDefault(); }} onInteractOutside={event => { if (lock.current) event.preventDefault(); }}><DialogHeader><DialogTitle>{action?.type === "close" ? copy.closeTitle : action?.type === "transfer" ? copy.transferTitle : copy.adoptTitle}</DialogTitle><DialogDescription>{action?.type === "close" ? copy.closeDescription : action?.type === "transfer" ? copy.transferHint : copy.adoptHint}</DialogDescription></DialogHeader>
       {action?.type === "transfer" && <div className="space-y-2"><Label htmlFor="bill-transfer-table">{copy.transferTarget}</Label><select id="bill-transfer-table" className="h-12 w-full min-w-0 rounded-xl border border-border bg-background px-3 text-sm" value={targetTable} disabled={working || tables.isPending || tables.isError || openList.isError} onChange={event => setTargetTable(event.target.value)}><option value="">{tables.isPending ? copy.loadingTables : copy.transferTarget}</option>{emptyTables.map(table => <option key={table.id} value={table.id}>{copy.table} {table.label}</option>)}</select>{!tables.isPending && emptyTables.length === 0 && <p className="text-sm text-muted-foreground">{copy.noEmptyTables}</p>}{tables.isError && <p className="text-sm text-destructive">{copy.lostConnection}</p>}</div>}
@@ -244,4 +258,17 @@ export default function StaffBills() {
       {error && <p role="alert" className="text-sm leading-relaxed text-destructive">{error}</p>}<DialogFooter><Button variant="outline" className={actionClass} disabled={working} onClick={() => { setAction(null); setError(null); }}>{copy.cancel}</Button><Button className={actionClass} disabled={working || (action?.type === "transfer" && (!targetTable || tables.isError || openList.isError)) || (action?.type === "adopt" && legacySelection.length === 0)} onClick={() => void runAction()}>{working && <Loader2 aria-hidden className="mr-2 h-4 w-4 shrink-0 animate-spin" />}{action?.type === "close" ? copy.close : action?.type === "transfer" ? copy.transferConfirm : copy.adopt}</Button></DialogFooter>
     </DialogContent></Dialog>
   </div>;
+}
+
+export default function StaffBills() {
+  const { user } = useAuthStore();
+  const [params] = useSearchParams();
+
+  if (user?.role === "manager") {
+    const next = new URLSearchParams(params);
+    next.set("tab", "bills");
+    return <Navigate to={{ pathname: "/manager", search: next.toString() }} replace />;
+  }
+
+  return <StaffBillsPanel />;
 }

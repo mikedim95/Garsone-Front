@@ -9,7 +9,7 @@
 import clsx from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
 import { useOrdersStore } from "@/store/ordersStore";
@@ -55,6 +55,8 @@ import { resolveStoreDisplayName } from "@/lib/storeSlug";
 import { Card } from "@/components/ui/card";
 import { ManagerMenuPanel } from "@/features/manager/ManagerMenuPanel";
 import { BillingReport } from "@/features/manager/BillingReport";
+import { StaffBillsPanel } from "@/pages/StaffBills";
+import { billingCopy } from "@/pages/billingCopy";
 import { Badge } from "@/components/ui/badge";
 import {
   ResponsiveContainer,
@@ -101,6 +103,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -121,7 +124,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { localOperationsCopy } from "@/pages/localOperationsCopy";
 
 type ManagerMode = "basic" | "pro";
-type ManagerTab = "economics" | "orders" | "personnel" | "menu";
+type ManagerTab = "economics" | "orders" | "personnel" | "menu" | "bills";
 type EconRange = "today" | "last24h" | "week" | "month" | "custom";
 type MenuCategoryMode = "units" | "share";
 type ActiveWaiter = WaiterSummary & {
@@ -541,7 +544,22 @@ export default function ManagerDashboard() {
     }
     return "basic";
   });
-  const [activeTab, setActiveTab] = useState<ManagerTab>("economics");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const activeTab: ManagerTab = requestedTab === "orders" || requestedTab === "personnel" || requestedTab === "menu" || requestedTab === "bills" ? requestedTab : "economics";
+  // Keep receipts within the dashboard, including direct links and browser history.
+  const setActiveTab = (tab: ManagerTab) => {
+    if (activeTab === tab) return;
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set("tab", tab);
+      if (tab !== "bills") {
+        next.delete("visitId");
+        next.delete("tableId");
+      }
+      return next;
+    });
+  };
   const [navExpanded, setNavExpanded] = useState(false);
   const [econRange, setEconRange] = useState<EconRange>(() => {
     if (typeof window !== "undefined") {
@@ -2809,6 +2827,11 @@ export default function ManagerDashboard() {
       label: t("menu.title"),
       icon: UtensilsCrossed,
     },
+    {
+      key: "bills" as ManagerTab,
+      label: billingCopy[i18n.language.startsWith("el") ? "el" : "en"].title,
+      icon: ReceiptText,
+    },
   ];
 
   return (
@@ -2839,10 +2862,12 @@ export default function ManagerDashboard() {
           tone="accent"
           burgerActions={
             <div className="space-y-2">
-              <Button type="button" variant="outline" size="sm" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => navigate("/staff/bills")}>
-                <ReceiptText className="mr-2 h-4 w-4 shrink-0" />
-                {i18n.language.startsWith("el") ? "Λογαριασμοί τραπεζιών" : "Table bills"}
-              </Button>
+              <SheetClose asChild>
+                <Button type="button" variant="outline" size="sm" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => setActiveTab("bills")}>
+                  <ReceiptText className="mr-2 h-4 w-4 shrink-0" />
+                  {i18n.language.startsWith("el") ? "Λογαριασμοί τραπεζιών" : "Table bills"}
+                </Button>
+              </SheetClose>
               {import.meta.env.VITE_LOCAL_ONLY === "true" && isManagerRole && (
                 <Button
                   type="button"
@@ -2889,8 +2914,10 @@ export default function ManagerDashboard() {
         />
 
         <div className="flex-1 flex min-h-0 relative">
+          {/* Route changes require activation, so focus cannot add history entries. */}
           <Tabs
             value={activeTab}
+            activationMode="manual"
             onValueChange={(value) => {
               setActiveTab(value as ManagerTab);
               setNavExpanded(false);
@@ -2998,7 +3025,7 @@ export default function ManagerDashboard() {
                     <TabsTrigger
                       key={key}
                       value={key}
-                      className="relative flex-1 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[10px] font-semibold text-muted-foreground hover:text-foreground data-[state=active]:!bg-transparent data-[state=active]:text-primary-foreground transition-colors overflow-hidden"
+                      className="relative min-w-0 flex-1 flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-xl text-[10px] font-semibold text-muted-foreground hover:text-foreground data-[state=active]:!bg-transparent data-[state=active]:text-primary-foreground transition-colors overflow-hidden"
                     >
                       {isActive && (
                         <motion.span
@@ -3032,7 +3059,7 @@ export default function ManagerDashboard() {
                     <DashboardGridSkeleton count={4} />
                   ) : (
                     <>
-                      <BillingReport from={rangeInfo.start.toISOString()} to={(econRange === "last24h" ? rangeInfo.end : addDays(rangeInfo.end, 1)).toISOString()} />
+                      <BillingReport from={rangeInfo.start.toISOString()} to={(econRange === "last24h" ? rangeInfo.end : addDays(rangeInfo.end, 1)).toISOString()} onOpenBills={() => setActiveTab("bills")} />
                       <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold mb-4">
                           {i18n.language.startsWith("el") ? "Αξία σερβιρισμένων παραγγελιών" : "Served order value"}
@@ -5168,6 +5195,9 @@ export default function ManagerDashboard() {
                   <div id="manager-menu-panel">
                     <ManagerMenuPanel />
                   </div>
+                </TabsContent>
+                <TabsContent value="bills" className="min-w-0">
+                  <StaffBillsPanel embedded />
                 </TabsContent>
               </div>
             </div>

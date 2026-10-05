@@ -31,13 +31,14 @@ function fixtureVisit() {
 }
 const errors = [];
 const checks = [];
-async function setup(viewport = { width: 390, height: 844 }, language = 'en', role = 'waiter', selected = true) {
+async function setup(viewport = { width: 390, height: 844 }, language = 'en', role = 'waiter', selected = true, theme = 'dark') {
   const context = await browser.newContext({ viewport });
-  await context.addInitScript(({ language, role }) => {
+  await context.addInitScript(({ language, role, theme }) => {
     localStorage.setItem('language', language);
+    localStorage.setItem('theme', theme);
     localStorage.setItem('STORE_SLUG', 'noor');
     sessionStorage.setItem('auth-storage', JSON.stringify({ state: { user: { id: 'staff-fixture', storeSlug: 'noor', role, email: 'staff@fixture.local' }, token: 'fixture-token' }, version: 0 }));
-  }, { language, role });
+  }, { language, role, theme });
   const state = { visit: fixtureVisit(), posts: [], payments: new Map(), loseBeforeCommit: false, loseResponse: false, hideReceipts: false, conflictNext: false, readFailure: false, reads: 0, transfers: 0, closes: 0, adopts: 0,
     legacy: [{ id: id(60), tableId: id(9), tableLabel: 'T9', status: 'SERVED', totalCents: 500, createdAt: timestamp, paidAt: null, paymentStatus: 'PENDING' },
       { id: id(61), tableId: id(9), tableLabel: 'T9', status: 'PAID', totalCents: 700, createdAt: timestamp, paidAt: timestamp, paymentStatus: 'COMPLETED' }] };
@@ -66,6 +67,17 @@ async function setup(viewport = { width: 390, height: 844 }, language = 'en', ro
       return payment ? json({ payment, visit: state.visit }) : json({ error: 'PAYMENT_NOT_FOUND' }, 404);
     }
     if (pathname === '/api/tables') return json({ tables: [4, 5, 8, 9].map(n => ({ id: id(n), label: `T${n}`, active: true })) });
+    // Managers retain their dashboard around the same billing panel.
+    if (pathname === '/api/store') return json({ store: { id: id(90), slug: 'noor', name: 'Noor', settings: { printers: [] } } });
+    if (pathname === '/api/orders' || pathname === '/api/manager/orders') return json({ orders: [] });
+    if (pathname === '/api/waiter-tables') return json({ assignments: [], waiters: [], tables: [] });
+    if (pathname === '/api/manager/cooks') return json({ cooks: [] });
+    if (pathname === '/api/manager/tables') return json({ tables: [] });
+    if (pathname === '/api/manager/items') return json({ items: [] });
+    if (pathname === '/api/manager/categories') return json({ categories: [] });
+    if (pathname === '/api/manager/modifiers') return json({ modifiers: [] });
+    if (pathname.endsWith('/qr-tiles')) return json({ tiles: [] });
+    if (pathname === '/api/manager/billing/summary') return json({ currencyCode: 'EUR', salesCents: 2100, collectedCents: 200, outstandingCents: 1900, legacyPaidCents: 0, paymentCount: 1, cashCents: 200, cardCents: 0, asOf: timestamp });
     if (pathname === `/api/billing/visits/${visitId}/payments` && request.method() === 'POST') {
       assert.equal(request.headers().authorization, 'Bearer fixture-token');
       const body = request.postDataJSON();
@@ -149,6 +161,31 @@ async function openPayment(page, language = 'en') {
   await page.getByRole('button', { name: copy[language].pay, exact: true }).click();
   await page.getByRole('dialog').waitFor();
 }
+async function managerTab(page, name) {
+  const tab = page.locator(`[role="tab"][id$="-trigger-${name}"]:visible`);
+  const expand = page.getByRole('button', { name: 'Expand navigation', exact: true });
+  if (await expand.isVisible()) await expand.click();
+  await tab.waitFor();
+  if (page.viewportSize().width >= 640) await page.waitForFunction(() =>
+    document.querySelector('[aria-controls="manager-desktop-navigation"]')?.closest('aside')?.getBoundingClientRect().width >= 223);
+  return tab;
+}
+async function assertManagerBill(page, selectedVisit, label) {
+  await page.waitForURL(url => url.pathname === '/manager' && url.searchParams.get('tab') === 'bills' && url.searchParams.get('visitId') === selectedVisit)
+    .catch(error => { throw new Error(`${label}: expected embedded bill ${selectedVisit || 'list'}, received ${page.url()}`, { cause: error }); });
+  assert.equal(await page.locator('header').count(), 1, `${label}: the bill must share the Manager header`);
+  assert.equal(await page.locator('h1').count(), 1, `${label}: no second standalone dashboard title`);
+  const billsTab = await managerTab(page, 'bills');
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="tab"][id$="-trigger-bills"]')].some(tab => tab.getAttribute('aria-selected') === 'true'));
+  assert.equal(await billsTab.getAttribute('aria-selected'), 'true', `${label}: Bills remains the selected Manager tab`);
+  // Close the desktop rail after inspecting it so it does not cover bill actions.
+  const collapse = page.getByRole('button', { name: 'Collapse navigation', exact: true });
+  if (await collapse.isVisible()) {
+    await collapse.click();
+    await page.locator('#manager-desktop-navigation').waitFor({ state: 'detached' });
+    await page.waitForFunction(() => document.querySelector('[aria-controls="manager-desktop-navigation"]')?.closest('aside')?.getBoundingClientRect().width <= 49);
+  }
+}
 
 try {
   for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 900 }]) {
@@ -171,6 +208,69 @@ try {
     }
   }
 
+  // Manager bills use the existing phone navigation / desktop rail in both languages.
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    for (const language of ['en', 'el']) {
+      const theme = language === 'en' ? 'dark' : 'light';
+      const manager = await setup(viewport, language, 'manager', true, theme);
+      const { page } = manager;
+      const label = `manager-${viewport.width}-${language}`;
+      await assertManagerBill(page, visitId, `${label}: legacy link`);
+      assert(await page.locator(`html.${theme}`).count(), `${label}: Manager preserves the selected color mode`);
+      const colors = await page.getByTestId('bill-outstanding').evaluate(element => ({
+        bill: getComputedStyle(element).getPropertyValue('--background').trim(),
+        dashboard: getComputedStyle(document.documentElement).getPropertyValue('--background').trim(),
+      }));
+      assert.equal(colors.bill, colors.dashboard, 'Embedded bills inherit the dashboard colors');
+      const balance = await page.getByTestId('bill-outstanding').innerText();
+      await layout(page, `${label}-embedded-bill`, true);
+      await openPayment(page, language);
+      await layout(page, `${label}-embedded-payment`, true);
+      await page.getByRole('dialog').getByRole('button', { name: copy[language].cancel, exact: true }).click();
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      await page.getByRole('button', { name: language === 'el' ? 'Όλα τα τραπέζια' : 'All tables', exact: true }).click();
+      await assertManagerBill(page, null, `${label}: all tables`);
+      await page.getByTestId(`bill-table-${tableId}`).click();
+      await assertManagerBill(page, visitId, `${label}: choose table`);
+      assert.equal(await page.getByTestId('bill-outstanding').innerText(), balance, 'Navigation preserves the bill balance');
+      await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: language === 'el' ? 'Λογαριασμοί τραπεζιών' : 'Table bills', exact: true }).click();
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      await assertManagerBill(page, visitId, `${label}: burger action closes even on current tab`);
+
+      const ordersTab = await managerTab(page, 'orders');
+      if (viewport.width >= 640 && language === 'en') {
+        await ordersTab.focus();
+        assert.equal(new URL(page.url()).searchParams.get('tab'), 'bills', 'Focusing a tab must not create navigation history');
+        await ordersTab.press('Enter');
+      } else await ordersTab.click();
+      await page.waitForURL(url => url.pathname === '/manager' && url.searchParams.get('tab') === 'orders');
+      await page.goBack();
+      await assertManagerBill(page, visitId, `${label}: browser back`);
+      await page.goForward();
+      await page.waitForURL(url => url.pathname === '/manager' && url.searchParams.get('tab') === 'orders');
+      const billsTab = await managerTab(page, 'bills');
+      if (viewport.width >= 640 && language === 'el') {
+        await billsTab.focus();
+        assert.equal(new URL(page.url()).searchParams.get('tab'), 'orders', 'Focus alone keeps the selected Manager tab');
+        await billsTab.press('Space');
+      } else await billsTab.click();
+      await assertManagerBill(page, null, `${label}: return to Bills starts with all tables`);
+      await page.getByTestId(`bill-table-${tableId}`).click();
+      await assertManagerBill(page, visitId, `${label}: reselect after changing tabs`);
+      await page.reload();
+      await page.getByTestId('bill-outstanding').waitFor();
+      await assertManagerBill(page, visitId, `${label}: reload`);
+      assert.equal(await page.getByTestId('bill-outstanding').innerText(), balance);
+      await page.goto(`${origin}/staff/bills?tableId=${tableId}`);
+      await assertManagerBill(page, visitId, `${label}: legacy table link resolves in Bills tab`);
+      assert.equal(manager.state.posts.length, 0, 'Navigation and cancelled dialogs never record payments');
+      checks.push(`${label}-legacy-link-selection-navigation-history-and-reload`);
+      await manager.context.close();
+    }
+  }
+  console.log('Manager bills: phone/desktop, English/Greek, embedded navigation, history, reload and payment layout passed.');
+
   const split = await setup();
   await openPayment(split.page);
   await split.page.getByRole('dialog').getByRole('button', { name: 'Selected items', exact: true }).click();
@@ -186,7 +286,8 @@ try {
   checks.push('item-split-existing-partial-payment-and-double-tap');
   await split.context.close();
 
-  const uncertain = await setup();
+  const uncertain = await setup({ width: 390, height: 844 }, 'en', 'manager');
+  await assertManagerBill(uncertain.page, visitId, 'Manager pending-payment entry');
   uncertain.state.loseResponse = true; uncertain.state.hideReceipts = true;
   await openPayment(uncertain.page);
   await uncertain.page.getByRole('dialog').getByRole('button', { name: 'Amount', exact: true }).click();
@@ -200,10 +301,11 @@ try {
   uncertain.state.hideReceipts = false;
   await uncertain.page.reload();
   await uncertain.page.getByText('The payment has been recorded on this bill.', { exact: true }).waitFor();
+  await assertManagerBill(uncertain.page, visitId, 'Manager pending-payment recovery');
   assert.equal(uncertain.state.posts.length, 1, 'Reload reconciliation never posts a second payment');
   assert.equal(uncertain.state.visit.outstandingCents, 1175);
   assert.equal(await uncertain.page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('billing-payment:')).length), 0);
-  checks.push('lost-payment-response-reload-read-only-reconciliation');
+  checks.push('manager-lost-payment-response-reload-read-only-reconciliation');
   await uncertain.context.close();
 
   const retry = await setup();
@@ -235,13 +337,14 @@ try {
   checks.push('concurrent-staff-revision-conflict');
   await conflict.context.close();
 
-  const transfer = await setup();
+  const transfer = await setup({ width: 390, height: 844 }, 'en', 'manager');
   await transfer.page.getByRole('button', { name: 'Move table', exact: true }).click();
   await transfer.page.getByLabel('Destination table').selectOption(id(5));
   const destinations = await transfer.page.getByLabel('Destination table').locator('option').allTextContents();
   assert.deepEqual(destinations, ['Destination table', 'Table T5'], 'Active and unassigned-unpaid tables are excluded');
   await transfer.page.getByRole('dialog').getByRole('button', { name: 'Move visit', exact: true }).click();
   await transfer.page.getByText('Visit moved', { exact: true }).waitFor();
+  await assertManagerBill(transfer.page, visitId, 'Manager transfer preserves Bills tab');
   assert.equal(transfer.state.transfers, 1);
   assert.equal(transfer.state.visit.payments.length, 1, 'Moving table preserves earlier collections');
   await openPayment(transfer.page);
@@ -254,9 +357,10 @@ try {
   await transfer.page.getByRole('button', { name: 'Close table', exact: true }).click();
   await transfer.page.getByRole('dialog').getByRole('button', { name: 'Close table', exact: true }).click();
   await transfer.page.getByText('Table closed', { exact: true }).waitFor();
+  await assertManagerBill(transfer.page, visitId, 'Manager settlement preserves Bills tab');
   assert.equal(transfer.state.closes, 1);
   assert.equal(await transfer.page.getByRole('button', { name: 'Record payment', exact: true }).count(), 0);
-  checks.push('empty-table-transfer-external-card-recording-and-settled-close');
+  checks.push('manager-empty-table-transfer-external-card-recording-and-settled-close');
   await transfer.context.close();
 
   const legacy = await setup({ width: 390, height: 844 }, 'en', 'manager', false);
@@ -268,6 +372,7 @@ try {
   await legacy.page.getByRole('dialog').getByRole('checkbox').check();
   await adopt.click();
   await legacy.page.getByText('Earlier orders added', { exact: true }).waitFor();
+  await assertManagerBill(legacy.page, visitId, 'Manager adoption preserves Bills tab');
   assert.equal(legacy.state.adopts, 1);
   checks.push('explicit-legacy-unpaid-adoption');
   await legacy.context.close();

@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { ReceiptText, RefreshCcw } from "lucide-react";
 import { ApiError, fetchApi } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
@@ -13,10 +12,9 @@ type BillingSummary = {
   legacyPaidCents: number; paymentCount: number; cashCents: number; cardCents: number; asOf: string;
 };
 
-export function BillingReport({ from, to }: { from: string; to: string }) {
+export function BillingReport({ from, to, onOpenBills }: { from: string; to: string; onOpenBills: () => void }) {
   const { i18n } = useTranslation();
   const greek = i18n.language.startsWith("el");
-  const navigate = useNavigate();
   const user = useAuthStore(state => state.user);
   const duration = Date.parse(to) - Date.parse(from);
   const validRange = Number.isFinite(duration) && duration > 0 && duration <= 366 * 86_400_000;
@@ -40,7 +38,7 @@ export function BillingReport({ from, to }: { from: string; to: string }) {
   return <Card className="min-w-0 space-y-4 p-4 sm:p-6" data-testid="billing-report" aria-busy={report.isFetching}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="text-lg font-semibold">{greek ? "Πωλήσεις και εισπράξεις" : "Sales and collections"}</h3>
-      <Button variant="outline" className="min-h-11 max-w-full whitespace-normal" onClick={() => navigate("/staff/bills")}>
+      <Button variant="outline" className="min-h-11 max-w-full whitespace-normal" onClick={onOpenBills}>
         <ReceiptText className="mr-2 h-4 w-4 shrink-0" />{greek ? "Λογαριασμοί" : "Table bills"}
       </Button>
     </div>
