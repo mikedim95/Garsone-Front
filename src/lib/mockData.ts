@@ -14,7 +14,8 @@ export const PASTRY_IMAGES = [
   (import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/offline-assets/2bd34b9c5baddf47.webp' : 'https://d64gsuwffb70l.cloudfront.net/68ee65fda6db38e6a0062b32_1760454216225_71f12398.webp'),
 ];
 
-export const HERO_IMAGE = (import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/placeholder.svg' : 'https://d64gsuwffb70l.cloudfront.net/68ee65fda6db38e6a0062b32_1760454714480_0ce820a0.webp');
+// Bundle the online homepage photo so Pi installations also display it without internet.
+export const HERO_IMAGE = (import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/offline-assets/269187751217ec31.webp' : 'https://d64gsuwffb70l.cloudfront.net/68ee65fda6db38e6a0062b32_1760454714480_0ce820a0.webp');
 export const QR_MOCKUP = (import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/offline-assets/fece9ef42ad25530.webp' : 'https://d64gsuwffb70l.cloudfront.net/68ee65fda6db38e6a0062b32_1760454716012_22db1dcb.webp');
 
 export const MOCK_MODIFIERS = {
