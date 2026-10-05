@@ -123,6 +123,7 @@ export interface Table {
 }
 
 export interface QRTile {
+  publicUrl?: string | null;
   id: string;
   storeId?: string | null;
   storeSlug?: string | null;

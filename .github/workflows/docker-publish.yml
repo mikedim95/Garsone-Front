@@ -57,6 +57,23 @@ jobs:
           node tests/customer-billing-browser.mjs
           node tests/staff-billing-browser.mjs
 
+      - name: Verify Architect QR destinations
+        env:
+          VITE_API_URL: /api
+          VITE_LOCAL_ONLY: "false"
+          VITE_PUBLIC_CODE_BASE: https://www.garsone.gr/q
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev -- --host 127.0.0.1 --port 18186 --strictPort > /tmp/garsone-qr-vite.log 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:18186/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node tests/qr-destination-browser.mjs
+
       - name: Save browser verification artifacts
         if: failure()
         uses: actions/upload-artifact@v4

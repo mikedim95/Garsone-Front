@@ -707,10 +707,12 @@ export default function ArchitectQrTiles() {
   }, []);
 
   const buildPublicUrl = useCallback(
-    (code: string) => {
+    (tile: QRTile) => {
+      // The API selects the destination from this tile's venue, including in the global pool.
+      if (tile.publicUrl !== undefined) return tile.publicUrl || "";
       const fallback = `${window.location.origin}/q`;
       const base = (publicResolverBase || fallback).replace(/\/$/, "");
-      return `${base}/${code}`;
+      return `${base}/${tile.publicCode}`;
     },
     [publicResolverBase],
   );
@@ -749,10 +751,11 @@ export default function ArchitectQrTiles() {
   );
 
   const copyTileUrl = useCallback(
-    async (code: string) => {
-      const url = buildPublicUrl(code);
+    async (tile: QRTile) => {
+      const url = buildPublicUrl(tile);
+      if (!url) return;
       const ok = await copyText(url);
-      if (ok) setCopied(`url:${code}`);
+      if (ok) setCopied(`url:${tile.publicCode}`);
     },
     [buildPublicUrl, copyText, setCopied],
   );
@@ -2405,7 +2408,7 @@ export default function ArchitectQrTiles() {
                                     size="icon"
                                     className="h-7 w-7"
                                     onClick={() =>
-                                      void copyTileUrl(tile.publicCode)
+                                      void copyTileUrl(tile)
                                     }
                                   >
                                     {copiedKey === `url:${tile.publicCode}` ? (
@@ -2470,18 +2473,18 @@ export default function ArchitectQrTiles() {
                                 onClick={() =>
                                   setPreviewQr({
                                     code: tile.publicCode,
-                                    url: buildPublicUrl(tile.publicCode),
+                                    url: buildPublicUrl(tile),
                                   })
                                 }
                                 className="rounded border border-border/60 bg-white p-1 transition-colors hover:border-primary/50"
                               >
-                                <QRCodeSVG
-                                  value={buildPublicUrl(tile.publicCode)}
+                                {buildPublicUrl(tile) ? <QRCodeSVG
+                                  value={buildPublicUrl(tile)}
                                   size={44}
                                   bgColor="#ffffff"
                                   fgColor="#111827"
                                   includeMargin={true}
-                                />
+                                /> : <span className="text-xs">Pi address unavailable</span>}
                               </button>
                             </TableCell>
                             <TableCell className="text-center">
@@ -2843,7 +2846,7 @@ export default function ArchitectQrTiles() {
                                           size="icon"
                                           className="h-7 w-7"
                                           onClick={() =>
-                                            void copyTileUrl(tile.publicCode)
+                                            void copyTileUrl(tile)
                                           }
                                         >
                                           {copiedKey ===
@@ -2924,18 +2927,18 @@ export default function ArchitectQrTiles() {
                                       onClick={() =>
                                         setPreviewQr({
                                           code: tile.publicCode,
-                                          url: buildPublicUrl(tile.publicCode),
+                                          url: buildPublicUrl(tile),
                                         })
                                       }
                                       className="rounded border border-border/60 bg-white p-1 transition-colors hover:border-primary/50"
                                     >
-                                      <QRCodeSVG
-                                        value={buildPublicUrl(tile.publicCode)}
+                                      {buildPublicUrl(tile) ? <QRCodeSVG
+                                        value={buildPublicUrl(tile)}
                                         size={44}
                                         bgColor="#ffffff"
                                         fgColor="#111827"
                                         includeMargin={true}
-                                      />
+                                      /> : <span className="text-xs">Pi address unavailable</span>}
                                     </button>
                                   </TableCell>
                                   <TableCell className="text-center">
@@ -4627,11 +4630,11 @@ export default function ArchitectQrTiles() {
           <DialogHeader>
             <DialogTitle className="font-mono">{previewQr?.code}</DialogTitle>
             <DialogDescription className="break-all text-xs">
-              {previewQr?.url}
+              {previewQr?.url || "The associated Pi has not reported its local address yet."}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-center py-4">
-            {previewQr ? (
+            {previewQr?.url ? (
               <div className="rounded-xl border border-border bg-white p-4">
                 <QRCodeSVG
                   value={previewQr.url}
@@ -4647,8 +4650,9 @@ export default function ArchitectQrTiles() {
             <Button
               variant="outline"
               className="flex-1"
+              disabled={!previewQr?.url}
               onClick={() =>
-                previewQr ? void copyTileUrl(previewQr.code) : undefined
+                previewQr?.url ? void copyText(previewQr.url) : undefined
               }
             >
               <Copy className="mr-2 h-4 w-4" />
