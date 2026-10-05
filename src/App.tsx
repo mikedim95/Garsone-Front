@@ -150,10 +150,10 @@ const AppShell = () => {
                 <Route path="/cook" element={<CookDashboard />} />
                 <Route path="/hybrid" element={<HybridDashboard />} />
                 <Route path="/profile" element={<ProfileDashboard />} />
-                <Route path="/GarsoneAdmin" element={<ArchitectQrTiles />} />
+                <Route path="/GarsoneAdmin" element={import.meta.env.VITE_LOCAL_ONLY === "true" ? <Navigate to="/login" replace /> : <ArchitectQrTiles />} />
                 <Route
                   path="/architect"
-                  element={<Navigate to="/GarsoneAdmin" replace />}
+                  element={<Navigate to={import.meta.env.VITE_LOCAL_ONLY === "true" ? "/login" : "/GarsoneAdmin"} replace />}
                 />
                 <Route path="*" element={<NotFound />} />
               </Routes>

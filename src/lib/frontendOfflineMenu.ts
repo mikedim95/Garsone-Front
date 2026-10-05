@@ -1,10 +1,11 @@
 import type { MenuBootstrapResponse } from "@/lib/api";
+import offlineMenuAssets from "./offlineMenuAssets.json";
 
 export const FRONTEND_OFFLINE_MENU_TABLE_ID = "offline-menu";
 export const FRONTEND_OFFLINE_MENU_STORE_SLUG = "garsone-offline";
 
 const image = (seed: string) =>
-  import.meta.env.VITE_LOCAL_ONLY === 'true' ? '/placeholder.svg' : `https://images.unsplash.com/${seed}?auto=format&fit=crop&w=900&q=80`;
+  import.meta.env.VITE_LOCAL_ONLY === 'true' ? (offlineMenuAssets[seed as keyof typeof offlineMenuAssets] || '/placeholder.svg') : `https://images.unsplash.com/${seed}?auto=format&fit=crop&w=900&q=80`;
 
 export const isFrontendOfflineMenuPath = (tableCode?: string | null) =>
   (tableCode || "").trim().toLowerCase() === FRONTEND_OFFLINE_MENU_TABLE_ID;
