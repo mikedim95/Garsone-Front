@@ -1,4 +1,4 @@
-import { useEffect, Suspense, lazy } from "react";
+import { useLayoutEffect, Suspense, lazy } from "react";
 import clsx from "clsx";
 import { MotionConfig } from "framer-motion";
 import { Toaster } from "@/components/ui/toaster";
@@ -13,7 +13,6 @@ import {
   Navigate,
 } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
-import { useTheme } from "@/components/theme-provider-context";
 import {
   dashboardThemeClassNames,
   useDashboardTheme,
@@ -103,17 +102,11 @@ const BrandedLoadingScreen = () => {
 
 const AppShell = () => {
   const { themeClass, dashboardDark } = useDashboardTheme();
-  const { theme } = useTheme();
 
-  const isDarkFromTheme =
-    theme === "dark" ||
-    (theme === "system" &&
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === "undefined") return;
-    const { classList } = document.body;
+    // One root palette also reaches the body and dialogs rendered through portals.
+    const { classList } = document.documentElement;
     dashboardThemeClassNames.forEach((cls) => classList.remove(cls));
     if (themeClass) {
       classList.add(themeClass);
@@ -125,7 +118,7 @@ const AppShell = () => {
 
   return (
     <div
-      className={clsx(themeClass, { dark: dashboardDark || isDarkFromTheme })}
+      className={clsx(themeClass, { dark: dashboardDark })}
     >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
@@ -167,7 +160,7 @@ const AppShell = () => {
 
 const App = () => (
   <MotionConfig reducedMotion="user">
-    <ThemeProvider defaultTheme="light">
+    <ThemeProvider defaultTheme="dark">
       <AppShell />
     </ThemeProvider>
   </MotionConfig>

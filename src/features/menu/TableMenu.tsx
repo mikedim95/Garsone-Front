@@ -691,7 +691,7 @@ export default function TableMenu() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { dashboardDark, themeClass } = useDashboardTheme();
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
   const { addItem, clearCart, setItems } = useCartStore();
   const cartItems = useCartStore((s) => s.items);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -2809,15 +2809,15 @@ export default function TableMenu() {
               {!isFrontendOnlyMenu && <CustomerBill visitState={customerVisit} preferGreek={preferGreek} themeClass={themedWrapper} />}
               <button
                 type="button"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                onClick={() => setTheme(dashboardDark ? "light" : "dark")}
                 aria-label={
-                  theme === "dark"
+                  dashboardDark
                     ? "Switch to light theme"
                     : "Switch to dark theme"
                 }
                 className="inline-flex shrink-0 items-center justify-center h-11 w-11 rounded-full border border-border/60 bg-card/80 shadow-sm hover:bg-accent transition-colors motion-reduce:transition-none"
               >
-                {theme === "dark" ? (
+                {dashboardDark ? (
                   <Moon className="h-5 w-5" />
                 ) : (
                   <Sun className="h-5 w-5" />

@@ -72,9 +72,16 @@ export const dashboardThemeOptions: DashboardThemeOption[] = [
   },
 ];
 
-export const dashboardThemeClassNames = dashboardThemeOptions
-  .filter((option) => option.value !== 'classic')
-  .map((option) => `theme-${option.value}`);
+// Keep these class names literal so Tailwind includes the light palette rules.
+const dashboardThemeClasses: Record<DashboardTheme, string> = {
+  classic: '',
+  'luxe-ember': 'theme-luxe-ember',
+  'nocturne-marina': 'theme-nocturne-marina',
+  'modern-mist': 'theme-modern-mist',
+  'velvet-dusk': 'theme-velvet-dusk',
+};
+
+export const dashboardThemeClassNames = Object.values(dashboardThemeClasses).filter(Boolean);
 
 interface DashboardThemeEventDetail {
   theme?: DashboardTheme;
@@ -82,8 +89,13 @@ interface DashboardThemeEventDetail {
 
 const readTheme = (): DashboardTheme => {
   if (typeof window === 'undefined') return 'modern-mist';
-  const stored = localStorage.getItem(THEME_KEY) as DashboardTheme | null;
-  return stored ?? 'modern-mist';
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (dashboardThemeOptions.some((option) => option.value === stored)) {
+      return stored as DashboardTheme;
+    }
+  } catch { /* The default palette also works when browser storage is unavailable. */ }
+  return 'modern-mist';
 };
 
 const broadcast = (detail: DashboardThemeEventDetail) => {
@@ -160,7 +172,7 @@ export const useDashboardTheme = () => {
     broadcast({ theme: value });
   };
 
-  const themeClass = dashboardTheme === 'classic' ? '' : `theme-${dashboardTheme}`;
+  const themeClass = dashboardThemeClasses[dashboardTheme];
 
   return { dashboardDark, setDashboardDark, dashboardTheme, setDashboardTheme, themeClass };
 };

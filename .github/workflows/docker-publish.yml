@@ -54,6 +54,7 @@ jobs:
           node tests/order-recovery-browser-smoke.mjs
           node tests/cart-opening-browser.mjs
           node tests/item-comments-browser.mjs
+          node tests/theme-browser.mjs
           node tests/local-operations-browser.mjs
           node tests/local-menu-browser.mjs
           node tests/billing-report-browser.mjs

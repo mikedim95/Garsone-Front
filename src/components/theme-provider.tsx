@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useLayoutEffect, useState } from "react"
 import { ThemeProviderProps } from "next-themes/dist/types"
 import {
   ThemeContext,
@@ -10,40 +10,45 @@ import {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
+  defaultTheme = "dark",
   value: _value,
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      const savedTheme = localStorage.getItem("theme")
-      return (savedTheme && (savedTheme === "dark" || savedTheme === "light" || savedTheme === "system")
-        ? savedTheme
-        : defaultTheme) as Theme
+      try {
+        const savedTheme = localStorage.getItem("theme")
+        if (savedTheme === "dark" || savedTheme === "light" || savedTheme === "system") {
+          return savedTheme
+        }
+      } catch { /* Keep the default usable when browser storage is unavailable. */ }
     }
     return defaultTheme as Theme
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = window.document.documentElement
-    root.classList.remove("light", "dark")
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-      root.classList.add(systemTheme)
-      return
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
+    const applyTheme = () => {
+      const resolvedTheme = theme === "system" ? (media.matches ? "dark" : "light") : theme
+      root.classList.remove("light", "dark")
+      root.classList.add(resolvedTheme)
+      root.style.colorScheme = resolvedTheme
     }
 
-    root.classList.add(theme)
+    applyTheme()
+    if (theme === "system") {
+      media.addEventListener("change", applyTheme)
+      return () => media.removeEventListener("change", applyTheme)
+    }
   }, [theme])
 
   const value: ThemeContextType = {
     theme,
     setTheme: (theme: Theme) => {
-      localStorage.setItem("theme", theme)
+      try {
+        localStorage.setItem("theme", theme)
+      } catch { /* Theme switching must still work without persistent storage. */ }
       setTheme(theme)
     },
   }
