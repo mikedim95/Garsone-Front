@@ -34,6 +34,9 @@ export const isOfflineModeExplicitlyEnabled = () =>
   toBool(import.meta.env.VITE_ENABLE_OFFLINE_MODE);
 
 export const isOfflineModeAllowed = () => {
+  // A Pi has a real local API/database, even without internet. Never route its
+  // staff edits into browser-only demo data because of an old OFFLINE flag.
+  if (import.meta.env.VITE_LOCAL_ONLY === "true") return false;
   if (isOfflineModeExplicitlyEnabled()) return true;
   if (typeof window === "undefined") return false;
   const hostname = window.location.hostname.toLowerCase();

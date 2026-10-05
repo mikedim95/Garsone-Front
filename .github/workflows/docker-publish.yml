@@ -53,6 +53,7 @@ jobs:
           curl --silent --fail http://127.0.0.1:18182/ >/dev/null
           node tests/order-recovery-browser-smoke.mjs
           node tests/local-operations-browser.mjs
+          node tests/local-menu-browser.mjs
           node tests/billing-report-browser.mjs
           node tests/customer-billing-browser.mjs
           node tests/staff-billing-browser.mjs

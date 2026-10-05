@@ -390,7 +390,8 @@ export const ManagerMenuPanel = () => {
 
   const openEdit = async (item: ManagerItemSummary) => {
     setEditing(item);
-    const selectedPrinter = resolveItemPrinter(item.printerTopic);
+    // Preserve existing routing while editing details, including unassigned items.
+    const selectedPrinter = normalizePrinterTopicValue(item.printerTopic);
     setForm({
       titleEn: item.titleEn ?? item.title ?? item.name ?? '',
       titleEl: item.titleEl ?? item.title ?? item.name ?? '',
@@ -1481,7 +1482,7 @@ export const ManagerMenuPanel = () => {
               );
               const hasModifierValidationError = modifierMissingTitle || modifierMissingOptionLabel;
               const printerSelected = form.printerTopic.trim().length > 0;
-              const canSave = form.titleEn.trim().length > 0 && form.titleEl.trim().length > 0 && Number.isFinite(priceNum) && printerSelected && !hasModifierValidationError;
+              const canSave = form.titleEn.trim().length > 0 && form.titleEl.trim().length > 0 && Number.isFinite(priceNum) && priceNum >= 0 && (Boolean(editing) || printerSelected) && !hasModifierValidationError;
               return (
                 <Button
                   onClick={async ()=>{
@@ -1539,7 +1540,11 @@ export const ManagerMenuPanel = () => {
                         }
                         await api.updateItem(editing.id, {
                           ...payload,
-                          imageUrl: finalImageUrl ?? undefined,
+                          imageUrl: finalImageUrl,
+                          // Imported items may keep a printer that has not been
+                          // configured yet. Only validate routing when it changes.
+                          printerTopic: normalizePrinterTopicValue(editing.printerTopic) === selectedPrinterTopic
+                            ? undefined : payload.printerTopic,
                         });
                         itemId = editing.id;
                       } else {
@@ -1635,6 +1640,9 @@ export const ManagerMenuPanel = () => {
                       setImageFile(null);
                       setImageUploadStatus('');
                       setModalOpen(false);
+                    } catch (error) {
+                      // Keep the draft open when the venue API cannot save it.
+                      toast({ title: 'Save failed', description: error instanceof Error ? error.message : 'Could not save item', variant: 'destructive' });
                     } finally {
                       setSavingItem(false);
                     }
