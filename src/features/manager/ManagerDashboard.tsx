@@ -2711,12 +2711,13 @@ export default function ManagerDashboard() {
 
   const themedWrapper = clsx(themeClass, { dark: dashboardDark });
   const ordersBusy = ordersLoading && ordersAll.length === 0;
+  const showDateRange = activeTab === "economics" || activeTab === "orders";
 
   useEffect(() => {}, []);
 
   const DateRangeHeader = () => (
-    <div className="relative flex items-center justify-center">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-center sm:justify-center gap-3 w-full">
+    <div className="relative flex w-full items-center justify-center">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-center sm:justify-center gap-3 w-full">
         <div className="flex items-center gap-2 flex-wrap justify-center">
           <div className="inline-flex rounded-lg border border-border/60 bg-card overflow-hidden shadow-sm">
             {[
@@ -3015,13 +3016,22 @@ export default function ManagerDashboard() {
             </nav>
 
             <div className="flex-1 w-full overflow-y-auto">
-              <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 sm:pb-6 space-y-6">
+              <div className={clsx(
+                "w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 sm:pb-6",
+                showDateRange ? "space-y-6" : "sm:space-y-6",
+              )}>
+                {/* Give the desktop navigation arrow its own row on every tab. */}
+                <div className={clsx(
+                  "items-center justify-center sm:flex sm:min-h-[50px] sm:px-16",
+                  showDateRange ? "flex" : "hidden",
+                )}>
+                  {showDateRange && <DateRangeHeader />}
+                </div>
                 <TabsContent value="economics" className="space-y-6 min-w-0 overflow-x-hidden">
                   {ordersBusy ? (
                     <DashboardGridSkeleton count={4} />
                   ) : (
                     <>
-                      <DateRangeHeader />
                       <BillingReport from={rangeInfo.start.toISOString()} to={(econRange === "last24h" ? rangeInfo.end : addDays(rangeInfo.end, 1)).toISOString()} />
                       <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold mb-4">
@@ -3403,7 +3413,6 @@ export default function ManagerDashboard() {
                     <DashboardGridSkeleton count={3} />
                   ) : (
                     <>
-                      <DateRangeHeader />
                       <Card className="p-4 sm:p-6">
                         <p className="text-sm text-muted-foreground mb-4">
                           {t("manager.operations_kpis", {
