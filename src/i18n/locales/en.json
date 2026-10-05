@@ -30,6 +30,8 @@
                     "roles_desc":  "Waiter & Manager views"
                  },
     "menu":  {
+        "item_comments": "Comments (optional)",
+        "item_comments_placeholder": "For example: no onions, sauce on the side",
         "category_navigation": "Category navigation",
         "previous_category": "Previous category",
         "next_category": "Next category",

@@ -55,6 +55,18 @@ test('timeouts, server failures and key conflicts retain the original submission
   for (const status of [400, 404, 422]) assert.equal(submissionDefinitelyRejected({ status }), true);
 });
 
+test('confirming a saved line leaves later additions with different preparation comments intact', () => {
+  const submitted = [{ ...cart[0], quantity: 1, note: 'No sugar' }];
+  const later = { ...cart[0], quantity: 2, note: 'Extra sugar' };
+  const current = [later, { ...submitted[0], quantity: 3 }, { ...cart[0], quantity: 1 }];
+  assert.deepEqual(cartAfterConfirmation(current, submitted), [later, { ...submitted[0], quantity: 2 }, current[2]]);
+  const store = storage();
+  const pending = saveSubmission('habibi', { ...payload, items: [{ ...payload.items[0], note: 'No sugar' }] }, submitted, store);
+  const restored = readSubmission('habibi', pending.payload.tableId, store);
+  assert.equal(restored.payload.items[0].note, 'No sugar');
+  assert.equal(restored.cart[0].note, 'No sugar');
+});
+
 class FakeSocket extends EventTarget {
   readyState = 0;
   closed = false;

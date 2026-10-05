@@ -333,13 +333,15 @@ export function WaiterMenuTab({
 
   const handleConfirmModifiers = (
     selected: Record<string, string | string[]>,
-    qty: number
+    qty: number,
+    note: string
   ) => {
     if (!customizeItem) return;
     addItem({
       item: customizeItem,
       quantity: Math.max(1, qty || 1),
       selectedModifiers: selected,
+      note: note || undefined,
     });
     toast({
       title: t("menu.toast_added_title", { defaultValue: "Added to cart" }),
@@ -393,6 +395,7 @@ export function WaiterMenuTab({
           itemId: item.item.id,
           quantity: item.quantity,
           modifiers: JSON.stringify(item.selectedModifiers),
+          ...(item.note?.trim() ? { note: item.note.trim() } : {}),
         })),
         ...(note ? { note } : {}),
       };
@@ -657,7 +660,7 @@ export function WaiterMenuTab({
           open={customizeOpen}
           item={customizeItem}
           onClose={() => setCustomizeOpen(false)}
-          onConfirm={(selected, qty) => handleConfirmModifiers(selected, qty)}
+          onConfirm={handleConfirmModifiers}
         />
       </Suspense>
     </div>

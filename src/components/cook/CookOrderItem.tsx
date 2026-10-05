@@ -143,6 +143,7 @@ export const CookOrderItem = ({
             {statusInfo.label}
           </Badge>
         </div>
+        {item.note && <p className="mt-1 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{item.note}</p>}
         {modifierText && (
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
             {modifierText}

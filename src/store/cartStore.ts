@@ -32,8 +32,9 @@ const getCartItemUnitPrice = (cartItem: CartItem) =>
   getBaseItemPrice(cartItem) + getSelectedModifiersTotal(cartItem);
 
 const mergeCartItems = (items: CartItem[]): CartItem[] => {
+  // Preparation comments identify a separate line even when the product and options match.
   const key = (ci: CartItem) =>
-    ci.item.id + '|' + JSON.stringify(ci.selectedModifiers || {});
+    JSON.stringify([ci.item.id, ci.selectedModifiers || {}, ci.note?.trim() || '']);
   const map = new Map<string, CartItem>();
   for (const ci of items) {
     const k = key(ci);
@@ -53,7 +54,7 @@ interface CartStore {
   updateQuantity: (itemId: string, quantity: number) => void;
   updateQuantityAt: (index: number, quantity: number) => void;
   updateItemModifiers: (index: number, selectedModifiers: CartItem['selectedModifiers']) => void;
-  updateItemAt: (index: number, patch: Partial<Pick<CartItem, 'quantity' | 'selectedModifiers'>>) => void;
+  updateItemAt: (index: number, patch: Partial<Pick<CartItem, 'quantity' | 'selectedModifiers' | 'note'>>) => void;
   clearCart: () => void;
   getTotal: () => number;
 }
@@ -67,7 +68,8 @@ export const useCartStore = create<CartStore>()(
         set((state) => {
           const existing = state.items.find(
             (i) => i.item.id === newItem.item.id &&
-              JSON.stringify(i.selectedModifiers) === JSON.stringify(newItem.selectedModifiers)
+              JSON.stringify(i.selectedModifiers) === JSON.stringify(newItem.selectedModifiers) &&
+              (i.note?.trim() || '') === (newItem.note?.trim() || '')
           );
           if (existing) {
             return {

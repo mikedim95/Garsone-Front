@@ -30,6 +30,8 @@
     "roles_desc": "Προβολές για Σερβιτόρο & Διαχειριστή"
   },
   "menu": {
+      "item_comments": "Σχόλια (προαιρετικά)",
+      "item_comments_placeholder": "Για παράδειγμα: χωρίς κρεμμύδι, η σάλτσα χωριστά",
     "category_navigation": "Πλοήγηση κατηγοριών",
     "previous_category": "Προηγούμενη κατηγορία",
     "next_category": "Επόμενη κατηγορία",

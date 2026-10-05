@@ -295,11 +295,12 @@ export function OrderCardPro({
                 </span>
                 <span
                   className={clsx(
-                    'truncate',
+                    'min-w-0 break-words',
                     isServed ? 'text-muted-foreground line-through' : 'text-muted-foreground'
                   )}
                 >
                   {item.item.name ?? 'Item'}
+                  {item.note && <span className="mt-1 block whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{item.note}</span>}
                 </span>
               </div>
             );

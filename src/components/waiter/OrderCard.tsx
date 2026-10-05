@@ -61,6 +61,7 @@ export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false, 
         {(order.items ?? []).map((item, idx) => (
           <div key={idx} className="text-sm">
             <span className="font-medium">{item.quantity}x</span> {item.item.name ?? 'Item'}
+            {item.note && <p className="whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{item.note}</p>}
           </div>
         ))}
       </div>

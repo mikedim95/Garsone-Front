@@ -29,6 +29,7 @@ type OrderItem = {
   id: Id;
   itemId: Id;
   qty: number;
+  note?: string;
   status: OrderItemStatus;
   acceptedAt?: number | null;
   servedAt?: number | null;
@@ -209,6 +210,7 @@ const normalizeOrderItems = (items: CreateOrderPayload['items']): OrderItem[] =>
     return {
       id: uid('orderItem'),
       itemId: item.itemId,
+      note: item.note?.trim() || undefined,
       qty,
       status: 'PLACED',
       acceptedAt: null,
@@ -527,6 +529,7 @@ function enrichOrder(db: Db, order: Order): any {
       categoryTitle: category?.title,
       printerTopic: item?.printerTopic ?? null,
       modifiers: orderItem.modifiers || [],
+      note: orderItem.note,
     };
   });
   
@@ -1068,7 +1071,7 @@ export const devMocks = {
   updateOrderItem(
     orderId: Id,
     orderItemId: Id,
-    data: { quantity: number; modifiers?: Record<string, string | string[]> }
+    data: { quantity: number; modifiers?: Record<string, string | string[]>; note?: string }
   ) {
     const db = snapshot();
     const order = db.orders.find((candidate) => candidate.id === orderId);
@@ -1085,6 +1088,7 @@ export const devMocks = {
       if (order.items.length === 0) order.status = 'CANCELLED';
     } else {
       current.qty = data.quantity;
+      if (data.note !== undefined) current.note = data.note.trim() || undefined;
       current.modifiers = Object.entries(data.modifiers || {}).map(
         ([modifierId, optionIds]) => ({
           modifierId,

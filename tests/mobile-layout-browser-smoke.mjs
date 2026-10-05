@@ -232,7 +232,7 @@ try {
         const box = await button.boundingBox();
         check(box && box.y >= 0 && box.y + box.height <= view.height + 1 && box.height >= 43, `${label}: modifier footer is outside viewport or too small`);
       }
-      const modifierOptions = await modifierDialog.locator('label').evaluateAll(labels => labels.map(label => ({ height: label.getBoundingClientRect().height, width: label.clientWidth, scrollWidth: label.scrollWidth })));
+      const modifierOptions = await modifierDialog.locator('label:has([role=checkbox]), label:has([role=radio])').evaluateAll(labels => labels.map(label => ({ height: label.getBoundingClientRect().height, width: label.clientWidth, scrollWidth: label.scrollWidth })));
       check(modifierOptions.length === 14 && modifierOptions.every(option => option.height >= 44 && option.scrollWidth <= option.width + 1), `${label}: long modifier option tap target or width fails`);
       const modifierScroll = modifierDialog.locator('.overflow-y-auto').first();
       if (view.height >= 390 && view.height < 500 && view.width > view.height) {

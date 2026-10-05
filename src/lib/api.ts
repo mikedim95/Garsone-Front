@@ -716,6 +716,7 @@ export const api = {
     data: {
       quantity: number;
       modifiers?: Record<string, string | string[]>;
+      note?: string;
       visit?: string;
     }
   ): Promise<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }> =>

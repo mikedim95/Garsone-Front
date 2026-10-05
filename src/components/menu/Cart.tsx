@@ -60,7 +60,7 @@ interface CartProps {
 
 export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, openSignal, onAbandonEdit }: CartProps) => {
   const { t } = useTranslation();
-  const { items, removeItem, getTotal } = useCartStore();
+  const { items, removeItemAt, getTotal } = useCartStore();
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
@@ -238,8 +238,7 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                       className="relative overflow-hidden select-none rounded-lg"
                     >
                       <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20 pointer-events-auto">
-                        {hasModifiers && (
-                          <Button
+                        <Button
                             variant="secondary"
                             size="icon"
                             className="shadow-sm w-8 h-8 rounded-full p-0"
@@ -248,12 +247,11 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                               setModifyIndex(idx);
                               setModifyOpen(true);
                             }}
-                            title="Edit"
-                            aria-label="Edit"
+                            title="Edit item"
+                            aria-label="Edit item"
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
                         {!hasModifiers && (
                           <>
                             <Button
@@ -264,8 +262,8 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                                 e.stopPropagation();
                                 useCartStore
                                   .getState()
-                                  .updateQuantity(
-                                    cartItem.item.id,
+                                  .updateQuantityAt(
+                                    idx,
                                     Math.max(1, cartItem.quantity - 1)
                                   );
                               }}
@@ -281,8 +279,8 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                                 e.stopPropagation();
                                 useCartStore
                                   .getState()
-                                  .updateQuantity(
-                                    cartItem.item.id,
+                                  .updateQuantityAt(
+                                    idx,
                                     cartItem.quantity + 1
                                   );
                               }}
@@ -300,7 +298,7 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                           className="shadow-sm w-8 h-8 rounded-full p-0"
                           onClick={(e) => {
                             e.stopPropagation();
-                            removeItem(cartItem.item.id);
+                            removeItemAt(idx);
                           }}
                           title="Delete"
                           aria-label="Delete"
@@ -311,10 +309,8 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                       <div
                         className="flex items-center gap-3 py-3 border-b bg-card/50 backdrop-blur-sm pl-3 pr-16 rounded-lg transition-shadow hover:shadow-md"
                         onClick={() => {
-                          if (hasModifiers) {
-                            setModifyIndex(idx);
-                            setModifyOpen(true);
-                          }
+                          setModifyIndex(idx);
+                          setModifyOpen(true);
                         }}
                         title="Edit item"
                       >
@@ -325,6 +321,7 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                         />
                         <div className="flex-1">
                           <h4 className="font-medium">{displayName}</h4>
+                          {cartItem.note && <p className="whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{cartItem.note}</p>}
                           <p className="text-xs text-muted-foreground">
                             Qty: {cartItem.quantity}
                           </p>
@@ -420,8 +417,7 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
             <Button
               onClick={() => {
                 if (qtyIndex != null) {
-                  const id = items[qtyIndex]?.item?.id;
-                  if (id) useCartStore.getState().updateQuantity(id, qtyValue);
+                  useCartStore.getState().updateQuantityAt(qtyIndex, qtyValue);
                 }
                 setQtyOpen(false);
                 setQtyIndex(null);
@@ -479,6 +475,7 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
                     <div className="font-medium">
                       {displayName} — {cartItem.quantity}
                     </div>
+                    {cartItem.note && <p className="whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{cartItem.note}</p>}
                     <div className="text-xs text-muted-foreground">
                       {Object.entries(cartItem.selectedModifiers || {}).map(
                         ([modId, optIds]) => {
@@ -639,15 +636,15 @@ export const Cart = ({ onCheckout, editing, activeOrderId, activeOrderNote, open
             : undefined
         }
         initialQty={modifyIndex != null ? items[modifyIndex]?.quantity ?? 1 : 1}
+        initialNote={modifyIndex != null ? items[modifyIndex]?.note : undefined}
+        confirmLabel={t("actions.save_changes", { defaultValue: "Save changes" })}
         onClose={() => {
           setModifyOpen(false);
           setModifyIndex(null);
         }}
-        onConfirm={(selected, quantity) => {
+        onConfirm={(selected, quantity, note) => {
           if (modifyIndex != null) {
-            useCartStore.getState().updateItemModifiers(modifyIndex, selected);
-            const id = items[modifyIndex]?.item?.id;
-            if (id) useCartStore.getState().updateQuantity(id, quantity);
+            useCartStore.getState().updateItemAt(modifyIndex, { selectedModifiers: selected, quantity, note: note || undefined });
           }
           setModifyOpen(false);
           setModifyIndex(null);

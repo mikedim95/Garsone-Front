@@ -661,11 +661,13 @@ export const SwipeableMenuView = ({
   const handleConfirmEditModifiers = (
     selectedModifiers: CartItem["selectedModifiers"],
     qty: number,
+    note: string,
   ) => {
     if (editingItemIndex !== null) {
       updateItemAt(editingItemIndex, {
         quantity: Math.max(1, qty || 1),
         selectedModifiers,
+        note: note || undefined,
       });
     }
     setEditingItemIndex(null);
@@ -1455,9 +1457,6 @@ export const SwipeableMenuView = ({
                         cartItem.item.name ??
                         cartItem.item.title ??
                         t("menu.item", { defaultValue: "Item" });
-                      const hasModifiers = Boolean(
-                        cartItem.item.modifiers?.length,
-                      );
                       const selectedOptionLabels = (
                         cartItem.item.modifiers ?? []
                       )
@@ -1524,6 +1523,7 @@ export const SwipeableMenuView = ({
                                   {selectedOptionLabels.join(", ")}
                                 </p>
                               )}
+                              {cartItem.note && <p className="mt-1 whitespace-pre-wrap break-words text-xs text-foreground [overflow-wrap:anywhere]">{cartItem.note}</p>}
                               <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <button
@@ -1568,18 +1568,17 @@ export const SwipeableMenuView = ({
                                     +
                                   </button>
                                 </div>
-                                {hasModifiers && (
-                                  <button
-                                    onClick={() => handleEditModifiers(idx)}
-                                    disabled={checkoutBusy}
-                                    className="min-w-0 text-xs text-primary hover:underline flex items-center gap-1"
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                    <span className="truncate">
-                                      {t("menu.edit", { defaultValue: "Edit" })}
-                                    </span>
-                                  </button>
-                                )}
+                                <button
+                                  aria-label={t("menu.edit_item", { defaultValue: "Edit item" })}
+                                  onClick={() => handleEditModifiers(idx)}
+                                  disabled={checkoutBusy}
+                                  className="min-w-0 text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  <span className="truncate">
+                                    {t("menu.edit", { defaultValue: "Edit" })}
+                                  </span>
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1665,6 +1664,8 @@ export const SwipeableMenuView = ({
           onConfirm={handleConfirmEditModifiers}
           initialQty={editingCartItem.quantity}
           initialSelected={editingCartItem.selectedModifiers}
+          initialNote={editingCartItem.note}
+          confirmLabel={t("actions.save_changes", { defaultValue: "Save changes" })}
           saving={checkoutBusy}
         />
       )}

@@ -139,6 +139,7 @@ export function OrderModifiersDialog({
                     {item.line.quantity}x {item.itemName}
                   </p>
                 </div>
+                {item.line.note && <p className="mt-2 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.line.note}</p>}
                 {item.selections.length > 0 ? (
                   <div className="mt-2 space-y-1 text-sm">
                     {item.selections.map((selection) => (

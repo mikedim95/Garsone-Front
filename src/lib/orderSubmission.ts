@@ -55,7 +55,7 @@ export function clearSubmission(pending: PendingSubmission, storage: StorageLike
 function selectionKey(item: CartItem): string {
   const modifiers = Object.entries(item.selectedModifiers || {}).sort(([a], [b]) => a.localeCompare(b))
     .map(([id, values]) => [id, (Array.isArray(values) ? [...values] : [values]).sort()]);
-  return JSON.stringify([item.item.id, modifiers]);
+  return JSON.stringify([item.item.id, modifiers, item.note?.trim() || ""]);
 }
 
 // Keep anything added while the connection was down. Only the confirmed quantities leave the cart.

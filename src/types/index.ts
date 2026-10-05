@@ -58,6 +58,7 @@ export interface ModifierOption {
 export interface CartItem {
   item: MenuItem;
   quantity: number;
+  note?: string;
   selectedModifiers: { [modifierId: string]: string | string[] };
   selectedModifierLabels?: { [modifierId: string]: string };
   orderItemId?: string;
@@ -164,6 +165,7 @@ export interface MenuData {
 
 export interface SubmittedOrderItem {
   id?: string;
+  note?: string;
   title?: string;
   name?: string;
   item?: MenuItem;
@@ -606,6 +608,7 @@ export interface AuthResponse {
 export interface CreateOrderPayloadItem {
   itemId: string;
   quantity: number;
+  note?: string;
   modifiers?: string | Record<string, unknown>;
 }
 

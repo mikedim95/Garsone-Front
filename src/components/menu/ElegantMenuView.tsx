@@ -209,11 +209,12 @@ export const ElegantMenuView = ({
     setEditingItemIndex(index);
   };
 
-  const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number) => {
+  const handleConfirmEditModifiers = (selectedModifiers: CartItem['selectedModifiers'], qty: number, note: string) => {
     if (editingItemIndex !== null) {
       updateItemAt(editingItemIndex, {
         quantity: Math.max(1, qty || 1),
         selectedModifiers,
+        note: note || undefined,
       });
     }
     setEditingItemIndex(null);
@@ -522,6 +523,7 @@ export const ElegantMenuView = ({
                             <Button
                               variant="ghost"
                               size="sm"
+                              aria-label={t("menu.edit_item", { defaultValue: "Edit item" })}
                               onClick={() => handleEditModifiers(idx)}
                               className="h-5 w-5 p-0 flex-shrink-0"
                             >
@@ -533,6 +535,7 @@ export const ElegantMenuView = ({
                             {formatPrice(unitPrice)}
                           </p>
 
+                          {cartItem.note && <p className="mb-1 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{cartItem.note}</p>}
                           {hasModifiers && (
                             <div className="mb-1 space-y-0.5">
                               {cartItem.item.modifiers?.map((modifier) => {
@@ -653,6 +656,8 @@ export const ElegantMenuView = ({
         item={editingCartItem?.item || null}
         initialQty={editingCartItem?.quantity || 1}
         initialSelected={editingCartItem?.selectedModifiers}
+        initialNote={editingCartItem?.note}
+        confirmLabel={t("actions.save_changes", { defaultValue: "Save changes" })}
         onClose={() => setEditingItemIndex(null)}
         onConfirm={handleConfirmEditModifiers}
       />

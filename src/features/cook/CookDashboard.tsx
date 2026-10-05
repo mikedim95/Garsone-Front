@@ -220,6 +220,7 @@ const normalizeOrderItem = (raw: unknown, idx: number): CartItem => {
     },
     quantity,
     selectedModifiers,
+    note: typeof record.note === "string" ? record.note : undefined,
     selectedModifierLabels: Object.keys(selectedModifierLabels).length ? selectedModifierLabels : undefined,
     orderItemId,
     status,
@@ -1205,6 +1206,7 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
                                 )}
                               >
                                 {name}
+                                {line.note && <span className="mt-1 block whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{line.note}</span>}
                               </span>
                             </div>
                           );
@@ -1353,6 +1355,7 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
                                 )}
                               >
                                 {name}
+                                {line.note && <span className="mt-1 block whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{line.note}</span>}
                               </span>
                             </div>
                           );

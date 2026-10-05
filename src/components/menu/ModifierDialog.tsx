@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useId, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import type { MenuItem, Modifier } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { useDashboardTheme } from '@/hooks/useDashboardDark';
@@ -15,8 +16,9 @@ interface Props {
   open: boolean;
   item: MenuItem | null;
   onClose: () => void;
-  onConfirm: (selected: SelectionMap, quantity: number) => void;
+  onConfirm: (selected: SelectionMap, quantity: number, note: string) => void;
   initialSelected?: SelectionMap;
+  initialNote?: string;
   initialQty?: number;
   confirmLabel?: string;
   minQuantity?: number;
@@ -37,6 +39,7 @@ export const ModifierDialog = ({
   onClose,
   onConfirm,
   initialSelected,
+  initialNote = '',
   initialQty = 1,
   confirmLabel,
   minQuantity = 1,
@@ -50,6 +53,9 @@ export const ModifierDialog = ({
   const [selected, setSelected] = useState<SelectionMap>(initialSelected || {});
   const [qty, setQty] = useState<number>(Math.max(minQuantity, initialQty));
   const [submitted, setSubmitted] = useState(false);
+  const [note, setNote] = useState(initialNote);
+  const noteId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const currency = typeof window !== 'undefined' ? window.localStorage.getItem('CURRENCY') || 'EUR' : 'EUR';
   const formatter = useMemo(() => {
     try {
@@ -68,7 +74,8 @@ export const ModifierDialog = ({
     setSelected(initialSelected || {});
     setQty(Math.min(MAX_ITEM_QUANTITY, Math.max(minQuantity, Number.isFinite(initialQty) ? Math.trunc(initialQty) : 1)));
     setSubmitted(false);
-  }, [initialSelected, initialQty, item?.id, minQuantity, open]);
+    setNote(initialNote);
+  }, [initialSelected, initialQty, initialNote, item?.id, minQuantity, open]);
 
   const effectiveModifiers: Modifier[] = useMemo(() => item?.modifiers || [], [item]);
 
@@ -100,13 +107,22 @@ export const ModifierDialog = ({
       setSubmitted(true);
       return;
     }
-    onConfirm(selected, Math.max(minQuantity, qty));
+    onConfirm(selected, Math.max(minQuantity, qty), note.trim());
     setSubmitted(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => (!o && !saving ? onClose() : null)}>
-      <DialogContent className={`${portalThemeClass} flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg [@media(orientation:landscape)_and_(max-height:500px)]:max-w-3xl`}>
+      <DialogContent
+        ref={dialogRef}
+        tabIndex={-1}
+        onOpenAutoFocus={(event) => {
+          // Comments are optional: opening a simple item must not summon the phone keyboard.
+          event.preventDefault();
+          dialogRef.current?.focus({ preventScroll: true });
+        }}
+        className={`${portalThemeClass} flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg [@media(orientation:landscape)_and_(max-height:500px)]:max-w-3xl`}
+      >
         <DialogHeader className="shrink-0 border-b border-border/40 px-5 pb-4 pt-5 pr-14">
           <DialogTitle>
             {item ? displayName : t('menu.item', { defaultValue: 'Item' })}
@@ -207,6 +223,21 @@ export const ModifierDialog = ({
               );
             })
           ) : null}
+          <div className="space-y-2">
+            <Label htmlFor={noteId}>
+              {t('menu.item_comments', { defaultValue: 'Comments (optional)' })}
+            </Label>
+            <Textarea
+              id={noteId}
+              data-testid="item-comment"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={500}
+              rows={3}
+              disabled={saving}
+              placeholder={t('menu.item_comments_placeholder', { defaultValue: 'For example: no onions, sauce on the side' })}
+            />
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center justify-center gap-4 border-t border-border/40 py-3">

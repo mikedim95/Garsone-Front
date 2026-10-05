@@ -443,8 +443,8 @@ const mapOrderItemModifiers = (
   return selections;
 };
 
-const getCartItemKey = (cartItem: Pick<CartItem, "item" | "selectedModifiers">) =>
-  `${cartItem.item.id}|${JSON.stringify(cartItem.selectedModifiers || {})}`;
+const getCartItemKey = (cartItem: Pick<CartItem, "item" | "selectedModifiers" | "note">) =>
+  JSON.stringify([cartItem.item.id, cartItem.selectedModifiers || {}, cartItem.note?.trim() || ""]);
 
 const mapSubmittedOrderItemToCartItem = (
   orderItem: SubmittedOrderItem,
@@ -458,6 +458,7 @@ const mapSubmittedOrderItemToCartItem = (
     item: menuItem,
     quantity: getSubmittedOrderItemQuantity(orderItem),
     selectedModifiers: mapOrderItemModifiers(orderItem, menuItem),
+    note: orderItem.note,
   };
 };
 
@@ -1727,20 +1728,22 @@ export default function TableMenu() {
       return;
     }
     // Always open the customize dialog, even if there are no modifiers,
-    // so the user can set quantity before adding to the cart.
+    // so quantity and preparation comments can be set before adding to the cart.
     setCustomizeItem(item);
     setCustomizeOpen(true);
   };
 
   const handleConfirmModifiers = (
     selected: Record<string, string | string[]>,
-    qty: number
+    qty: number,
+    note = ""
   ) => {
     if (!customizeItem) return;
     addItem({
       item: customizeItem,
       quantity: Math.min(MAX_ITEM_QUANTITY, Math.max(1, qty || 1)),
       selectedModifiers: selected,
+      note: note || undefined,
     });
     setCustomizeOpen(false);
     setCustomizeItem(null);
@@ -1926,7 +1929,8 @@ export default function TableMenu() {
 
   const handleConfirmActiveLineEdit = async (
     selected: Record<string, string | string[]>,
-    qty: number
+    qty: number,
+    note = ""
   ) => {
     if (!customerOrderRecallEnabled || !activeLineEditor || activeLineSavingRef.current || !visitReady) return;
     activeLineSavingRef.current = true;
@@ -1938,6 +1942,7 @@ export default function TableMenu() {
         {
           quantity: Math.max(0, qty),
           modifiers: selected,
+          note,
           visit: visitToken,
         }
       );
@@ -2108,6 +2113,7 @@ export default function TableMenu() {
           cartItem.item.title ||
           t("menu.item", { defaultValue: "Item" }),
         quantity: cartItem.quantity,
+        note: cartItem.note,
         unitPriceCents:
           cartItem.item.priceCents ??
           Math.round((cartItem.item.price ?? 0) * 100),
@@ -2330,6 +2336,7 @@ export default function TableMenu() {
           itemId: item.item.id,
           quantity: item.quantity,
           modifiers: JSON.stringify(item.selectedModifiers),
+          ...(item.note?.trim() ? { note: item.note.trim() } : {}),
         })),
         ...(note ? { note } : {}),
       };
@@ -2862,6 +2869,7 @@ export default function TableMenu() {
                                   index: idx + 1,
                                   defaultValue: `Item ${idx + 1}`,
                                 })}
+                              {item.note && <span className="mt-1 block whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">{item.note}</span>}
                             </span>
                             <span className="shrink-0 text-muted-foreground">
                               ×{item?.quantity ?? item?.qty ?? 1}
@@ -3276,6 +3284,7 @@ export default function TableMenu() {
                                 </Popover>
                               ) : null}
                             </div>
+                            {item.note && <p className="mt-2 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.note}</p>}
                             <div
                               className={clsx(
                                 "mt-3 flex items-center gap-3",
@@ -3492,6 +3501,7 @@ export default function TableMenu() {
             item={activeLineCartItem?.item ?? null}
             initialQty={activeLineCartItem?.quantity ?? 1}
             initialSelected={activeLineCartItem?.selectedModifiers}
+            initialNote={activeLineCartItem?.note}
             confirmLabel={t("actions.save_changes", {
               defaultValue: "Save changes",
             })}
@@ -3502,8 +3512,8 @@ export default function TableMenu() {
             onClose={() => {
               if (!activeLineSaving) setActiveLineEditor(null);
             }}
-            onConfirm={(selected, quantity) =>
-              void handleConfirmActiveLineEdit(selected, quantity)
+            onConfirm={(selected, quantity, note) =>
+              void handleConfirmActiveLineEdit(selected, quantity, note)
             }
           />
         </Suspense>
