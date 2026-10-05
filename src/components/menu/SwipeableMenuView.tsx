@@ -1327,9 +1327,10 @@ export const SwipeableMenuView = ({
         <Dialog open={cartOpen} onOpenChange={handleCartOpenChange}>
           <DialogContent
             motionProps={{
-              initial: reduceMotion
-                ? false
-                : { opacity: 0, y: mobileSheet ? 24 : 8, scale: 1 },
+              // Mount in the final position: fading/sliding the cart briefly
+              // exposes the menu behind it and clips the checkout footer.
+              // Motion remains enabled for dragging and closing the sheet.
+              initial: false,
               animate: cartSheetMinimizing
                 ? { opacity: 0.96, scale: 0.98, y: "104%" }
                 : { opacity: 1, scale: 1, y: 0 },
