@@ -1,6 +1,8 @@
 // Synthetic long-content fixtures only. No venue exports or production credentials.
 export const mobileTableId = '11111111-1111-4111-8111-111111111111';
 export const mobileOrderId = '44444444-4444-4444-8444-444444444444';
+export const mobileVisitId = '66666666-6666-4666-8666-666666666666';
+export const mobileVisitToken = '1'.repeat(64);
 export const mobileStore = {
   id: '55555555-5555-4555-8555-555555555555', slug: 'test-venue',
   name: 'Garden House — Κήπος και Καφές', orderingMode: 'qr', customerOrderRecallEnabled: true,
@@ -48,6 +50,7 @@ export function mobileFixture(language = 'en') {
 }
 
 export async function installMobileFixture(page, origin, fixture, unexpected) {
+  let billRequestedAt = null;
   if (page.routeWebSocket) await page.routeWebSocket('**/events/ws*', ws => ws.close());
   await page.route('**/*', async route => {
     const request = route.request();
@@ -58,6 +61,12 @@ export async function installMobileFixture(page, origin, fixture, unexpected) {
     const path = url.pathname.replace(/^\/api/, '');
     let body;
     if (path === '/public/menu-bootstrap') body = fixture.bootstrap;
+    else if (path === `/public/table/${mobileTableId}/visit` && request.method() === 'POST') body = { visit: customerVisitFixture(fixture, billRequestedAt), visitToken: mobileVisitToken };
+    else if (path === `/public/visits/${mobileVisitId}`) body = { visit: customerVisitFixture(fixture, billRequestedAt) };
+    else if (path === `/public/visits/${mobileVisitId}/bill-request` && request.method() === 'POST') {
+      billRequestedAt ||= new Date().toISOString();
+      body = { visit: customerVisitFixture(fixture, billRequestedAt) };
+    }
     else if (path === '/store') body = { store: mobileStore, meta: { currencyCode: 'EUR', locale: 'en' } };
     else if (path === `/public/table/${mobileTableId}`) body = { tableId: mobileTableId, tableLabel: fixture.order.tableLabel, storeSlug: mobileStore.slug, storeName: mobileStore.name };
     else if (path === `/public/table/${mobileTableId}/orders`) body = { orders: [fixture.order] };
@@ -68,4 +77,16 @@ export async function installMobileFixture(page, origin, fixture, unexpected) {
     else { unexpected.push(`${request.method()} ${path}`); return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"UNEXPECTED_MOCK_REQUEST"}' }); }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+}
+
+export function customerVisitFixture(fixture, billRequestedAt = null) {
+  const order = fixture.order;
+  return { id: mobileVisitId, tableId: mobileTableId, tableLabel: order.tableLabel,
+    status: billRequestedAt ? 'BILL_REQUESTED' : 'OPEN', revision: billRequestedAt ? 2 : 1, currencyCode: 'EUR',
+    openedAt: order.createdAt, closedAt: null, billRequestedAt, totalCents: order.totalCents, paidCents: 0,
+    outstandingCents: order.totalCents, orderCount: 1, orders: [order],
+    items: order.items.map(item => ({ orderItemId: item.id, orderId: order.id, title: item.title,
+      quantity: item.quantity, unitPriceCents: item.unitPriceCents, totalCents: item.quantity * item.unitPriceCents,
+      paidCents: 0, outstandingCents: item.quantity * item.unitPriceCents, remainingQuantity: item.quantity })),
+  };
 }

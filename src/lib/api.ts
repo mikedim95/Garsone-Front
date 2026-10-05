@@ -44,6 +44,7 @@ import type {
 import { devMocks } from "./devMocks";
 import { isOfflineModeEnabled } from "./offlineMode";
 import { getStoredStoreSlug } from "./storeSlug";
+import { storedCustomerVisitToken } from "./customerVisitStorage";
 
 export type MenuBootstrapResponse = {
   store: StoreInfo;
@@ -230,11 +231,14 @@ async function optimizeMenuImage(file: File): Promise<File> {
   });
 }
 
-const withVisit = <T extends Record<string, any>>(payload: T): T => payload;
+const withVisit = <T extends Record<string, any>>(payload: T): T => {
+  const visit = payload.visit || storedCustomerVisitToken(getStoredStoreSlug(), payload.tableId);
+  return visit ? { ...payload, visit } : payload;
+};
 
 type ManagerTableCreateInput = { label: string; isActive?: boolean };
 type ManagerTableUpdateInput = Partial<ManagerTableCreateInput>;
-type OrderStatusUpdateOptions = { cancelReason?: string; skipMqtt?: boolean };
+type OrderStatusUpdateOptions = { cancelReason?: string; skipMqtt?: boolean; printReceipt?: boolean };
 type CreateWaiterPayload = {
   email: string;
   password: string;
@@ -294,7 +298,7 @@ type PublicEventPayload = {
 
 export async function fetchApi<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   const getStoreSlug = () => {
     const slug = getStoredStoreSlug();
@@ -304,10 +308,10 @@ export async function fetchApi<T>(
   const cancel = () => controller.abort();
   if (options?.signal?.aborted) cancel();
   else options?.signal?.addEventListener("abort", cancel, { once: true });
-  // A stalled read should offer recovery. Mutations are never retried or timed
-  // out here: the server may already have saved the change or accepted an order.
+  // Mutations only receive a deadline when the caller has a durable recovery key.
   const isRead = !options?.method || ["GET", "HEAD"].includes(options.method.toUpperCase());
-  const timeout = isRead || endpoint === "/auth/signin" ? window.setTimeout(cancel, 20_000) : undefined;
+  const timeoutMs = options?.timeoutMs ?? (isRead || endpoint === "/auth/signin" ? 20_000 : undefined);
+  const timeout = timeoutMs === undefined ? undefined : window.setTimeout(cancel, timeoutMs);
   try {
     const token = useAuthStore.getState().token;
     const storeSlug = getStoreSlug();
@@ -333,6 +337,10 @@ export async function fetchApi<T>(
     if (!response.ok) {
       const error = await response.json();
       const code = typeof error?.error === "string" ? error.error : undefined;
+      if (["VISIT_CLOSED", "VISIT_ACCESS_REQUIRED"].includes(code || "")) {
+        const visit = new Headers(options?.headers).get("x-table-visit");
+        if (visit) window.dispatchEvent(new CustomEvent("customer-visit-invalid", { detail: { token: visit, code } }));
+      }
       const message = response.status === 429
         ? "Too many requests. Please wait a moment before trying again."
         : typeof error?.message === "string" && error.message.trim()
@@ -528,7 +536,7 @@ export const api = {
     const qs = params.toString();
     return fetchApi<MenuBootstrapResponse>(`/public/menu-bootstrap?${qs}`);
   },
-  createOrder: (data: CreateOrderPayload): Promise<OrderResponse> => {
+  createOrder: (data: CreateOrderPayload, storeSlug?: string): Promise<OrderResponse> => {
     const visitHeaders = data.visit
       ? { "x-table-visit": data.visit }
       : undefined;
@@ -537,15 +545,21 @@ export const api = {
       : fetchApi<OrderResponse>("/orders", {
           method: "POST",
           body: JSON.stringify(withVisit(data)),
-          ...(visitHeaders ? { headers: visitHeaders } : {}),
+          headers: { ...visitHeaders, ...(storeSlug ? { "x-store-slug": storeSlug } : {}) },
+          ...(data.submissionId ? { timeoutMs: 20_000 } : {}),
         });
   },
+  recoverOrderSubmission: (submissionId: string, tableId: string, storeSlug: string, visit?: string): Promise<OrderResponse> =>
+    fetchApi<OrderResponse>(`/orders/submissions/${encodeURIComponent(submissionId)}?tableId=${encodeURIComponent(tableId)}`, {
+      headers: { "x-store-slug": storeSlug, ...(visit ? { "x-table-visit": visit } : {}) }, cache: "no-store",
+    }),
   editOrder: (
     orderId: string,
     data: EditOrderPayload
   ): Promise<OrderResponse> => {
-    const visitHeaders = (data as any)?.visit
-      ? { "x-table-visit": (data as any).visit }
+    const visitToken = data.visit || storedCustomerVisitToken(getStoredStoreSlug(), data.tableId);
+    const visitHeaders = visitToken
+      ? { "x-table-visit": visitToken }
       : undefined;
     return isOffline()
       ? devMocks.createOrder(data)
@@ -559,8 +573,9 @@ export const api = {
     tableId: string,
     data: EditPendingTableOrdersPayload
   ): Promise<OrderResponse & { supersededOrderIds?: string[] }> => {
-    const visitHeaders = (data as any)?.visit
-      ? { "x-table-visit": (data as any).visit }
+    const visitToken = data.visit || storedCustomerVisitToken(getStoredStoreSlug(), tableId);
+    const visitHeaders = visitToken
+      ? { "x-table-visit": visitToken }
       : undefined;
     return isOffline()
       ? devMocks.createOrder({ ...data, tableId } as CreateOrderPayload)
@@ -598,7 +613,7 @@ export const api = {
       : fetchApi<OrderQueueSummary>("/orders/queue"),
   getPublicOrderSummary: (
     orderId: string,
-    opts?: { storeSlug?: string }
+    opts?: { storeSlug?: string; visit?: string }
   ): Promise<OrderPublicSummary> =>
     isOffline()
       ? devMocks.getPublicOrderSummary(orderId)
@@ -608,6 +623,7 @@ export const api = {
             ? {
                 headers: {
                   "x-store-slug": opts.storeSlug,
+                  ...(opts.visit ? { "x-table-visit": opts.visit } : {}),
                 },
               }
             : undefined
@@ -619,6 +635,7 @@ export const api = {
       unpaid?: boolean;
       take?: number;
       storeSlug?: string;
+      visit?: string;
     }
   ): Promise<OrdersResponse> => {
     const params = new URLSearchParams();
@@ -634,6 +651,7 @@ export const api = {
         ? {
             headers: {
               "x-store-slug": opts.storeSlug,
+              ...(opts.visit ? { "x-table-visit": opts.visit } : {}),
             },
           }
         : undefined
@@ -675,6 +693,7 @@ export const api = {
               ? { cancelReason: options.cancelReason }
               : {}),
             ...(options?.skipMqtt ? { skipMqtt: true } : {}),
+            ...(options?.printReceipt ? { printReceipt: true } : {}),
           }),
         }),
   updateOrderItemStatus: (
@@ -697,13 +716,14 @@ export const api = {
     data: {
       quantity: number;
       modifiers?: Record<string, string | string[]>;
+      visit?: string;
     }
   ): Promise<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }> =>
     isOffline()
       ? devMocks.updateOrderItem(orderId, orderItemId, data)
       : fetchApi<OrderResponse & { change?: { from: string; to: string }; removed?: boolean }>(
           `/orders/${orderId}/items/${orderItemId}`,
-          { method: "PATCH", body: JSON.stringify(data) }
+          { method: "PATCH", body: JSON.stringify(data), headers: data.visit ? { "x-table-visit": data.visit } : {} }
         ),
 
   // Manager: waiter-table assignments

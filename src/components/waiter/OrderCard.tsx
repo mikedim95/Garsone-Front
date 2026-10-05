@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { billingCopy } from '@/pages/billingCopy';
 import { Order, OrderStatus } from '@/types';
 import { formatTableLabel } from '@/lib/formatTableLabel';
 import { Loader2 } from 'lucide-react';
@@ -33,12 +35,13 @@ const borderColors = {
 } as const;
 
 export const OrderCard = ({ order, onUpdateStatus, mode = 'full', busy = false, highlighted = false }: Props) => {
+  const { i18n } = useTranslation();
   const [localBusy, setLocalBusy] = useState(false);
   const isBusy = busy || localBusy;
   const startPreparingLabel = 'Start preparing';
   const markReadyLabel = 'Mark ready';
   const markServedLabel = 'Mark served';
-  const markPaidLabel = 'Mark paid';
+  const markPaidLabel = billingCopy[(i18n.resolvedLanguage || i18n.language).startsWith('el') ? 'el' : 'en'].viewBill;
   const border = borderColors[order.status] || '';
   const statusClass = statusColors[order.status] || 'bg-muted text-foreground';
   const statusLabel = order.status === 'CANCELLED' ? 'CANCELED' : order.status;

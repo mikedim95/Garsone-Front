@@ -12,7 +12,7 @@ interface OrdersStore {
   clear: () => void;
 }
 
-export const useOrdersStore = create<OrdersStore>()(
+const createOrdersStore = (name: string) => create<OrdersStore>()(
   persist(
     (set, get) => ({
       orders: [],
@@ -85,7 +85,11 @@ export const useOrdersStore = create<OrdersStore>()(
         }),
       clear: () => set({ orders: [] }),
     }),
-    { name: 'orders-storage' }
+    { name }
   )
 );
 
+
+export const useOrdersStore = createOrdersStore("orders-storage");
+// Hybrid renders both dashboards simultaneously; their filtered snapshots must not replace each other.
+export const useCookOrdersStore = createOrdersStore("cook-orders-storage");

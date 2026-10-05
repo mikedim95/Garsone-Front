@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { CategorySelectView } from "@/components/menu/CategorySelectView";
@@ -12,7 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
+import { cartAfterConfirmation, clearSubmission, readSubmission, saveSubmission, submissionDefinitelyRejected, type PendingSubmission } from "@/lib/orderSubmission";
+import { invalidCartItem } from "@/components/menu/orderValidation";
 import { useCartStore } from "@/store/cartStore";
 import type {
   MenuCategory,
@@ -233,20 +236,40 @@ export function WaiterMenuTab({
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [orderPlacedSignal, setOrderPlacedSignal] = useState(0);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const checkoutLockRef = useRef(false);
+  const recoveryVersion = useRecoveryVersion(Boolean(storeSlug));
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(null);
+  const recoveryRef = useRef<() => Promise<unknown>>(() => Promise.resolve(null));
+  const currentContextRef = useRef("");
+  currentContextRef.current = `${storeSlug}:${selectedTable}`;
   const [openCartSignal, setOpenCartSignal] = useState(0);
 
   useEffect(() => {
-    if (!assignedTables.some((t) => t.id === selectedTable)) {
-      setSelectedTable(assignedTables[0]?.id ?? "");
+    if (assignedTables.length && !assignedTables.some((t) => t.id === selectedTable)) {
+      let previous: string | null = null;
+      try { previous = localStorage.getItem(`waiter:selected-table:${storeSlug}`); } catch { /* Optional preference. */ }
+      setSelectedTable(assignedTables.find(table => table.id === previous)?.id ?? assignedTables[0].id);
     }
-  }, [assignedTables, selectedTable]);
+  }, [assignedTables, selectedTable, storeSlug]);
 
   useEffect(() => {
-    clearCart();
+    if (!selectedTable || !storeSlug) return;
+    const context = `waiter:${storeSlug}:${selectedTable}`;
+    try {
+      const previous = localStorage.getItem("cart-table-context");
+      if (previous && previous !== context) clearCart();
+      localStorage.setItem("cart-table-context", context);
+      localStorage.setItem(`waiter:selected-table:${storeSlug}`, selectedTable);
+    } catch { /* The submission journal will block a send if durable storage is unavailable. */ }
     setCategorySelected(true);
     setSelectedCategory("all");
     setMenuData(null);
-  }, [selectedTable, clearCart]);
+  }, [selectedTable, storeSlug, clearCart]);
+
+  useEffect(() => {
+    setPendingSubmission(null);
+    void recoveryRef.current();
+  }, [selectedTable, storeSlug, recoveryVersion]);
 
   useEffect(() => {
     if (!selectedTable) {
@@ -284,7 +307,7 @@ export function WaiterMenuTab({
                 defaultValue: "Failed to load menu",
               });
         setMenuError(message);
-        setMenuData(null);
+        // Keep the last menu visible while the venue connection recovers.
       })
       .finally(() => {
         if (!cancelled) {
@@ -294,7 +317,7 @@ export function WaiterMenuTab({
     return () => {
       cancelled = true;
     };
-  }, [selectedTable, storeSlug, preferGreek, printerTopic, t, menuReload, languageCode]);
+  }, [selectedTable, storeSlug, preferGreek, printerTopic, t, menuReload, languageCode, recoveryVersion]);
 
   const currentTableLabel = useMemo(
     () => assignedTables.find((t) => t.id === selectedTable)?.label,
@@ -326,8 +349,10 @@ export function WaiterMenuTab({
     setCustomizeItem(null);
   };
 
-  const handlePlaceOrder = async (note?: string) => {
-    if (!selectedTable) {
+  const handlePlaceOrder = async (note?: string, retrySaved = false, recoverOnly = false) => {
+    if (checkoutLockRef.current) return null;
+    if (!selectedTable || !storeSlug) {
+      if (recoverOnly) return null;
       toast({
         title: t("waiter.no_table_title", { defaultValue: "Pick a table" }),
         description: t("waiter.no_table_desc", {
@@ -338,7 +363,15 @@ export function WaiterMenuTab({
     }
 
     const cartItems = useCartStore.getState().items;
-    if (!cartItems.length) {
+    let attempt: PendingSubmission | null;
+    try { attempt = readSubmission(storeSlug, selectedTable); }
+    catch {
+      if (!recoverOnly) toast({ title: preferGreek ? "Η αποθήκευση παραγγελίας δεν είναι διαθέσιμη" : "Order recovery storage is unavailable", variant: "destructive" });
+      return null;
+    }
+    setPendingSubmission(attempt);
+    if (recoverOnly && !attempt) return null;
+    if (!attempt && !cartItems.length) {
       toast({
         title: t("menu.toast_error_title", {
           defaultValue: "Cart is empty",
@@ -350,6 +383,8 @@ export function WaiterMenuTab({
       return null;
     }
 
+    checkoutLockRef.current = true;
+    let postStarted = false;
     try {
       setCheckoutBusy(true);
       const payload = {
@@ -361,7 +396,26 @@ export function WaiterMenuTab({
         })),
         ...(note ? { note } : {}),
       };
-      const res = await api.createOrder(payload);
+      let res;
+      if (attempt) {
+        try {
+          res = await api.recoverOrderSubmission(attempt.payload.submissionId, selectedTable, storeSlug);
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 404)) throw error;
+          if (!retrySaved) return null;
+          postStarted = true;
+          res = await api.createOrder(attempt.payload, storeSlug);
+        }
+      } else {
+        if (!menuData || invalidCartItem(cartItems, menuData.items) || cartItems.length > 100) {
+          toast({ title: t("menu.review_cart_title", { defaultValue: "Please review your cart" }), variant: "destructive" });
+          return null;
+        }
+        attempt = saveSubmission(storeSlug, payload, cartItems);
+        setPendingSubmission(attempt);
+        postStarted = true;
+        res = await api.createOrder(attempt.payload, storeSlug);
+      }
       const created =
         (res as any)?.order && isRecord((res as any).order)
           ? (res as any).order
@@ -378,8 +432,11 @@ export function WaiterMenuTab({
           (created as any).tableId ||
           selectedTable,
       };
+      clearSubmission(attempt);
+      if (currentContextRef.current !== `${storeSlug}:${selectedTable}`) return order;
+      setPendingSubmission(null);
       onOrderCreated(order);
-      clearCart();
+      useCartStore.getState().setItems(cartAfterConfirmation(useCartStore.getState().items, attempt.cart));
       setOrderPlacedSignal((s) => s + 1);
       setCategorySelected(true);
       setSelectedCategory("all");
@@ -396,6 +453,10 @@ export function WaiterMenuTab({
       });
       return order;
     } catch (error) {
+      if (postStarted && attempt && submissionDefinitelyRejected(error)) {
+        try { clearSubmission(attempt); setPendingSubmission(null); } catch { /* Keep the original key for recovery. */ }
+      }
+      if (recoverOnly) return null;
       toast({
         title: t("waiter.order_failed", {
           defaultValue: "Could not place order",
@@ -409,9 +470,11 @@ export function WaiterMenuTab({
       });
       return null;
     } finally {
+      checkoutLockRef.current = false;
       setCheckoutBusy(false);
     }
   };
+  recoveryRef.current = () => handlePlaceOrder(undefined, false, true);
 
   if (!assignedTables.length) {
     return (
@@ -432,6 +495,14 @@ export function WaiterMenuTab({
 
   return (
     <div className="rounded-3xl border border-border/60 bg-card/70 shadow-lg p-4 sm:p-6">
+      {pendingSubmission && (
+        <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 p-3 text-sm">
+          <span>{preferGreek ? "Αναμονή επιβεβαίωσης παραγγελίας" : "Order awaiting confirmation"}</span>
+          <Button variant="outline" className="min-h-11 max-w-full whitespace-normal" disabled={checkoutBusy} onClick={() => void handlePlaceOrder(undefined, true)}>
+            {preferGreek ? "Επανάληψη αποθηκευμένης" : "Retry saved order"}
+          </Button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <div className="space-y-1">
           <p className="text-lg font-semibold text-foreground">

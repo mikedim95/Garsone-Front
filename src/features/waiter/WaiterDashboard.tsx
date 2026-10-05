@@ -9,7 +9,9 @@ import { OrderCardPro } from '@/components/waiter/OrderCardPro';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
 import { DashboardHeader } from '@/components/DashboardHeader';
+import { BillNavigationLink } from '@/components/BillNavigationLink';
 import { realtimeService } from '@/lib/realtime';
+import { useRecoveryVersion } from '@/hooks/useRecoveryVersion';
 import { registerStaffPush } from '@/lib/staffPush';
 import { useToast } from '@/hooks/use-toast';
 import { Clock, LayoutGrid, List, RefreshCcw, UtensilsCrossed } from 'lucide-react';
@@ -319,6 +321,7 @@ const normalizeOrder = (raw: unknown, fallbackIndex: number): Order | null => {
   return {
     id,
     tableId,
+    diningVisitId: typeof raw.diningVisitId === 'string' ? raw.diningVisitId : null,
     tableLabel,
     status,
     note,
@@ -384,6 +387,8 @@ export default function WaiterDashboard({
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
 
+  const recoveryVersion = useRecoveryVersion(Boolean(user));
+  const assignmentsRequestRef = useRef(0);
   const ordersAll = useOrdersStore((s) => s.orders);
   const setOrdersLocal = useOrdersStore((s) => s.setOrders);
   const upsertOrder = useOrdersStore((s) => s.upsert);
@@ -588,12 +593,14 @@ export default function WaiterDashboard({
 
   // Load assignments + store slug
   const fetchAssignments = useCallback(async () => {
+    const requestId = ++assignmentsRequestRef.current;
     if (!user || !isAuthenticated()) {
       setAssignmentsLoaded(true);
       return;
     }
     try {
       const store = await api.getStore();
+      if (requestId !== assignmentsRequestRef.current) return;
       const slug = store?.store?.slug;
       const name = store?.store?.name;
       setStoreOrderingMode(normalizeOrderingMode(store?.store?.orderingMode));
@@ -614,6 +621,7 @@ export default function WaiterDashboard({
         }
       }
       const tablesRes = await api.waiterMyTables();
+      if (requestId !== assignmentsRequestRef.current) return;
       const myId = user?.id;
       const tables = (tablesRes.tables ?? []) as TableWithWaiters[];
       const assignments = tablesRes.assignments ?? [];
@@ -654,22 +662,24 @@ export default function WaiterDashboard({
         console.error('Failed to load waiter assignments', error);
       }
     } finally {
-      setAssignmentsLoaded(true);
+      if (requestId === assignmentsRequestRef.current) setAssignmentsLoaded(true);
     }
   }, [user, isAuthenticated, logout, navigate]);
 
   useEffect(() => {
-    fetchAssignments();
+    void fetchAssignments();
     return () => {
+      assignmentsRequestRef.current += 1;
       if (assignmentsFetchRef.current) {
         clearTimeout(assignmentsFetchRef.current);
       }
     };
-  }, [fetchAssignments]);
+  }, [fetchAssignments, recoveryVersion]);
 
   // Initial hydrate from backend
   useEffect(() => {
     if (!assignmentsLoaded || !user) return;
+    let cancelled = false;
     (async () => {
       try {
         if (assignedTableIds.size === 0) {
@@ -684,11 +694,10 @@ export default function WaiterDashboard({
           take: ORDER_FETCH_LIMIT,
           tableIds: tableIdsParam,
         });
+        if (cancelled) return;
         if (data.shift) {
-          setShiftWindow({
-            start: data.shift.start,
-            end: data.shift.end,
-          });
+          setShiftWindow(previous => previous?.start === data.shift?.start && previous?.end === data.shift?.end
+            ? previous : { start: data.shift?.start, end: data.shift?.end });
           dbg("shift window", data.shift);
         } else {
           setShiftWindow(null);
@@ -697,7 +706,7 @@ export default function WaiterDashboard({
         const mapped = (data.orders ?? [])
           .map((order, index) => normalizeOrder(order, index))
           .filter((order): order is Order => Boolean(order))
-          .filter((order) => shouldShowTable(order.tableId) && withinShift(order));
+          .filter((order) => shouldShowTable(order.tableId));
         const tableStats = mapped.reduce<Record<string, number>>((acc, order) => {
           const key = `${order.tableLabel || '??'} (${order.tableId})`;
           acc[key] = (acc[key] ?? 0) + 1;
@@ -714,18 +723,16 @@ export default function WaiterDashboard({
       } catch (error) {
         console.error('Initial orders load failed', error);
       } finally {
-        setShiftLoaded(true);
+        if (!cancelled) setShiftLoaded(true);
       }
     })();
-  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds, shouldShowTable, withinShift]);
+    return () => { cancelled = true; };
+  }, [assignmentsLoaded, user, setOrdersLocal, assignedTableIds, shouldShowTable, recoveryVersion]);
 
   // Realtime updates → mutate local cache
   useEffect(() => {
     // ensure socket is opened early; subscriptions happen when storeSlug is ready
     realtimeService.connect().catch(() => {});
-    return () => {
-      realtimeService.disconnect();
-    };
   }, []);
 
   useEffect(() => {
@@ -1001,6 +1008,12 @@ export default function WaiterDashboard({
   }, [ordersAll, shouldShowTable, withinShift, withinDateFilter]);
 
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
+    if (status === 'PAID') {
+      const order = ordersAll.find(value => value.id === orderId);
+      const query = order?.diningVisitId ? { visitId: order.diningVisitId } : order?.tableId ? { tableId: order.tableId } : { orderId };
+      navigate(`/staff/bills?${new URLSearchParams(query)}`);
+      return;
+    }
     const key = `${status}:${orderId}`;
     setActingIds((s) => new Set(s).add(key));
     try {
@@ -1106,6 +1119,8 @@ export default function WaiterDashboard({
             </div>
           ) : undefined}
           burgerActions={
+            <>
+            <BillNavigationLink className="w-full justify-start" />
             <Button
               type="button"
               variant="outline"
@@ -1116,13 +1131,14 @@ export default function WaiterDashboard({
               <RefreshCcw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
+            </>
           }
         />
 
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 flex-1 min-w-0">
           {!hideEmbeddedNavigation && (
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-              <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-sm border border-border/50 shadow-sm">
+              <div className="inline-flex flex-wrap items-center gap-1 p-1.5 rounded-2xl bg-muted/50 backdrop-blur-sm border border-border/50 shadow-sm">
                 <button
                   onClick={() => setActiveTab('orders')}
                   className={clsx(
@@ -1157,6 +1173,7 @@ export default function WaiterDashboard({
                     <span>{t('menu.title')}</span>
                   </button>
                 )}
+                <BillNavigationLink className="border-0 bg-transparent" />
               </div>
               <span className="text-xs text-muted-foreground px-2">
                 {storeOrderingMode === 'waiter'

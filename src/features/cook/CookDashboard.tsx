@@ -3,10 +3,11 @@ import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import { useOrdersStore } from "@/store/ordersStore";
+import { useCookOrdersStore } from "@/store/ordersStore";
 import { api } from "@/lib/api";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import { realtimeService } from "@/lib/realtime";
+import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
 import { registerStaffPush } from "@/lib/staffPush";
 import type { Order, CartItem, OrderItemStatus } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { PageTransition } from "@/components/ui/page-transition";
 import { DashboardGridSkeleton } from "@/components/ui/dashboard-skeletons";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { BillNavigationLink } from "@/components/BillNavigationLink";
 import { useDashboardTheme } from "@/hooks/useDashboardDark";
 import { CookProView } from "@/components/cook/CookProView";
 import { CookOrderCard } from "@/components/cook/CookOrderCard";
@@ -274,6 +276,7 @@ const normalizeOrder = (
   return {
     id,
     tableId,
+    diningVisitId: typeof raw.diningVisitId === 'string' ? raw.diningVisitId : null,
     tableLabel,
     status: status as Order['status'],
     note,
@@ -330,10 +333,11 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
   const cookPrinterTopic =
     user?.printerTopic ?? user?.cookType?.printerTopic ?? null;
 
-  const ordersAll = useOrdersStore((s) => s.orders);
-  const setOrdersLocal = useOrdersStore((s) => s.setOrders);
-  const upsertOrder = useOrdersStore((s) => s.upsert);
-  const updateLocalStatus = useOrdersStore((s) => s.updateStatus);
+  const recoveryVersion = useRecoveryVersion(Boolean(user));
+  const ordersAll = useCookOrdersStore((s) => s.orders);
+  const setOrdersLocal = useCookOrdersStore((s) => s.setOrders);
+  const upsertOrder = useCookOrdersStore((s) => s.upsert);
+  const updateLocalStatus = useCookOrdersStore((s) => s.updateStatus);
 
   const [storeSlug, setStoreSlug] = useState(() => getStoredStoreSlug() || "");
   const [accepting, setAccepting] = useState<Set<string>>(new Set());
@@ -396,11 +400,14 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
     }
   }, [isAuthenticated, user, navigate]);
 
-  // Initial hydrate: always replace local cache on mount
+  // Replace the snapshot after a reconnect/wake as events have no replay history.
   useEffect(() => {
+    if (!user || !isAuthenticated()) return;
+    let cancelled = false;
     const init = async () => {
       try {
         const store = await api.getStore();
+        if (cancelled) return;
         if (store?.store?.name) {
           try {
             localStorage.setItem('STORE_NAME', store.store.name);
@@ -418,6 +425,7 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
           }
         }
         const data = await api.getOrders();
+        if (cancelled) return;
         const mapped = (data.orders ?? [])
           .map((order, index) => normalizeOrder(order, index, cookPrinterTopic))
           .filter((order): order is Order => Boolean(order));
@@ -425,11 +433,12 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
       } catch (error) {
         console.error('Failed to load cook dashboard data', error);
       } finally {
-        setLoadingOrders(false);
+        if (!cancelled) setLoadingOrders(false);
       }
     };
-    init();
-  }, [cookPrinterTopic, setOrdersLocal]);
+    void init();
+    return () => { cancelled = true; };
+  }, [cookPrinterTopic, setOrdersLocal, user?.id, user?.storeSlug, recoveryVersion, isAuthenticated]);
 
   // Realtime (WSS): listen for newly placed orders
   useEffect(() => {
@@ -711,10 +720,11 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
 
   const setOrderPreparing = async (
     id: string,
-    options?: { skipMqtt?: boolean }
+    options?: { skipMqtt?: boolean; printReceipt?: boolean }
   ) => {
     const res = await api.updateOrderStatus(id, "PREPARING", {
       ...(options?.skipMqtt ? { skipMqtt: true } : {}),
+      ...(options?.printReceipt ? { printReceipt: true } : {}),
     });
     const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
     if (normalized) {
@@ -727,11 +737,11 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
   const transitionToPreparing = async (
     id: string,
     setTracker: React.Dispatch<React.SetStateAction<Set<string>>>,
-    options?: { skipMqtt?: boolean }
+    options?: { skipMqtt?: boolean; printReceipt?: boolean }
   ): Promise<boolean> => {
     setTracker((s) => new Set(s).add(id));
     try {
-      const order = useOrdersStore.getState().orders.find((o) => o.id === id);
+      const order = useCookOrdersStore.getState().orders.find((o) => o.id === id);
       const eligibleItemIds = getEligibleItemIds(order, "prepare");
       const selectedItemIds = getSelectedItemIds(id, eligibleItemIds);
       const hasSelection = selectedItemIds.length > 0;
@@ -792,28 +802,13 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
   const accept = (id: string) =>
     transitionToPreparing(id, setAccepting, { skipMqtt: true });
 
-  const sendOrderToPrinter = async (order: Order) => {
-    try {
-      await api.printOrder(order.id);
-    } catch (error) {
-      console.error("Failed to publish print job", error);
-      toast({
-        title: t("toasts.update_failed"),
-        description: t("cook.unable_send_to_printer", {
-          defaultValue: "Unable to send order to printer",
-        }),
-      });
-    }
-  };
-
   const acceptWithPrint = async (order: Order) => {
     try {
-      const didAdvance = await transitionToPreparing(order.id, setPrinting, { skipMqtt: true });
-      if (didAdvance) {
-        await sendOrderToPrinter(order);
-      }
+      // The server saves PREPARING and the receipt together; a lost response is safe to retry.
+      await transitionToPreparing(order.id, setPrinting, { printReceipt: true });
     } catch (error) {
       console.error("Accept with print failed", error);
+      toast({ title: t("toasts.update_failed"), description: t("cook.unable_send_to_printer", { defaultValue: "Unable to confirm the order and receipt. Please check its status." }) });
     }
   };
 
@@ -846,7 +841,7 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
   const markReady = async (id: string) => {
     setActingIds((s) => new Set(s).add(`ready:${id}`));
     try {
-      const order = useOrdersStore.getState().orders.find((o) => o.id === id);
+      const order = useCookOrdersStore.getState().orders.find((o) => o.id === id);
       const eligibleItemIds = getEligibleItemIds(order, "ready");
       const selectedItemIds = getSelectedItemIds(id, eligibleItemIds);
       let shouldAdvance =
@@ -935,32 +930,11 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
     }
   };
 
-  const markPaid = async (id: string) => {
-    setActingIds((s) => new Set(s).add(`paid:${id}`));
-    try {
-      const res = await api.updateOrderStatus(id, "PAID");
-      const normalized = normalizeOrder(res.order, Date.now(), cookPrinterTopic);
-      if (normalized) {
-        upsertOrder(normalized);
-      } else {
-        updateLocalStatus(id, "PAID");
-      }
-      toast({
-        title: t("status.PAID", { defaultValue: "Paid" }),
-        description: t("cook.order_now_paid", {
-          defaultValue: "Order {{orderId}} is PAID",
-          orderId: id,
-        }),
-      });
-      clearAllSelectionsForOrder(id);
-    } finally {
-      setActingIds((s) => {
-        const n = new Set(s);
-        n.delete(`paid:${id}`);
-        return n;
-      });
-    }
-  };
+  const markPaid = user?.role === "hybrid" ? (id: string) => {
+    const order = ordersAll.find(value => value.id === id);
+    const query = order?.diningVisitId ? { visitId: order.diningVisitId } : order?.tableId ? { tableId: order.tableId } : { orderId: id };
+    navigate(`/staff/bills?${new URLSearchParams(query)}`);
+  } : undefined;
 
   // Individual item status update handler for the Pro view
   const updateSingleItemStatus = async (
@@ -1110,6 +1084,8 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
           icon="👨‍🍳"
           tone="primary"
           burgerActions={
+            <>
+            {user?.role === "hybrid" && <BillNavigationLink className="w-full justify-start" />}
             <Button
               type="button"
               variant="outline"
@@ -1120,6 +1096,7 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
               <RefreshCcw className="mr-2 h-4 w-4" />
               {refreshLabel}
             </Button>
+            </>
           }
         />
 

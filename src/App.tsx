@@ -27,6 +27,8 @@ const Login = lazy(() => import("./pages/Login"));
 const TableMenu = lazy(() => import("./pages/TableMenu"));
 const WaiterDashboard = lazy(() => import("./pages/WaiterDashboard"));
 const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
+const LocalOperations = lazy(() => import("./pages/LocalOperations"));
+const StaffBills = lazy(() => import("./pages/StaffBills"));
 const OrderThanks = lazy(() => import("./pages/OrderThanks"));
 const CookDashboard = lazy(() => import("./pages/CookDashboard"));
 const HybridDashboard = lazy(() => import("./pages/HybridDashboard"));
@@ -48,6 +50,7 @@ const BrandedLoadingScreen = () => {
     "payment-failed",
     "waiter",
     "manager",
+    "staff",
     "cook",
     "hybrid",
     "profile",
@@ -142,6 +145,8 @@ const AppShell = () => {
                 <Route path="/q/:publicCode/*" element={<PublicCodeRedirect />} />
                 <Route path="/waiter" element={<WaiterDashboard />} />
                 <Route path="/manager" element={<ManagerDashboard />} />
+                <Route path="/manager/operations" element={<LocalOperations />} />
+                <Route path="/staff/bills" element={<StaffBills />} />
                 <Route path="/cook" element={<CookDashboard />} />
                 <Route path="/hybrid" element={<HybridDashboard />} />
                 <Route path="/profile" element={<ProfileDashboard />} />

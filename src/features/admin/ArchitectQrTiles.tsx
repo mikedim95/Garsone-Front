@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Building2,
   Check,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { BillNavigationLink } from "@/components/BillNavigationLink";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -74,6 +76,7 @@ import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import ArchitectQrEvents from "./ArchitectQrEvents";
+import { localOperationsCopy } from "@/pages/localOperationsCopy";
 import type {
   ArchitectStoreUser,
   OrderingMode,
@@ -581,6 +584,7 @@ function RecentTilesCard({
 }
 
 export default function ArchitectQrTiles() {
+  const { i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuthStore();
@@ -2119,6 +2123,21 @@ export default function ArchitectQrTiles() {
         tone="secondary"
         burgerActions={
           <div className="space-y-2">
+            <BillNavigationLink className="w-full justify-start" onClick={event => {
+              event.preventDefault();
+              requestQrNavigation(() => navigate("/staff/bills"));
+            }} />
+            {import.meta.env.VITE_LOCAL_ONLY === "true" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-11 w-full justify-start whitespace-normal text-left"
+                onClick={() => requestQrNavigation(() => navigate("/manager/operations"))}
+              >
+                <Printer className="mr-2 h-4 w-4 shrink-0" />
+                {localOperationsCopy[(i18n.resolvedLanguage || i18n.language).startsWith("el") ? "el" : "en"].title}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

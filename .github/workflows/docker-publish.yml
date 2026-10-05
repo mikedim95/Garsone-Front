@@ -32,6 +32,39 @@ jobs:
           npm run test:unit
           npm run build
 
+      - name: Verify phone recovery, billing and local operations
+        env:
+          VITE_API_URL: /api
+          VITE_LOCAL_ONLY: "true"
+          LOCAL_OPERATIONS_ARTIFACTS: browser-artifacts/local-operations
+          BILLING_REPORT_ARTIFACTS: browser-artifacts/billing-report
+          STAFF_BILLING_ARTIFACTS: browser-artifacts/staff-billing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright-core install --with-deps chromium
+          npm run dev -- --host 127.0.0.1 --port 18182 --strictPort > /tmp/garsone-fixture-vite.log 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:18182/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:18182/ >/dev/null
+          node tests/order-recovery-browser-smoke.mjs
+          node tests/local-operations-browser.mjs
+          node tests/billing-report-browser.mjs
+          node tests/customer-billing-browser.mjs
+          node tests/staff-billing-browser.mjs
+
+      - name: Save browser verification artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-verification
+          path: browser-artifacts
+          if-no-files-found: ignore
+
       - name: Select release channel
         id: release
         shell: bash

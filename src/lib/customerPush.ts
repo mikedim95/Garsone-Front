@@ -1,5 +1,6 @@
 import { API_BASE } from "@/lib/api";
 import { getStoredStoreSlug } from "@/lib/storeSlug";
+import { storedCustomerVisitToken } from "@/lib/customerVisitStorage";
 
 type CustomerPushConfig = {
   enabled: boolean;
@@ -58,6 +59,7 @@ export async function registerCustomerPushForOrder({
   if (
     typeof window === "undefined" ||
     !tableId ||
+    !orderId ||
     !("serviceWorker" in navigator) ||
     !("PushManager" in window) ||
     !("Notification" in window) ||
@@ -92,12 +94,15 @@ export async function registerCustomerPushForOrder({
         applicationServerKey: urlBase64ToUint8Array(config.publicKey),
       }));
     const slug = normalizeSlug(storeSlug) || normalizeSlug(getStoredStoreSlug());
+    const visit = storedCustomerVisitToken(slug, tableId);
+    if (!visit) return false;
 
     const response = await fetch(`${API_BASE}/public/push/subscriptions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(slug ? { "x-store-slug": slug } : {}),
+        "x-table-visit": visit,
       },
       body: JSON.stringify({
         tableId,

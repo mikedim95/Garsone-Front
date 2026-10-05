@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
+import { billingCopy } from '@/pages/billingCopy';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Order, OrderItemStatus, OrderStatus } from '@/types';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -61,7 +62,7 @@ export function TableCardView({
   busy,
   mode = 'waiter',
 }: TableCardViewProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
   const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
@@ -496,7 +497,7 @@ export function TableCardView({
                             disabled={isActing}
                           >
                             <CreditCard className="w-3 h-3" />
-                            Mark Paid
+                            {billingCopy[(i18n.resolvedLanguage || i18n.language).startsWith('el') ? 'el' : 'en'].bill}
                           </Button>
                         )}
                         {order.status !== 'CANCELLED' && (

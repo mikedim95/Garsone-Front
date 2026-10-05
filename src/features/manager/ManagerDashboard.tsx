@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
+import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
 import { useOrdersStore } from "@/store/ordersStore";
 import type {
   CartItem,
@@ -46,11 +47,14 @@ import {
   ChefHat,
   ChevronLeft,
   ChevronRight,
+  Printer,
+  ReceiptText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveStoreDisplayName } from "@/lib/storeSlug";
 import { Card } from "@/components/ui/card";
 import { ManagerMenuPanel } from "@/features/manager/ManagerMenuPanel";
+import { BillingReport } from "@/features/manager/BillingReport";
 import { Badge } from "@/components/ui/badge";
 import {
   ResponsiveContainer,
@@ -114,6 +118,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/ui/page-transition";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
 import { useToast } from "@/components/ui/use-toast";
+import { localOperationsCopy } from "@/pages/localOperationsCopy";
 
 type ManagerMode = "basic" | "pro";
 type ManagerTab = "economics" | "orders" | "personnel" | "menu";
@@ -242,9 +247,12 @@ const isWaiterCallEvent = (
 
 const startOfDay = (d: Date) =>
   new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const addDays = (d: Date, days: number) =>
-  new Date(d.getTime() + days * 86400000);
-const toISODate = (d: Date) => d.toISOString().slice(0, 10);
+const addDays = (d: Date, days: number) => {
+  const result = new Date(d);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+const toISODate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const withinRange = (d: Date | null, start: Date, end: Date) => {
   if (!d) return false;
   const isWholeDayWindow =
@@ -277,8 +285,8 @@ const getUpdatedDate = (order: Order) =>
   new Date();
 
 const getServedDate = (order: Order) =>
-  parseDate((order as any).paidAt) ||
   parseDate(order.servedAt) ||
+  parseDate((order as any).paidAt) ||
   (isServedStatus(order.status) ? getUpdatedDate(order) : null);
 const getRevenueDate = (order: Order) =>
   getServedDate(order) || getPlacedDate(order);
@@ -379,16 +387,17 @@ const unitPrice = (
   return 0;
 };
 
-const LS_ORDERS_KEY = "MANAGER_ORDERS_CACHE";
-const LS_ORDERS_TS_KEY = "MANAGER_ORDERS_CACHE_TS";
 export default function ManagerDashboard() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, logout, isAuthenticated } = useAuthStore();
   const { dashboardDark, themeClass } = useDashboardTheme();
   const isMobile = useIsMobile();
   const isManagerRole = user?.role === "manager" || user?.role === "architect";
+  const recoveryVersion = useRecoveryVersion(isManagerRole);
+  const LS_ORDERS_KEY = `MANAGER_ORDERS_CACHE:${user?.storeSlug}:${user?.id}`;
+  const LS_ORDERS_TS_KEY = `${LS_ORDERS_KEY}:timestamp`;
   const uncategorizedLabel = t("manager.uncategorized", {
     defaultValue: "Uncategorized",
   });
@@ -626,12 +635,13 @@ export default function ManagerDashboard() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     const initOrders = async () => {
       try {
         // Hydrate from local cache first (if available)
         try {
           const cached = localStorage.getItem(LS_ORDERS_KEY);
-          if (cached) {
+          if (cached && recoveryVersion === 0) {
             const parsed = JSON.parse(cached);
             const orders = Array.isArray(parsed) ? parsed : parsed?.orders;
             if (Array.isArray(orders) && orders.length) {
@@ -644,6 +654,7 @@ export default function ManagerDashboard() {
 
         const take = 5000;
         const ordersRes = await api.getOrders({ take });
+        if (cancelled) return;
         const fetched = ordersRes.orders ?? [];
         setOrdersLocal(fetched);
         try {
@@ -682,7 +693,7 @@ export default function ManagerDashboard() {
       } catch (error) {
         console.error("Failed to load orders", error);
       } finally {
-        setOrdersLoading(false);
+        if (!cancelled) setOrdersLoading(false);
       }
     };
     if (isAuthenticated() && isManagerRole) {
@@ -690,7 +701,8 @@ export default function ManagerDashboard() {
     } else {
       setOrdersLoading(false);
     }
-  }, [isAuthenticated, isManagerRole, setOrdersLocal]);
+    return () => { cancelled = true; };
+  }, [isAuthenticated, isManagerRole, setOrdersLocal, LS_ORDERS_KEY, LS_ORDERS_TS_KEY, recoveryVersion]);
 
   const loadWaiterData = async () => {
     setLoadingWaiters(true);
@@ -2277,6 +2289,20 @@ export default function ManagerDashboard() {
     setTableModalOpen(true);
   };
 
+  const tableActionError = (error: unknown) => {
+    if (error instanceof ApiError && error.code === "TABLE_HAS_OPEN_VISIT") {
+      return i18n.language.startsWith("el")
+        ? "Κλείστε πρώτα την ανοιχτή επίσκεψη από τους λογαριασμούς τραπεζιών."
+        : "Close the active visit in Table bills before deactivating this table.";
+    }
+    if (error instanceof ApiError && error.code === "TABLE_HAS_VISIT_HISTORY") {
+      return i18n.language.startsWith("el")
+        ? "Το τραπέζι διατηρείται ανενεργό για να παραμείνει διαθέσιμο το ιστορικό λογαριασμών."
+        : "Keep this table inactive to preserve its billing history.";
+    }
+    return error instanceof ApiError ? error.message : t("manager.table_save_failed_description", { defaultValue: "Please try again." });
+  };
+
   const handleSaveTable = async () => {
     const label = tableForm.label.trim();
     if (!label) return;
@@ -2336,12 +2362,7 @@ export default function ManagerDashboard() {
         title: t("manager.table_save_failed", {
           defaultValue: "Table save failed",
         }),
-        description:
-          error instanceof ApiError
-            ? error.message
-            : t("manager.table_save_failed_description", {
-                defaultValue: "Please try again.",
-              }),
+        description: tableActionError(error),
       });
     } finally {
       setSavingTable(false);
@@ -2386,7 +2407,7 @@ export default function ManagerDashboard() {
         title: permanently
           ? t("manager.permanent_deletion_failed", { defaultValue: "Permanent deletion failed" })
           : t("manager.table_deletion_failed", { defaultValue: "Table deletion failed" }),
-        description: error instanceof ApiError ? error.message : "Please try again.",
+        description: tableActionError(error),
       });
     } finally {
       setTableDeletingId(null);
@@ -2817,6 +2838,22 @@ export default function ManagerDashboard() {
           tone="accent"
           burgerActions={
             <div className="space-y-2">
+              <Button type="button" variant="outline" size="sm" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => navigate("/staff/bills")}>
+                <ReceiptText className="mr-2 h-4 w-4 shrink-0" />
+                {i18n.language.startsWith("el") ? "Λογαριασμοί τραπεζιών" : "Table bills"}
+              </Button>
+              {import.meta.env.VITE_LOCAL_ONLY === "true" && isManagerRole && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-auto min-h-11 w-full justify-start whitespace-normal text-left"
+                  onClick={() => navigate("/manager/operations")}
+                >
+                  <Printer className="mr-2 h-4 w-4 shrink-0" />
+                  {localOperationsCopy[(i18n.resolvedLanguage || i18n.language).startsWith("el") ? "el" : "en"].title}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -2985,18 +3022,15 @@ export default function ManagerDashboard() {
                   ) : (
                     <>
                       <DateRangeHeader />
+                      <BillingReport from={rangeInfo.start.toISOString()} to={(econRange === "last24h" ? rangeInfo.end : addDays(rangeInfo.end, 1)).toISOString()} />
                       <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold mb-4">
-                          {t("manager.finance_kpis", {
-                            defaultValue: "Finance KPIs",
-                          })}
+                          {i18n.language.startsWith("el") ? "Αξία σερβιρισμένων παραγγελιών" : "Served order value"}
                         </h3>
                         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,_1fr))]">
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              {t("manager.total_revenue", {
-                                defaultValue: "Total Revenue",
-                              })}
+                              {i18n.language.startsWith("el") ? "Συνολική αξία σερβιρισμένων" : "Total served value"}
                             </p>
                             <p className="text-2xl font-semibold">
                               {formatCurrency(totalRevenueInRange)}
@@ -3026,9 +3060,7 @@ export default function ManagerDashboard() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">
-                              {t("manager.cancels_eur", {
-                                defaultValue: "Cancels €",
-                              })}
+                              {(i18n.language.startsWith("el") ? "Αξία ακυρωμένων παραγγελιών" : "Cancelled order value")}
                             </p>
                             <p className="text-2xl font-semibold">
                               {formatCurrency(refundTotalInRange)}
@@ -3040,16 +3072,10 @@ export default function ManagerDashboard() {
                       <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold mb-4">
                           {econRange === "today" || econRange === "last24h"
-                            ? t("manager.revenue_by_hour", {
-                                defaultValue: "Revenue by hour",
-                              })
+                            ? (i18n.language.startsWith("el") ? "Αξία σερβιρισμένων ανά ώρα" : "Served value by hour")
                             : econRange === "week"
-                            ? t("manager.revenue_by_daypart", {
-                                defaultValue: "Revenue by daypart",
-                              })
-                            : t("manager.revenue_by_day", {
-                                defaultValue: "Revenue by day",
-                              })}
+                            ? (i18n.language.startsWith("el") ? "Αξία σερβιρισμένων ανά ημέρα" : "Served value by day")
+                            : (i18n.language.startsWith("el") ? "Αξία σερβιρισμένων ανά ημέρα" : "Served value by day")}
                         </h3>
                         <div className="h-72 w-full min-w-0">
                           <ResponsiveContainer width="100%" height="100%">
@@ -3077,9 +3103,7 @@ export default function ManagerDashboard() {
                                 dataKey="revenue"
                                 stroke="hsl(var(--primary))"
                                 strokeWidth={2}
-                                name={t("manager.revenue_eur", {
-                                  defaultValue: "Revenue (€)",
-                                })}
+                                name={(i18n.language.startsWith("el") ? "Αξία σερβιρισμένων (€)" : "Served value (€)")}
                               />
                               <Line
                                 type="monotone"
@@ -3097,9 +3121,7 @@ export default function ManagerDashboard() {
 
                       <Card className="p-4 sm:p-6 revenue-category-card">
                         <h3 className="text-lg font-semibold mb-4">
-                          {t("manager.revenue_by_category", {
-                            defaultValue: "Revenue by category",
-                          })}
+                          {(i18n.language.startsWith("el") ? "Αξία σερβιρισμένων ανά κατηγορία" : "Served value by category")}
                         </h3>
                         <div className="h-72">
                           {ordersBusy || !categoryRevenue ? (
@@ -3122,9 +3144,7 @@ export default function ManagerDashboard() {
                             </div>
                           ) : categoryRevenue.length === 0 ? (
                             <div className="h-full w-full rounded-xl border border-dashed border-border bg-muted/10 p-6 flex items-center justify-center text-sm text-muted-foreground">
-                              {t("manager.no_category_revenue", {
-                                defaultValue: "No category revenue yet.",
-                              })}
+                              {(i18n.language.startsWith("el") ? "Δεν υπάρχουν σερβιρισμένα είδη στην περίοδο." : "No served items in this period.")}
                             </div>
                           ) : (
                             <ResponsiveContainer width="100%" height="100%">
@@ -3157,9 +3177,7 @@ export default function ManagerDashboard() {
                                         : Number(value ?? 0);
                                     return [
                                       formatCurrency(numericValue),
-                                      t("manager.revenue", {
-                                        defaultValue: "Revenue",
-                                      }),
+                                      (i18n.language.startsWith("el") ? "Αξία σερβιρισμένων" : "Served value"),
                                     ];
                                   }}
                                 />
@@ -3172,9 +3190,7 @@ export default function ManagerDashboard() {
 
                       <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold mb-3">
-                          {t("manager.top_items_revenue", {
-                            defaultValue: "Top 5 items by revenue",
-                          })}
+                          {(i18n.language.startsWith("el") ? "Κορυφαία 5 είδη σε αξία σερβιρισμένων" : "Top 5 items by served value")}
                         </h3>
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
@@ -3184,9 +3200,7 @@ export default function ManagerDashboard() {
                                   {t("manager.item", { defaultValue: "Item" })}
                                 </th>
                                 <th className="py-2">
-                                  {t("manager.revenue", {
-                                    defaultValue: "Revenue",
-                                  })}
+                                  {(i18n.language.startsWith("el") ? "Αξία σερβιρισμένων" : "Served value")}
                                 </th>
                               </tr>
                             </thead>
@@ -3237,9 +3251,7 @@ export default function ManagerDashboard() {
                                     })}
                                   </p>
                                   <h3 className="text-lg font-semibold">
-                                    {t("manager.wow_revenue", {
-                                      defaultValue: "Week-over-Week Δ Revenue",
-                                    })}
+                                    {(i18n.language.startsWith("el") ? "Αξία σερβιρισμένων έναντι προηγούμενης περιόδου" : "Served value vs previous period")}
                                   </h3>
                                 </div>
                                 <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">

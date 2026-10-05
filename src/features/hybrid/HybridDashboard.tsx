@@ -4,9 +4,11 @@ import clsx from "clsx";
 import { motion } from "framer-motion";
 import { ChefHat, LayoutGrid, UtensilsCrossed } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { BillNavigationLink } from "@/components/BillNavigationLink";
 import CookDashboard from "@/features/cook/CookDashboard";
 import WaiterDashboard from "@/features/waiter/WaiterDashboard";
 import { api } from "@/lib/api";
+import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
 import { registerStaffPush } from "@/lib/staffPush";
 import type { OrderingMode } from "@/types";
 
@@ -33,6 +35,7 @@ const readInitial = (): HybridView => {
 
 export default function HybridDashboard() {
   const { user, isAuthenticated } = useAuthStore();
+  const recoveryVersion = useRecoveryVersion(Boolean(user));
   const [view, setView] = useState<HybridView>(readInitial);
   const [orderingMode, setOrderingMode] = useState<OrderingMode | null>(null);
 
@@ -67,7 +70,7 @@ export default function HybridDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, user?.role]);
+  }, [isAuthenticated, user?.role, user?.storeSlug, recoveryVersion]);
 
   const waiterMenuEnabled =
     orderingMode === "waiter" || orderingMode === "hybrid";
@@ -141,12 +144,14 @@ export default function HybridDashboard() {
       <div className="pointer-events-none fixed inset-x-0 top-[76px] z-[60] hidden justify-center px-3 sm:flex sm:top-[88px]">
         <div className="pointer-events-auto inline-flex items-center gap-1 rounded-2xl border border-border/60 bg-card/95 p-1.5 shadow-2xl backdrop-blur-sm">
           {options.map((option) => renderSelectorItem(option))}
+          <BillNavigationLink className="border-0 bg-transparent" />
         </div>
       </div>
 
       <nav className="sm:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 rounded-2xl bg-card/95 border border-border/60 shadow-2xl backdrop-blur-sm">
         <div className="flex w-full gap-1 p-1.5">
           {options.map((option) => renderSelectorItem(option, true))}
+          <BillNavigationLink compact />
         </div>
       </nav>
 

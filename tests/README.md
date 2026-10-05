@@ -50,3 +50,38 @@ The Core deployment bundle also contains `tests/container-smoke.mjs`, which
 checks the actual isolated PostgreSQL/Core/Front stack with Noor data, local
 login, event readiness, QR resolution and anonymous orders. It uses private
 `.env.test` credentials and writes only to that local test installation.
+
+Order recovery and local operations use the pinned `playwright-core` development
+dependency. Install Chromium with `npx playwright-core install chromium`, serve
+with `VITE_API_URL=/api VITE_LOCAL_ONLY=true` at `http://127.0.0.1:18182`, and run:
+
+```sh
+node tests/order-recovery-browser-smoke.mjs
+node tests/local-operations-browser.mjs
+```
+
+Both suites use synthetic API responses and run before image publication in
+GitHub Actions. They exercise lost responses, reloads and explicit retries,
+saved-cart recovery, staff permissions, repeated print actions, stale health
+status, and small-screen layouts in English/Greek. They never send orders or
+print jobs to a real venue. `CHROME_PATH` can point to an existing local Chrome
+installation; `PLAYWRIGHT_MODULE` can override the browser library location.
+
+Table-visit billing uses the same local fixture server on port 18182:
+
+```sh
+node tests/customer-billing-browser.mjs
+node tests/billing-report-browser.mjs
+node tests/staff-billing-browser.mjs
+```
+
+The customer suite checks bill requests, retries, visit closure, explicit new
+visits and transfers without granting access to another party. The manager suite
+checks separate sales/collections/balances, retained data after failed refresh,
+and English/Greek layouts at phone, landscape and desktop sizes. Pure visit
+storage and ended-visit isolation checks also run through `npm run test:unit`.
+These fixtures simulate a reachable LAN while the browser reports no internet.
+The staff suite covers full and partial payments, item selection, duplicate
+clicks and lost responses, stale balances, transfers, legacy-order review and
+role restrictions. Money parsing rejects invalid precision rather than silently
+rounding what a staff member entered.

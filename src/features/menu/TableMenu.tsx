@@ -40,6 +40,11 @@ import {
 } from "@/lib/frontendOfflineMenu";
 import { registerCustomerPushForOrder } from "@/lib/customerPush";
 import { realtimeService } from "@/lib/realtime";
+import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
+import { useCustomerVisit } from "@/hooks/useCustomerVisit";
+import { CustomerBill, CustomerVisitNotice } from "@/components/menu/CustomerBill";
+import { storedCustomerVisitToken } from "@/lib/customerVisitStorage";
+import { cartAfterConfirmation, clearSubmission, readSubmission, saveSubmission, submissionDefinitelyRejected, type PendingSubmission } from "@/lib/orderSubmission";
 import { useMenuStore } from "@/store/menuStore";
 import type {
   CreateOrderPayload,
@@ -1093,6 +1098,43 @@ export default function TableMenu() {
   const cancelledOrderDismissTimersRef = useRef<Map<string, number>>(new Map());
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const checkoutLockRef = useRef(false);
+  const recoveryVersion = useRecoveryVersion(!isFrontendOnlyMenu);
+  const customerVisit = useCustomerVisit({
+    storeSlug, tableId: activeTableId, enabled: !isFrontendOnlyMenu && Boolean(activeTableId && storeSlug), recoveryVersion,
+    onMoved: visit => {
+      const nextContext = `${storeSlug}:${visit.tableId}`;
+      cartContextRef.current = nextContext;
+      try {
+        localStorage.setItem("cart-table-context", nextContext);
+        localStorage.setItem(`garsone:cart-visit:${nextContext}`, visit.id);
+      } catch { /* Existing saved submission still belongs to its original visit. */ }
+      const params = new URLSearchParams(location.search);
+      params.set("storeSlug", storeSlug);
+      navigate(`/table/${visit.tableId}?${params.toString()}`, { replace: true });
+    },
+  });
+  const visitToken = customerVisit.record?.state === "active" ? customerVisit.record.token : undefined;
+  const visitReady = customerVisit.status === "ready" && customerVisit.visit?.tableId === activeTableId;
+  const readPendingForVisit = () => {
+    if (!activeTableId) return null;
+    return readSubmission(storeSlug, activeTableId) || (customerVisit.record?.pendingTableId
+      ? readSubmission(storeSlug, customerVisit.record.pendingTableId) : null);
+  };
+  useEffect(() => {
+    if (!visitReady || !customerVisit.visit) return;
+    const context = `${storeSlug}:${activeTableId}`;
+    try {
+      const key = `garsone:cart-visit:${context}`;
+      const previous = localStorage.getItem(key);
+      if (previous && previous !== customerVisit.visit.id) {
+        clearCart(); setEditingNote(undefined); setEditingOrderId(null); setEditingOrderIds([]);
+      }
+      localStorage.setItem(key, customerVisit.visit.id);
+    } catch { /* The visit hook blocks unsafe mutations if storage is unavailable. */ }
+  }, [visitReady, customerVisit.visit?.id, storeSlug, activeTableId, clearCart]);
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(null);
+  const [submissionStorageError, setSubmissionStorageError] = useState(false);
+  const submissionRecoveryRef = useRef<() => Promise<SubmittedOrderSummary | null>>(() => Promise.resolve(null));
   const [tableLookupRetry, setTableLookupRetry] = useState(0);
   const cartContextRef = useRef<string | null>(null);
   const [localitySessionId] = useState(() => getLocalitySessionId());
@@ -1120,6 +1162,7 @@ export default function TableMenu() {
       });
     },
     enabled: bootstrapQueryEnabled,
+    networkMode: import.meta.env.VITE_LOCAL_ONLY === "true" ? "always" : "online",
     staleTime: 30_000,
     gcTime: 5 * 60_000,
     refetchOnMount: "always",
@@ -1139,10 +1182,11 @@ export default function TableMenu() {
     setCustomizeOpen(false);
   }, [tableParam]);
 
-  const { data: storeMeta } = useQuery({
+  const { data: storeMeta, refetch: refetchStoreMeta } = useQuery({
     queryKey: ["store-meta", storeSlug || null],
     queryFn: async () => api.getStore(),
     enabled: !isFrontendOnlyMenu && Boolean(storeSlug || tableLookupCode),
+    networkMode: import.meta.env.VITE_LOCAL_ONLY === "true" ? "always" : "online",
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     refetchOnMount: false,
@@ -1443,11 +1487,12 @@ export default function TableMenu() {
   }, [dismissedOrderStorageKey]);
 
   useEffect(() => {
-    if (isFrontendOnlyMenu || !customerOrderRecallEnabled || !activeTableId) {
+    if (isFrontendOnlyMenu || !customerOrderRecallEnabled || !activeTableId || !visitReady) {
       setPlacedOrders([]);
       setLastOrder(null);
       setLastOrderButtonVisible(false);
       setActiveOrderOpen(false);
+      setActiveLineEditor(null);
       return;
     }
     let cancelled = false;
@@ -1458,7 +1503,8 @@ export default function TableMenu() {
         const res = await api.getPublicTableOrders(activeTableId, {
           storeSlug: storeSlug || undefined,
           unpaid: true,
-          take: 10,
+          visit: visitToken,
+          take: 100,
         });
         if (cancelled) return;
         const dismissedIds = readDismissedOrderIds(dismissedOrderStorageKey);
@@ -1492,12 +1538,12 @@ export default function TableMenu() {
         if (!cancelled) setPlacedLoading(false);
       }
     };
-    // One-time fetch to hydrate; live updates handled via realtime subscriptions below.
+    // Reconcile missed events after reconnect or phone wake, while preserving the draft cart.
     fetchPlaced();
     return () => {
       cancelled = true;
     };
-  }, [isFrontendOnlyMenu, customerOrderRecallEnabled, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug]);
+  }, [isFrontendOnlyMenu, customerOrderRecallEnabled, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, storeSlug, recoveryVersion, visitReady, visitToken, customerVisit.visit?.revision]);
 
   const computeOrderTotal = (order: SubmittedOrderSummary | null) => {
     return computeSubmittedOrderTotal(order);
@@ -1882,7 +1928,7 @@ export default function TableMenu() {
     selected: Record<string, string | string[]>,
     qty: number
   ) => {
-    if (!customerOrderRecallEnabled || !activeLineEditor || activeLineSavingRef.current) return;
+    if (!customerOrderRecallEnabled || !activeLineEditor || activeLineSavingRef.current || !visitReady) return;
     activeLineSavingRef.current = true;
     setActiveLineSaving(true);
     try {
@@ -1892,8 +1938,10 @@ export default function TableMenu() {
         {
           quantity: Math.max(0, qty),
           modifiers: selected,
+          visit: visitToken,
         }
       );
+      if (storedCustomerVisitToken(storeSlug, activeTableId) !== visitToken) return;
       const summary = toOrderSummary(response.order);
       setLastOrder(summary);
       setPlacedOrders((current) => {
@@ -1969,7 +2017,8 @@ export default function TableMenu() {
       try {
         const res = await api.getPublicTableOrders(activeTableId, {
           storeSlug: storeSlug || undefined,
-          take: 10,
+          visit: visitToken,
+          take: 100,
         });
         const freshOrder = (res?.orders ?? [])
           .map(toOrderSummary)
@@ -2086,6 +2135,107 @@ export default function TableMenu() {
     return summary;
   };
 
+  const recoverSavedSubmission = async (retrySaved = false): Promise<SubmittedOrderSummary | null> => {
+    if (!activeTableId || !storeSlug || isFrontendOnlyMenu || checkoutLockRef.current) return null;
+    let pending: PendingSubmission | null;
+    try {
+      pending = readPendingForVisit();
+      setSubmissionStorageError(false);
+    } catch {
+      setSubmissionStorageError(true);
+      return null;
+    }
+    setPendingSubmission(pending);
+    if (!pending) return null;
+    const context = `${storeSlug}:${activeTableId}`;
+    let retryPostStarted = false;
+    checkoutLockRef.current = true;
+    setCheckoutBusy(true);
+    try {
+      let response: OrderResponse;
+      try {
+        response = await api.recoverOrderSubmission(pending.payload.submissionId, pending.payload.tableId, storeSlug, pending.payload.visit);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+        // A 404 never triggers a background POST. Only this explicit retry sends the saved order.
+        if (!retrySaved) return null;
+        retryPostStarted = true;
+        try {
+          response = await api.createOrder(pending.payload, pending.storeSlug);
+        } catch (error) {
+          if (error instanceof ApiError && error.code === "VISIT_MOVED") {
+            // A transfer and an older in-flight POST may race. Recheck after the
+            // server's moved-table rejection before retiring the original key.
+            try {
+              response = await api.recoverOrderSubmission(pending.payload.submissionId, pending.payload.tableId, pending.storeSlug, pending.payload.visit);
+            } catch (lookupError) {
+              if (!(lookupError instanceof ApiError && lookupError.status === 404)) throw lookupError;
+              clearSubmission(pending); setPendingSubmission(null);
+              toast({ title: preferGreek ? "Το τραπέζι σας άλλαξε" : "Your table has changed",
+                description: preferGreek ? "Η παραγγελία δεν στάλθηκε. Ελέγξτε το αποθηκευμένο καλάθι και στείλτε τη στο νέο τραπέζι." : "The order was not sent. Review your saved cart and place it at your new table." });
+              return null;
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
+      if (!response.order?.id) throw new Error("Order confirmation was incomplete");
+      const summary = toOrderSummary(response.order);
+      clearSubmission(pending);
+      if (cartContextRef.current !== context) return summary;
+      if (pending.payload.visit && storedCustomerVisitToken(storeSlug, activeTableId) !== pending.payload.visit) return summary;
+      useCartStore.getState().setItems(cartAfterConfirmation(useCartStore.getState().items, pending.cart));
+      setPendingSubmission(null);
+      setLastOrder(summary);
+      upsertPlacedOrder(summary);
+      setLastOrderButtonVisible(customerOrderRecallEnabled);
+      toast({ title: preferGreek ? "Η παραγγελία επιβεβαιώθηκε" : "Order confirmed" });
+      return summary;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "VISIT_CLOSED") {
+        setPendingSubmission(null);
+        if (retrySaved) toast({ title: preferGreek ? "Η επίσκεψη ολοκληρώθηκε" : "This visit has ended" });
+        return null;
+      }
+      if (retryPostStarted && submissionDefinitelyRejected(error)) {
+        try { clearSubmission(pending); setPendingSubmission(null); } catch { setSubmissionStorageError(true); }
+        toast({ title: preferGreek ? "Η παραγγελία δεν στάλθηκε" : "Order was not sent",
+          description: preferGreek ? "Το καλάθι διατηρήθηκε. Ελέγξτε το και δοκιμάστε ξανά." : "Your cart is saved. Review it and try again.", variant: "destructive" });
+      } else if (retrySaved) {
+        toast({ title: preferGreek ? "Αναμονή επιβεβαίωσης" : "Awaiting confirmation",
+          description: preferGreek ? "Η παραγγελία αποθηκεύτηκε για ασφαλή επανάληψη." : "Your order is saved for a safe retry." });
+      }
+      return null;
+    } finally {
+      checkoutLockRef.current = false;
+      setCheckoutBusy(false);
+    }
+  };
+  submissionRecoveryRef.current = () => recoverSavedSubmission();
+
+  useEffect(() => {
+    setPendingSubmission(null);
+  }, [activeTableId, storeSlug]);
+
+  useEffect(() => {
+    void submissionRecoveryRef.current();
+  }, [activeTableId, storeSlug, recoveryVersion, visitReady, customerVisit.record?.pendingTableId]);
+
+  useEffect(() => {
+    if (isFrontendOnlyMenu || !recoveryVersion || !bootstrapQueryEnabled) return;
+    void refetchBootstrap();
+    void refetchStoreMeta();
+  }, [recoveryVersion, isFrontendOnlyMenu, bootstrapQueryEnabled, refetchBootstrap, refetchStoreMeta]);
+
+  useEffect(() => {
+    if (!storeSlug || isFrontendOnlyMenu) return;
+    const topic = `stores/${storeSlug}/menu/updated`;
+    const refreshMenu = () => { void refetchBootstrap(); void refetchStoreMeta(); };
+    realtimeService.subscribe(topic, refreshMenu);
+    return () => realtimeService.unsubscribe(topic, refreshMenu);
+  }, [storeSlug, isFrontendOnlyMenu, refetchBootstrap, refetchStoreMeta]);
+
   const handleCheckout = async (
     note?: string
   ): Promise<SubmittedOrderSummary | null> => {
@@ -2123,6 +2273,23 @@ export default function TableMenu() {
       return null;
     }
 
+    // Resolve an older attempt before allowing a different cart to become a new order.
+    try {
+      if (readPendingForVisit()) {
+        const recovered = await recoverSavedSubmission();
+        if (!recovered) toast({ title: preferGreek ? "Εκκρεμεί προηγούμενη παραγγελία" : "Your previous order is awaiting confirmation",
+          description: preferGreek ? "Χρησιμοποιήστε την επανάληψη της αποθηκευμένης παραγγελίας." : "Use Retry saved order to safely finish it." });
+        return recovered;
+      }
+    } catch {
+      setSubmissionStorageError(true);
+      return null;
+    }
+    if (!visitReady || !visitToken) {
+      customerVisit.refresh();
+      toast({ title: preferGreek ? "Ελέγχουμε την πρόσβαση στην επίσκεψή σας" : "Checking your visit access" });
+      return null;
+    }
     const cartItems = useCartStore.getState().items;
     if (!cartItems.length) {
       toast({
@@ -2153,10 +2320,12 @@ export default function TableMenu() {
     // render must never submit the same cart twice.
     checkoutLockRef.current = true;
     setCheckoutBusy(true);
+    let attempt: PendingSubmission | null = null;
     try {
       // Checkout sends the cart directly; no payment redirect or tag scan is needed.
       const payload: CreateOrderPayload = {
         tableId: activeTableId,
+        visit: visitToken,
         items: cartItems.map((item) => ({
           itemId: item.item.id,
           quantity: item.quantity,
@@ -2169,19 +2338,38 @@ export default function TableMenu() {
         "order_submit_attempted",
         "direct_submit"
       );
-      const wasEditing = Boolean(editingOrderId);
+      const wasEditing = isEditingExisting;
+      if (!wasEditing) {
+        try {
+          attempt = saveSubmission(storeSlug, payload, cartItems);
+          setPendingSubmission(attempt);
+          setSubmissionStorageError(false);
+        } catch {
+          setSubmissionStorageError(true);
+          return null;
+        }
+      }
       const response = isEditingPendingBatch
         ? await api.editPendingTableOrders(activeTableId, {
             items: payload.items,
             note: payload.note,
+            visit: payload.visit,
             orderIds: editingOrderIds,
           })
         : editingOrderId
         ? await api.editOrder(editingOrderId, payload)
-        : await api.createOrder(payload);
+        : await api.createOrder(attempt!.payload, storeSlug);
       const order = (response as any)?.order;
       if (!order?.id) {
         throw new Error("Order was not created");
+      }
+      if (attempt?.payload.visit && storedCustomerVisitToken(storeSlug, activeTableId) !== attempt.payload.visit) {
+        clearSubmission(attempt);
+        return toOrderSummary(order);
+      }
+      if (cartContextRef.current !== `${storeSlug}:${activeTableId}`) {
+        if (attempt) clearSubmission(attempt);
+        return toOrderSummary(order);
       }
       const summary = toOrderSummary(order);
       const supersededOrderIds = Array.isArray((response as any)?.supersededOrderIds)
@@ -2206,7 +2394,11 @@ export default function TableMenu() {
         storeSlug: storeSlug || undefined,
         requestPermission: true,
       });
-      clearCart();
+      if (attempt) {
+        clearSubmission(attempt);
+        setPendingSubmission(null);
+        useCartStore.getState().setItems(cartAfterConfirmation(useCartStore.getState().items, attempt.cart));
+      } else clearCart();
       stopEditingLastOrder();
       void trackOrderEvent(
         "order_submit_succeeded",
@@ -2222,6 +2414,14 @@ export default function TableMenu() {
       navigate(`/order/${summary.id}/thanks?${successParams.toString()}`);
       return summary;
     } catch (error) {
+      if (error instanceof ApiError && error.code === "VISIT_CLOSED") {
+        setPendingSubmission(null);
+        toast({ title: preferGreek ? "Η επίσκεψη ολοκληρώθηκε" : "This visit has ended" });
+        return null;
+      }
+      if (attempt && submissionDefinitelyRejected(error)) {
+        try { clearSubmission(attempt); setPendingSubmission(null); } catch { setSubmissionStorageError(true); }
+      }
       console.error("Checkout failed:", {
         error,
         storeSlug,
@@ -2240,15 +2440,16 @@ export default function TableMenu() {
         reason: message,
         }
       );
+      const uncertain = attempt && !submissionDefinitelyRejected(error);
       toast({
-        title: error instanceof TypeError || (error instanceof ApiError && error.status === 0)
-          ? t("menu.order_confirmation_pending", { defaultValue: "Order confirmation pending" })
+        title: uncertain
+          ? (preferGreek ? "Αναμονή επιβεβαίωσης" : "Awaiting confirmation")
           : t("menu.order_could_not_be_sent", { defaultValue: "Order could not be sent" }),
-        description: error instanceof TypeError || (error instanceof ApiError && error.status === 0)
-          ? t("menu.order_confirmation_unknown", { defaultValue: "We couldn’t confirm whether your order arrived. Your cart is saved. Please ask a member of staff before submitting again." })
+        description: uncertain
+          ? (preferGreek ? "Η παραγγελία αποθηκεύτηκε. Θα την ελέγξουμε μόλις επανέλθει η σύνδεση." : "Your order is saved. We will check it when the connection returns.")
           : error instanceof Error ? error.message
           : t("menu.order_failed_cart_saved", { defaultValue: "Your cart is saved. Please check your connection and try again." }),
-        variant: "destructive",
+        variant: uncertain ? "default" : "destructive",
       });
       return null;
     } finally {
@@ -2295,7 +2496,7 @@ export default function TableMenu() {
 
   useEffect(() => {
     // subscribe for call acknowledgements for this table
-    if (isFrontendOnlyMenu || !activeTableId || !storeSlug) return;
+    if (isFrontendOnlyMenu || !activeTableId || !storeSlug || !visitReady) return;
     let mounted = true;
     const callTopic = `${storeSlug}/waiter/call`;
     const preparingTopicLegacy = `${storeSlug}/orders/prepairing`;
@@ -2306,9 +2507,12 @@ export default function TableMenu() {
     const paidTopic = `${storeSlug}/orders/paid`;
     const servedTopic = `${storeSlug}/orders/served`;
     const placedTopic = `${storeSlug}/orders/placed`;
+    const visitTopic = `${storeSlug}/visits/updated`;
+    const handleVisitUpdated = () => customerVisit.refresh();
     (async () => {
       await realtimeService.connect();
       const updateStatus = (status: OrderStatus) => (payload: unknown) => {
+        customerVisit.refresh();
         if (!mounted || !isOrderEventMessage(payload)) return;
         if (!customerOrderRecallEnabled) return;
         if (payload.tableId && payload.tableId !== activeTableId) return;
@@ -2354,6 +2558,7 @@ export default function TableMenu() {
       const handlePaid = updateStatus("PAID");
       const handleServed = updateStatus("SERVED");
       const handlePlaced = (payload: any) => {
+        customerVisit.refresh();
         if (
           !mounted ||
           !customerOrderRecallEnabled ||
@@ -2361,6 +2566,7 @@ export default function TableMenu() {
           (payload as any).tableId !== activeTableId
         )
           return;
+        if (!Array.isArray(payload?.order?.items) && !Array.isArray(payload?.items)) return;
         const summary = toOrderSummary((payload as any).order ?? payload);
         if (isOrderDismissed(summary)) return;
         upsertPlacedOrder(summary);
@@ -2392,6 +2598,7 @@ export default function TableMenu() {
       realtimeService.subscribe(paidTopic, handlePaid);
       realtimeService.subscribe(servedTopic, handleServed);
       realtimeService.subscribe(placedTopic, handlePlaced);
+      realtimeService.subscribe(visitTopic, handleVisitUpdated);
     })();
     return () => {
       mounted = false;
@@ -2404,8 +2611,9 @@ export default function TableMenu() {
       realtimeService.unsubscribe(paidTopic);
       realtimeService.unsubscribe(servedTopic);
       realtimeService.unsubscribe(placedTopic);
+      realtimeService.unsubscribe(visitTopic, handleVisitUpdated);
     };
-  }, [isFrontendOnlyMenu, customerOrderRecallEnabled, storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible]);
+  }, [isFrontendOnlyMenu, customerOrderRecallEnabled, storeSlug, activeTableId, activeOrderOpen, dismissedOrderStorageKey, lastOrderButtonVisible, visitReady, visitToken]);
 
   useEffect(() => {
     // Collapse the call CTA while a call is in-flight/accepted
@@ -2436,13 +2644,14 @@ export default function TableMenu() {
       window.setTimeout(() => setCalling("idle"), 4000);
       return;
     }
+    if (!visitReady || !visitToken) { customerVisit.refresh(); return; }
     try {
       setCalling("pending");
       console.info("[menu:call-waiter] sending", {
         tableId: activeTableId,
         storeSlug: storeSlug || null,
       });
-      await api.callWaiter(activeTableId, undefined, {
+      await api.callWaiter(activeTableId, visitToken, {
         storeSlug: storeSlug || undefined,
       });
       console.info("[menu:call-waiter] sent", {
@@ -2590,6 +2799,7 @@ export default function TableMenu() {
               {/* Table label intentionally hidden per request */}
             </div>
             <div className="flex shrink-0 gap-1.5 items-center sm:gap-2">
+              {!isFrontendOnlyMenu && <CustomerBill visitState={customerVisit} preferGreek={preferGreek} themeClass={themedWrapper} />}
               <button
                 type="button"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -2681,6 +2891,23 @@ export default function TableMenu() {
               : hasActiveOrderBar && "pb-[calc(var(--menu-secondary-bar-space,5rem)+1.75rem+env(safe-area-inset-bottom))]"
           )}
         >
+          {!isFrontendOnlyMenu && <CustomerVisitNotice visitState={customerVisit} preferGreek={preferGreek} />}
+          {submissionStorageError && (
+            <div role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-card px-4 py-3 text-sm">
+              {preferGreek ? "Δεν μπορούμε να αποθηκεύσουμε με ασφάλεια την παραγγελία σε αυτό το πρόγραμμα περιήγησης. Το καλάθι διατηρήθηκε· ζητήστε βοήθεια από το προσωπικό." : "This browser cannot safely save your order. Your cart is kept; please ask a member of staff for help."}
+            </div>
+          )}
+          {pendingSubmission && (
+            <div role="status" data-testid="order-recovery" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-card px-4 py-3 shadow-sm">
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="font-semibold">{preferGreek ? "Αναμονή επιβεβαίωσης" : "Awaiting confirmation"}</p>
+                <p className="text-xs text-muted-foreground">{preferGreek ? "Η προηγούμενη παραγγελία σας είναι αποθηκευμένη." : "Your previous order is saved."}</p>
+              </div>
+              <Button variant="outline" className="min-h-11 max-w-full whitespace-normal" disabled={checkoutBusy} onClick={() => void recoverSavedSubmission(true)}>
+                {checkoutBusy ? (preferGreek ? "Έλεγχος…" : "Checking…") : (preferGreek ? "Επανάληψη αποθηκευμένης" : "Retry saved order")}
+              </Button>
+            </div>
+          )}
           {!guestOrderingEnabled && !isFrontendOnlyMenu && (
             <div className="mb-6 rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
               <p className="text-sm font-semibold text-foreground">
@@ -3285,4 +3512,3 @@ export default function TableMenu() {
     </div>
   );
 }
-

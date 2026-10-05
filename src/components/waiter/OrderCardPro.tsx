@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { billingCopy } from '@/pages/billingCopy';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { Order, OrderItemStatus, OrderStatus } from '@/types';
@@ -92,6 +94,8 @@ export function OrderCardPro({
   busy = false,
   highlighted = false,
 }: Props) {
+  const { i18n } = useTranslation();
+  const billLabel = billingCopy[(i18n.resolvedLanguage || i18n.language).startsWith('el') ? 'el' : 'en'].bill;
   const [localBusy, setLocalBusy] = useState(false);
   const [itemBusy, setItemBusy] = useState<Set<string>>(new Set());
   const isBusy = busy || localBusy;
@@ -161,7 +165,7 @@ export function OrderCardPro({
             ) : (
               <>
                 <CreditCard className="w-4 h-4" />
-                <span>Paid</span>
+                <span>{billLabel}</span>
               </>
             )}
           </motion.button>
@@ -215,7 +219,7 @@ export function OrderCardPro({
           disabled={isBusy}
           className={clsx(buttonBase, 'bg-green-600 text-white hover:bg-green-700 flex-1')}
         >
-          {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CreditCard className="w-4 h-4" /><span>Paid</span></>}
+          {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CreditCard className="w-4 h-4" /><span>{billLabel}</span></>}
         </motion.button>
       );
     }

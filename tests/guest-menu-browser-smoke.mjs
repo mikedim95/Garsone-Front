@@ -11,6 +11,8 @@ const tableId = '11111111-1111-4111-8111-111111111111';
 const categoryId = '22222222-2222-4222-8222-222222222222';
 const itemId = '33333333-3333-4333-8333-333333333333';
 const orderId = '44444444-4444-4444-8444-444444444444';
+const visitId = '66666666-6666-4666-8666-666666666666';
+const visitToken = '1'.repeat(64);
 const store = { id: '55555555-5555-4555-8555-555555555555', slug: 'test-venue', name: 'Test Venue', orderingMode: 'qr', customerOrderRecallEnabled: true };
 const modifier = { id: 'flavours', name: 'Flavours', titleEn: 'Flavours', required: true, minSelect: 2, maxSelect: 2,
   options: ['Mint', 'Apple', 'Lemon'].map(name => ({ id: name.toLowerCase(), label: name, titleEn: name, priceDeltaCents: 0 })) };
@@ -38,6 +40,14 @@ try {
   let firstOrderStarted;
   const firstOrderRequest = new Promise(resolve => { firstOrderStarted = resolve; });
   let createdOrder = null;
+  const orderPayloads = [];
+  const visitSnapshot = () => ({ id: visitId, tableId, tableLabel: '1', status: 'OPEN', revision: createdOrder ? 2 : 1,
+    currencyCode: 'EUR', openedAt: new Date().toISOString(), closedAt: null, billRequestedAt: null,
+    totalCents: createdOrder?.totalCents || 0, paidCents: 0, outstandingCents: createdOrder?.totalCents || 0,
+    orderCount: createdOrder ? 1 : 0, orders: createdOrder ? [createdOrder] : [],
+    items: createdOrder ? createdOrder.items.map(line => ({ orderItemId: line.id, orderId, title: line.title,
+      quantity: line.quantity, unitPriceCents: line.unitPriceCents, totalCents: line.quantity * line.unitPriceCents,
+      paidCents: 0, outstandingCents: line.quantity * line.unitPriceCents, remainingQuantity: line.quantity })) : [] });
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -52,6 +62,15 @@ try {
       status = failBootstrap ? 503 : 200;
       body = failBootstrap ? { error: 'MENU_UNAVAILABLE', message: 'Please reconnect to the venue Wi-Fi and try again.' }
         : { ...bootstrap, table: nullTable ? null : bootstrap.table };
+    } else if (path === `/public/table/${tableId}/visit` && request.method() === 'POST') body = { visit: visitSnapshot(), visitToken };
+    else if (path === `/public/visits/${visitId}`) {
+      assert.equal(request.headers()['x-table-visit'], visitToken);
+      body = { visit: visitSnapshot() };
+    } else if (path.startsWith('/orders/submissions/')) {
+      assert.equal(request.headers()['x-table-visit'], visitToken);
+      assert.equal(url.searchParams.get('tableId'), tableId);
+      status = createdOrder ? 200 : 404;
+      body = createdOrder ? { order: createdOrder, replayed: true } : { error: 'ORDER_SUBMISSION_NOT_FOUND' };
     } else if (path === '/store') body = { store, meta: { currencyCode: 'EUR', locale: 'en' } };
     else if (path === `/public/table/${tableId}`) body = { tableId, tableLabel: '1', storeSlug: store.slug, storeName: store.name };
     else if (path === `/public/table/${tableId}/orders`) body = { orders: createdOrder ? [createdOrder] : [] };
@@ -60,13 +79,15 @@ try {
     else if (path === '/orders' && request.method() === 'POST') {
       orderPosts++;
       postedPayload = request.postDataJSON();
+      orderPayloads.push(postedPayload);
+      assert.equal(postedPayload.visit, visitToken, 'Guest order must retain the current visit capability');
       if (orderPosts === 1) {
         firstOrderStarted();
         await firstOrderGate;
         status = 503;
         body = { error: 'ORDER_UNAVAILABLE', message: 'The venue is busy. Please try again.' };
       } else {
-        createdOrder = { id: orderId, tableId, tableLabel: '1', status: 'PLACED', totalCents: 500,
+        createdOrder = { id: orderId, tableId, diningVisitId: visitId, tableLabel: '1', status: 'PLACED', totalCents: 500,
           createdAt: new Date().toISOString(), note: postedPayload.note,
           items: [{ id: 'line-test', itemId, title: 'Tea', quantity: 1, unitPriceCents: 500, modifiers: [] }] };
         body = { order: createdOrder };
@@ -119,12 +140,17 @@ try {
   assert.equal(requests.some(request => request.path === '/public/push/key'), false, 'Local ordering must not wait on push permission or cloud push');
   releaseFirstOrder();
   await dialog.getByRole('button', { name: 'Place order', exact: true }).waitFor({ state: 'visible' });
-  await page.getByText('The venue is busy. Please try again.', { exact: true }).waitFor();
+  await page.getByTestId('order-recovery').waitFor();
   assert.equal(await dialog.getByRole('textbox').inputValue(), 'Please bring two cups.');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('cart-storage')).state.items.length), 1);
-  await dialog.getByRole('button', { name: 'Place order', exact: true }).click();
-  await page.waitForURL(`**/order/${orderId}/thanks?**`);
+  // A 503 is uncertain: the saved order is retried explicitly with its original
+  // key and capability, rather than starting another order from the cart.
+  await dialog.getByRole('button', { name: 'Close cart', exact: true }).last().click();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Retry saved order', exact: true }).click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('cart-storage')).state.items.length === 0);
   assert.equal(orderPosts, 2);
+  assert.deepEqual(orderPayloads[1], orderPayloads[0], 'Explicit retry must reuse the exact saved order');
   assert.equal(postedPayload.note, 'Please bring two cups.');
   assert.equal(postedPayload.paymentSessionId, undefined);
   assert.equal(postedPayload.localityApprovalToken, undefined);

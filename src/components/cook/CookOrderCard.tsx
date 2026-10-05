@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CookOrderItem } from "./CookOrderItem";
 import { formatTableLabel } from "@/lib/formatTableLabel";
+import { billingCopy } from "@/pages/billingCopy";
 import {
   CheckCircle2,
   ChefHat,
@@ -87,7 +88,7 @@ export const CookOrderCard = ({
   isActing,
   isCancelling = false,
 }: CookOrderCardProps) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
 
   const orderStatus = order.status;
@@ -420,7 +421,7 @@ export const CookOrderCard = ({
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                  {t("actions.mark_paid", { defaultValue: "Mark Paid" })}
+                  {billingCopy[(i18n.resolvedLanguage || i18n.language).startsWith("el") ? "el" : "en"].bill}
                 </>
               )}
             </Button>

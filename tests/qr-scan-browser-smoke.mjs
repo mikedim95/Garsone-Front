@@ -16,6 +16,8 @@ if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname)) {
 const artifactDir = process.env.QR_SCAN_ARTIFACT_DIR || fileURLToPath(new URL("../../Garsone-Core/deploy/pi/full-stack/artifacts/", import.meta.url));
 const eventId = "a7a8c9d0-1234-4567-8123-123456789abc";
 const tableId = "d7a8c9d0-1234-4567-8123-123456789abc";
+const visitId = "e7a8c9d0-1234-4567-8123-123456789abc";
+const visitToken = "2".repeat(64);
 const storeId = "c7a8c9d0-1234-4567-8123-123456789abc";
 const code = "GT-ABCD-2345";
 const tablePath = `/table/${tableId}?storeSlug=noor`;
@@ -65,10 +67,20 @@ async function scenario(name, handler, verify, options = {}) {
     // The success assertion follows the canonical table route. Its data is an empty
     // fixture so the same smoke works with both source modules and built chunks.
     const store = { id: storeId, slug: "noor", name: "Noor", orderingMode: "qr", currencyCode: "EUR", locale: "en", customerOrderRecallEnabled: false, settings: {} };
+    const visit = { id: visitId, tableId, tableLabel: "Table 1", status: "OPEN", revision: 1, currencyCode: "EUR",
+      openedAt: new Date().toISOString(), closedAt: null, billRequestedAt: null, totalCents: 0, paidCents: 0,
+      outstandingCents: 0, orderCount: 0, orders: [], items: [] };
     if (url.pathname === "/api/public/menu-bootstrap") {
       return fulfill(route, { store, table: { id: tableId, label: "Table 1" }, menu: { categories: [], items: [], modifiers: [], itemModifiers: [] } });
     }
     if (url.pathname === "/api/store") return fulfill(route, { store });
+    if (url.pathname === `/api/public/table/${tableId}/visit` && request.method() === "POST") return fulfill(route, { visit, visitToken });
+    if (url.pathname === `/api/public/visits/${visitId}`) {
+      assert.equal(request.headers()["x-table-visit"], visitToken);
+      return fulfill(route, { visit });
+    }
+    if (url.pathname === `/api/public/table/${tableId}/orders`) return fulfill(route, { orders: [] });
+    if (url.pathname === `/api/public/table/${tableId}`) return fulfill(route, { tableId, tableLabel: "Table 1", storeSlug: "noor", storeName: "Noor" });
     if (url.pathname === `/api/tables/${tableId}/public`) return fulfill(route, { tableId, tableLabel: "Table 1", storeSlug: "noor", storeName: "Noor" });
     if (url.pathname === "/api/orders/public-summary") return fulfill(route, { orders: [] });
     if (url.pathname.startsWith("/api/")) {

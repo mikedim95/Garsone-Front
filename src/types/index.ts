@@ -67,6 +67,7 @@ export interface CartItem {
 }
 
 export interface Order {
+  diningVisitId?: string | null;
   id: string;
   tableId: string;
   tableLabel: string;
@@ -609,6 +610,7 @@ export interface CreateOrderPayloadItem {
 
 export interface CreateOrderPayload {
   tableId: string;
+  submissionId?: string;
   items: CreateOrderPayloadItem[];
   note?: string;
   visit?: string;
@@ -616,6 +618,7 @@ export interface CreateOrderPayload {
 
 export interface OrderResponse {
   order: Order;
+  replayed?: boolean;
 }
 
 export interface OrdersResponse {
