@@ -2718,8 +2718,8 @@ export default function ManagerDashboard() {
   const DateRangeHeader = () => (
     <div className="relative flex w-full items-center justify-center">
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-center sm:justify-center gap-3 w-full">
-        <div className="flex items-center gap-2 flex-wrap justify-center">
-          <div className="inline-flex rounded-lg border border-border/60 bg-card overflow-hidden shadow-sm">
+        <div className="flex min-w-0 max-w-full items-center gap-2 flex-wrap justify-center">
+          <div className="inline-flex max-w-full flex-wrap justify-center rounded-lg border border-border/60 bg-card overflow-hidden shadow-sm">
             {[
               {
                 key: "today",
@@ -2758,7 +2758,7 @@ export default function ManagerDashboard() {
           </div>
         </div>
         {econRange === "custom" && (
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex max-w-full flex-wrap items-center justify-center gap-2 text-sm">
             <input
               type="date"
               value={customRange.start}
