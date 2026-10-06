@@ -38,7 +38,7 @@ async function createCase(viewport, language = 'en', role = 'manager') {
   await context.addInitScript(({ language, role }) => {
     localStorage.setItem('language', language);
     localStorage.setItem('STORE_SLUG', 'noor');
-    sessionStorage.setItem('auth-storage', JSON.stringify({ state: { user: { id: 'manager-fixture', role, storeSlug: 'noor', email: 'manager@fixture.local' }, token: 'fixture-token' }, version: 0 }));
+    if (role) sessionStorage.setItem('auth-storage', JSON.stringify({ state: { user: { id: 'manager-fixture', role, storeSlug: 'noor', email: 'manager@fixture.local' }, token: 'fixture-token' }, version: 0 }));
   }, { language, role });
   const state = { data: fixture(), posts: [], seen: new Set(), loseNextResponse: false, failReads: false, reads: 0 };
   const page = await context.newPage();
@@ -192,11 +192,14 @@ try {
   checks.push('cloud-response-hidden');
   await context.close();
 
-  const denied = await createCase({ width: 390, height: 844 }, 'en', 'cook');
-  await denied.page.waitForURL('**/login');
-  assert.equal(denied.state.reads, 0, 'A cook cannot query manager operations from this page');
-  checks.push('role-gate');
-  await denied.context.close();
+  for (const role of ['cook', 'waiter', 'hybrid', null]) {
+    const denied = await createCase({ width: 390, height: 844 }, 'en', role);
+    await denied.page.waitForURL('**/login');
+    assert.equal(denied.state.reads, 0, `${role || 'Anonymous'} cannot query manager operations from this page`);
+    assert.equal(denied.state.posts.length, 0);
+    checks.push(`role-gate-${role || 'anonymous'}`);
+    await denied.context.close();
+  }
   assert.deepEqual(errors, [], 'No browser runtime errors');
   await fs.writeFile(path.join(artifacts, 'report.json'), JSON.stringify({ checks, errors }, null, 2));
   console.log(`Local operations: ${checks.length} checks passed; fixtures only.`);

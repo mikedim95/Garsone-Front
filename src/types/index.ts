@@ -207,6 +207,7 @@ export interface SubmittedOrderSummary {
 export interface StoreInfo {
   id: string;
   name: string;
+  dataSource?: 'ONLINE' | 'PI';
   slug?: string;
   currencyCode?: string;
   currencySymbol?: string;
@@ -437,9 +438,10 @@ export interface StoreOverview {
   id: string;
   name: string;
   slug?: string;
-  usersCount: number;
-  tilesCount: number;
-  ordersCount: number;
+  dataSource?: 'ONLINE' | 'PI';
+  usersCount: number | null;
+  tilesCount: number | null;
+  ordersCount: number | null;
 }
 
 export interface StoreOnboardPayload {

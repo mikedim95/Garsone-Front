@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
   Check,
@@ -76,6 +77,8 @@ import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import ArchitectQrEvents from "./ArchitectQrEvents";
+import ArchitectLocalPrinters from "./ArchitectLocalPrinters";
+import { getLocalStoreSnapshot } from "@/lib/architectLocalOperations";
 import { localOperationsCopy } from "@/pages/localOperationsCopy";
 import type {
   ArchitectStoreUser,
@@ -95,7 +98,7 @@ import type {
 
 type StoreOption = Pick<
   StoreInfo,
-  "id" | "name" | "slug" | "orderingMode" | "printers"
+  "id" | "name" | "slug" | "orderingMode" | "printers" | "dataSource"
 >;
 
 function ArchitectSectionTabs({ value, label, children }: { value: string; label: string; children: ReactNode }) {
@@ -315,7 +318,7 @@ const formatDate = (value?: string) => {
 
 const buildSparkline = (store: StoreOverview, points = 12) => {
   const base =
-    store.usersCount * 0.6 + store.tilesCount * 0.25 + store.ordersCount * 0.15;
+    (store.usersCount ?? 0) * 0.6 + (store.tilesCount ?? 0) * 0.25 + (store.ordersCount ?? 0) * 0.15;
   const seed = (store.slug ?? store.id).length + base;
   return Array.from({ length: points }, (_, index) => {
     const wave =
@@ -522,7 +525,7 @@ function MetricCard({
   description,
 }: {
   title: string;
-  value: number;
+  value: number | string;
   description: string;
 }) {
   return (
@@ -609,6 +612,8 @@ export default function ArchitectQrTiles() {
 
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState("");
+  const selectedStoreIdRef = useRef(selectedStoreId);
+  selectedStoreIdRef.current = selectedStoreId;
   const [activeTab, setActiveTab] = useState<ActiveTab>("pool");
   const [storeTab, setStoreTab] = useState("store-overview");
   const [qrEventsDirty, setQrEventsDirty] = useState(false);
@@ -632,6 +637,7 @@ export default function ArchitectQrTiles() {
   );
   const [storeUsers, setStoreUsers] = useState<ArchitectStoreUser[]>([]);
   const [loadingStoreUsers, setLoadingStoreUsers] = useState(false);
+  const [storeUsersError, setStoreUsersError] = useState<string | null>(null);
   const [savingStoreUser, setSavingStoreUser] = useState(false);
   const [editingStoreUserId, setEditingStoreUserId] = useState<string | null>(
     null,
@@ -672,6 +678,7 @@ export default function ArchitectQrTiles() {
     VenueDeploymentEvent[]
   >([]);
   const [loadingDeployment, setLoadingDeployment] = useState(false);
+  const [deploymentStoreId, setDeploymentStoreId] = useState("");
   const [managingDeployment, setManagingDeployment] = useState(false);
   const [pendingNodes, setPendingNodes] = useState<PendingNodeAgent[]>([]);
   const [claimingNodeId, setClaimingNodeId] = useState<string | null>(null);
@@ -688,6 +695,23 @@ export default function ArchitectQrTiles() {
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
     [selectedStoreId, stores],
   );
+  const isPiVenue = selectedStore?.dataSource === "PI" || (deploymentStoreId === selectedStoreId && venueDeployment.target === "PI");
+  const [localStatusNow, setLocalStatusNow] = useState(Date.now);
+  useEffect(() => {
+    if (!isPiVenue) return;
+    const timer = window.setInterval(() => setLocalStatusNow(Date.now()), 5_000);
+    return () => window.clearInterval(timer);
+  }, [isPiVenue]);
+  const localSnapshot = useQuery({
+    queryKey: ["architect-local-store", selectedStoreId],
+    queryFn: ({ signal }) => getLocalStoreSnapshot(selectedStoreId, signal),
+    enabled: isArchitect && isPiVenue && activeTab === "settings",
+    retry: false, refetchInterval: 30_000, refetchOnWindowFocus: "always",
+  });
+  const localCheckedAt = Date.parse(localSnapshot.data?.checkedAt ?? "");
+  const localSnapshotStale = !Number.isFinite(localCheckedAt) || localStatusNow - localCheckedAt > 45_000 || localCheckedAt - localStatusNow > 30_000;
+  const localStoreReady = Boolean(localSnapshot.data && !localSnapshot.isError && !localSnapshot.isPending && !localSnapshotStale);
+  const canEditStoreData = !isPiVenue || localStoreReady;
   const remoteNodeSummary = useMemo(
     () => getRemoteNodeSummary(remoteNode, printers.length),
     [printers.length, remoteNode],
@@ -925,6 +949,7 @@ export default function ArchitectQrTiles() {
       setLoadingStoreTiles(true);
       try {
         const tilesRes = await api.adminListQrTiles(storeId);
+        if (selectedStoreIdRef.current !== storeId) return;
         const tiles = tilesRes.tiles ?? [];
         setStoreTiles(tiles);
       } catch (error) {
@@ -949,6 +974,7 @@ export default function ArchitectQrTiles() {
       setLoadingNode(true);
       try {
         const res = await api.adminListStoreNodes(storeId);
+        if (selectedStoreIdRef.current !== storeId) return;
         const node = pickPrimaryRemoteNode(res.nodes ?? []);
         setRemoteNode(node);
         if (node?.config) {
@@ -1019,7 +1045,9 @@ export default function ArchitectQrTiles() {
     setLoadingDeployment(true);
     try {
       const res = await api.adminGetStoreDeployment(storeId);
+      if (selectedStoreIdRef.current !== storeId) return;
       setVenueDeployment(res.deployment);
+      setDeploymentStoreId(storeId);
       setVenueDeploymentEvents(res.recentEvents || []);
       if (res.node) setRemoteNode(res.node);
     } catch (error) {
@@ -1096,10 +1124,15 @@ export default function ArchitectQrTiles() {
     async (storeId: string) => {
       if (!storeId) return;
       setLoadingStoreUsers(true);
+      setStoreUsersError(null);
       try {
         const res = await api.adminListStoreUsers(storeId);
+        if (selectedStoreIdRef.current !== storeId) return;
         setStoreUsers(res.users ?? []);
       } catch (error) {
+        if (selectedStoreIdRef.current !== storeId) return;
+        setStoreUsers([]);
+        setStoreUsersError(error instanceof ApiError ? error.message : "Unable to load venue users.");
         console.error("Failed to load store users", error);
         toast({
           variant: "destructive",
@@ -1108,7 +1141,7 @@ export default function ArchitectQrTiles() {
             error instanceof ApiError ? error.message : "Please try again.",
         });
       } finally {
-        setLoadingStoreUsers(false);
+        if (selectedStoreIdRef.current === storeId) setLoadingStoreUsers(false);
       }
     },
     [toast],
@@ -1221,6 +1254,9 @@ export default function ArchitectQrTiles() {
 
   useEffect(() => {
     if (!selectedStore) return;
+    setStoreUsers([]);
+    setStoreUsersError(null);
+    setStoreUserDialogOpen(false);
     setStoreOrderingMode(selectedStore.orderingMode ?? "qr");
     setPrinters(selectedStore.printers ?? []);
     void refreshStoreTiles(selectedStore.id);
@@ -1232,6 +1268,12 @@ export default function ArchitectQrTiles() {
     setHistoryConfirmation("");
     setHistoryDialogOpen(false);
   }, [loadRemoteNode, loadStoreUsers, loadVenueDeployment, refreshStoreTiles, selectedStore]);
+
+  useEffect(() => {
+    if (!isPiVenue || !localSnapshot.data) return;
+    setStoreOrderingMode(localSnapshot.data.store.orderingMode ?? "qr");
+    setPrinters(localSnapshot.data.store.printers ?? []);
+  }, [isPiVenue, localSnapshot.data]);
 
   useEffect(() => {
     if (activeTab === "overview") {
@@ -1383,14 +1425,16 @@ export default function ArchitectQrTiles() {
 
   const handleModeChange = useCallback(
     (value: string) => {
-      if (!selectedStoreId) return;
+      if (!selectedStoreId || !canEditStoreData) return;
       const next = value as OrderingMode;
       setUpdatingMode(true);
       api
         .adminUpdateStoreOrderingMode(selectedStoreId, next)
         .then(() => {
+          if (selectedStoreIdRef.current !== selectedStoreId) return;
           setStoreOrderingMode(next);
-          setStores((current) =>
+          if (isPiVenue) void localSnapshot.refetch();
+          else setStores((current) =>
             current.map((store) =>
               store.id === selectedStoreId
                 ? { ...store, orderingMode: next }
@@ -1408,7 +1452,9 @@ export default function ArchitectQrTiles() {
           });
         })
         .catch((error) => {
+          if (selectedStoreIdRef.current !== selectedStoreId) return;
           console.error("Failed to update ordering mode", error);
+          if (isPiVenue) void localSnapshot.refetch();
           toast({
             variant: "destructive",
             title: "Mode update failed",
@@ -1418,7 +1464,7 @@ export default function ArchitectQrTiles() {
         })
         .finally(() => setUpdatingMode(false));
     },
-    [selectedStoreId, toast],
+    [selectedStoreId, toast, canEditStoreData, isPiVenue, localSnapshot.refetch],
   );
 
   const startEditStoreUser = useCallback((storeUser: ArchitectStoreUser) => {
@@ -1443,7 +1489,7 @@ export default function ArchitectQrTiles() {
   }, [resetStoreUserForm]);
 
   const handleSaveStoreUser = useCallback(async () => {
-    if (!selectedStoreId) return;
+    if (!selectedStoreId || !canEditStoreData || storeUsersError || loadingStoreUsers) return;
     const email = storeUserForm.email.trim();
     const displayName = storeUserForm.displayName.trim();
     const password = storeUserForm.password;
@@ -1474,6 +1520,7 @@ export default function ArchitectQrTiles() {
             ...payload,
             password,
           });
+      if (selectedStoreIdRef.current !== selectedStoreId) return;
       setStoreUsers((current) => {
         const exists = current.some((user) => user.id === res.user.id);
         return exists
@@ -1487,8 +1534,11 @@ export default function ArchitectQrTiles() {
         description: `${res.user.displayName} can access ${selectedStore?.name ?? "this store"}.`,
       });
       void loadOverview();
+      if (isPiVenue) void localSnapshot.refetch();
     } catch (error) {
       console.error("Failed to save store user", error);
+      if (selectedStoreIdRef.current !== selectedStoreId) return;
+      if (isPiVenue) { void loadStoreUsers(selectedStoreId); void localSnapshot.refetch(); }
       toast({
         variant: "destructive",
         title: "User save failed",
@@ -1506,25 +1556,30 @@ export default function ArchitectQrTiles() {
     selectedStoreId,
     storeUserForm,
     toast,
+    canEditStoreData, storeUsersError, loadingStoreUsers, isPiVenue, localSnapshot.refetch, loadStoreUsers,
   ]);
 
   const handleDeleteStoreUser = useCallback(
     async (storeUser: ArchitectStoreUser) => {
-      if (!selectedStoreId) return;
+      if (!selectedStoreId || !canEditStoreData || storeUsersError || loadingStoreUsers) return;
       const confirmed = window.confirm(
         `Delete ${storeUser.displayName || storeUser.email}?`,
       );
       if (!confirmed) return;
       try {
         await api.adminDeleteStoreUser(selectedStoreId, storeUser.id);
+        if (selectedStoreIdRef.current !== selectedStoreId) return;
         setStoreUsers((current) =>
           current.filter((user) => user.id !== storeUser.id),
         );
         if (editingStoreUserId === storeUser.id) resetStoreUserForm();
         toast({ title: "User deleted" });
         void loadOverview();
+        if (isPiVenue) void localSnapshot.refetch();
       } catch (error) {
         console.error("Failed to delete store user", error);
+        if (selectedStoreIdRef.current !== selectedStoreId) return;
+        if (isPiVenue) { void loadStoreUsers(selectedStoreId); void localSnapshot.refetch(); }
         toast({
           variant: "destructive",
           title: "User delete failed",
@@ -1539,11 +1594,12 @@ export default function ArchitectQrTiles() {
       resetStoreUserForm,
       selectedStoreId,
       toast,
+      canEditStoreData, storeUsersError, loadingStoreUsers, isPiVenue, localSnapshot.refetch, loadStoreUsers,
     ],
   );
 
   const handlePurgeHistory = useCallback(async () => {
-    if (!selectedStore || historyConfirmation !== historyConfirmationPhrase)
+    if (!selectedStore || !canEditStoreData || historyConfirmation !== historyConfirmationPhrase)
       return;
     setPurgingHistory(true);
     try {
@@ -1551,6 +1607,7 @@ export default function ArchitectQrTiles() {
         selectedStore.id,
         historyConfirmation,
       );
+      if (selectedStoreIdRef.current !== selectedStore.id) return;
       setHistoryDialogOpen(false);
       setHistoryConfirmation("");
       setOverview((current) =>
@@ -1559,6 +1616,7 @@ export default function ArchitectQrTiles() {
         ),
       );
       await Promise.all([loadOverview(), refreshStoreTiles(selectedStore.id)]);
+      if (isPiVenue) void localSnapshot.refetch();
       const deletedOrders = res.deleted?.orders ?? 0;
       toast({
         title: "Venue history deleted",
@@ -1566,6 +1624,8 @@ export default function ArchitectQrTiles() {
       });
     } catch (error) {
       console.error("Failed to purge store history", error);
+      if (selectedStoreIdRef.current !== selectedStoreId) return;
+      if (isPiVenue) void localSnapshot.refetch();
       toast({
         variant: "destructive",
         title: "History deletion failed",
@@ -1582,11 +1642,12 @@ export default function ArchitectQrTiles() {
     refreshStoreTiles,
     selectedStore,
     toast,
+    canEditStoreData, isPiVenue, localSnapshot.refetch,
   ]);
 
   const handleResetStoreUserPassword = useCallback(
     async (storeUser: ArchitectStoreUser) => {
-      if (!selectedStoreId) return;
+      if (!selectedStoreId || !canEditStoreData || storeUsersError || loadingStoreUsers) return;
       const confirmed = window.confirm(
         `Reset ${storeUser.displayName || storeUser.email}'s password to 1234?`,
       );
@@ -1597,6 +1658,7 @@ export default function ArchitectQrTiles() {
           storeUser.id,
           { password: "1234" },
         );
+        if (selectedStoreIdRef.current !== selectedStoreId) return;
         setStoreUsers((current) =>
           current.map((user) => (user.id === res.user.id ? res.user : user)),
         );
@@ -1606,6 +1668,8 @@ export default function ArchitectQrTiles() {
         });
       } catch (error) {
         console.error("Failed to reset store user password", error);
+        if (selectedStoreIdRef.current !== selectedStoreId) return;
+        if (isPiVenue) { void loadStoreUsers(selectedStoreId); void localSnapshot.refetch(); }
         toast({
           variant: "destructive",
           title: "Password reset failed",
@@ -1614,7 +1678,7 @@ export default function ArchitectQrTiles() {
         });
       }
     },
-    [selectedStoreId, toast],
+    [selectedStoreId, toast, canEditStoreData, storeUsersError, loadingStoreUsers, isPiVenue, localSnapshot.refetch, loadStoreUsers],
   );
 
   const updateNodeField = useCallback(
@@ -1713,16 +1777,19 @@ export default function ArchitectQrTiles() {
     try {
       const payload = buildNodeConfigPayload(nodeConfig);
       const res = await api.adminSaveStoreMainNode(selectedStoreId, payload);
+      if (selectedStoreIdRef.current !== selectedStoreId) return;
       setRemoteNode(res.node);
       const topics = payload.printers
         .map((printer) => printer.topicSuffix.trim())
         .filter(Boolean);
-      setPrinters(topics);
-      setStores((current) =>
+      if (!isPiVenue) {
+        setPrinters(topics);
+        setStores((current) =>
         current.map((store) =>
           store.id === selectedStoreId ? { ...store, printers: topics } : store,
         ),
-      );
+        );
+      }
       setNodeConfig({
         ...defaultRemoteNodeConfig(),
         ...(res.node.config as Partial<RemoteNodeConfig>),
@@ -1764,7 +1831,7 @@ export default function ArchitectQrTiles() {
     } finally {
       setSavingNode(false);
     }
-  }, [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck]);
+  }, [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck, isPiVenue]);
 
   const handleClaimPendingNode = useCallback(
     async (pendingNode: PendingNodeAgent) => {
@@ -2053,9 +2120,9 @@ export default function ArchitectQrTiles() {
       id: selectedStore.id,
       slug: selectedStore.slug,
       name: selectedStore.name,
-      usersCount: storeUsers.length || aggregate?.usersCount || 0,
-      tilesCount: selectedStoreStats.total,
-      ordersCount: aggregate?.ordersCount || 0,
+      usersCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.usersCount : null) : storeUsers.length || aggregate?.usersCount || 0,
+      tilesCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.tilesCount : null) : selectedStoreStats.total,
+      ordersCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.ordersCount : null) : aggregate?.ordersCount || 0,
     };
   }, [
     overview,
@@ -2063,6 +2130,7 @@ export default function ArchitectQrTiles() {
     selectedStoreId,
     selectedStoreStats.total,
     storeUsers.length,
+    isPiVenue, localStoreReady, localSnapshot.data,
   ]);
 
   const filteredPoolTiles = useMemo(() => {
@@ -2096,12 +2164,13 @@ export default function ArchitectQrTiles() {
     return overview.reduce(
       (acc, store) => {
         acc.stores += 1;
-        acc.users += store.usersCount;
-        acc.tiles += store.tilesCount;
-        acc.orders += store.ordersCount;
+        acc.users += store.usersCount ?? 0;
+        acc.tiles += store.tilesCount ?? 0;
+        acc.orders += store.ordersCount ?? 0;
+        if (store.usersCount == null || store.ordersCount == null || store.tilesCount == null) acc.incomplete = true;
         return acc;
       },
-      { stores: 0, users: 0, tiles: 0, orders: 0 },
+      { stores: 0, users: 0, tiles: 0, orders: 0, incomplete: false },
     );
   }, [overview]);
 
@@ -2642,13 +2711,24 @@ export default function ArchitectQrTiles() {
                   </TabsTrigger>
                 </ArchitectSectionTabs>
 
+                {isPiVenue && <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4 sm:flex-row sm:items-start sm:justify-between" data-testid="architect-local-source">
+                  <div className="min-w-0 space-y-2">
+                    <p className="flex items-center gap-2 font-medium"><Database className="h-4 w-4 shrink-0" />Local Pi database</p>
+                    <p className="text-sm text-muted-foreground">Settings, staff and history actions here apply to {selectedStore.name}'s local database.</p>
+                    {localSnapshot.isError ? <p role="alert" className="text-sm text-destructive">{localSnapshot.error instanceof ApiError ? localSnapshot.error.message : "Cannot reach the local venue."} Local settings are unavailable until the Pi responds.</p>
+                      : localSnapshot.data ? <p className="text-xs text-muted-foreground">Last read from Pi: <time dateTime={localSnapshot.data.checkedAt}>{formatDate(localSnapshot.data.checkedAt)}</time></p>
+                        : <p role="status" className="text-sm">Reading the local venue...</p>}
+                    {localSnapshot.data && localSnapshotStale && !localSnapshot.isError && <p role="alert" className="text-sm text-destructive">Local venue status is out of date. Refresh before making changes.</p>}
+                  </div>
+                  <Button variant="outline" size="sm" disabled={localSnapshot.isFetching} onClick={() => { void localSnapshot.refetch(); void loadStoreUsers(selectedStore.id); }}>Refresh local data</Button>
+                </div>}
+
                 <TabsContent value="store-overview" className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <MetricCard
                       title="QR Tiles"
                       value={
-                        selectedStoreOverview?.tilesCount ??
-                        selectedStoreStats.total
+                        selectedStoreOverview?.tilesCount ?? (isPiVenue ? "Not reported" : selectedStoreStats.total)
                       }
                       description="Tiles linked to this store."
                     />
@@ -2659,12 +2739,12 @@ export default function ArchitectQrTiles() {
                     />
                     <MetricCard
                       title="Users"
-                      value={selectedStoreOverview?.usersCount ?? 0}
+                      value={selectedStoreOverview?.usersCount ?? "Not reported"}
                       description="Profiles counted for this store."
                     />
                     <MetricCard
                       title="Orders"
-                      value={selectedStoreOverview?.ordersCount ?? 0}
+                      value={selectedStoreOverview?.ordersCount ?? "Not reported"}
                       description="Lifetime order volume snapshot."
                     />
                   </div>
@@ -2683,14 +2763,14 @@ export default function ArchitectQrTiles() {
                           Ordering mode
                         </p>
                         <p className="mt-2 font-medium capitalize">
-                          {storeOrderingMode}
+                          {isPiVenue && !localStoreReady ? "Not reported" : storeOrderingMode}
                         </p>
                       </div>
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                         <p className="text-sm text-muted-foreground">
                           Printers
                         </p>
-                        <p className="mt-2 font-medium">{printers.length}</p>
+                        <p className="mt-2 font-medium">{isPiVenue && !localStoreReady ? "Not reported" : printers.length}</p>
                       </div>
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                         <p className="text-sm text-muted-foreground">
@@ -3276,6 +3356,7 @@ export default function ArchitectQrTiles() {
                 </TabsContent>
 
                 <TabsContent value="store-settings" className="space-y-5">
+                  {isPiVenue && <ArchitectLocalPrinters key={selectedStore.id} storeId={selectedStore.id} storeName={selectedStore.name} />}
                   <Card>
                     <CardHeader className="pb-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -3290,12 +3371,12 @@ export default function ArchitectQrTiles() {
                           </CardDescription>
                         </div>
                         <Select
-                          value={storeOrderingMode || "qr"}
+                          value={canEditStoreData ? storeOrderingMode || "qr" : ""}
                           onValueChange={handleModeChange}
-                          disabled={updatingMode}
+                          disabled={updatingMode || !canEditStoreData}
                         >
                           <SelectTrigger className="w-full lg:w-56">
-                            <SelectValue placeholder="Select mode" />
+                            <SelectValue placeholder={canEditStoreData ? "Select mode" : "Pi unavailable"} />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="qr">Self-order</SelectItem>
@@ -3377,7 +3458,7 @@ export default function ArchitectQrTiles() {
                             )}
                             Refresh
                           </Button>
-                          <Button size="sm" onClick={startCreateStoreUser}>
+                          <Button size="sm" onClick={startCreateStoreUser} disabled={!canEditStoreData || loadingStoreUsers || Boolean(storeUsersError)}>
                             <Plus className="mr-1.5 h-4 w-4" />
                             Add User
                           </Button>
@@ -3385,7 +3466,7 @@ export default function ArchitectQrTiles() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {storeUsers.length === 0 ? (
+                      {storeUsersError ? <p role="alert" className="text-sm text-destructive">{storeUsersError} User actions are unavailable until the venue responds.</p> : loadingStoreUsers ? <p role="status" className="text-sm text-muted-foreground">Loading venue users...</p> : storeUsers.length === 0 ? (
                         <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
                           No store users yet.
                         </div>
@@ -3423,6 +3504,7 @@ export default function ArchitectQrTiles() {
                                     <Button
                                       variant="outline"
                                       size="sm"
+                                      disabled={!canEditStoreData}
                                       onClick={() =>
                                         startEditStoreUser(storeUser)
                                       }
@@ -3432,6 +3514,7 @@ export default function ArchitectQrTiles() {
                                     <Button
                                       variant="outline"
                                       size="sm"
+                                      disabled={!canEditStoreData}
                                       onClick={() =>
                                         void handleResetStoreUserPassword(
                                           storeUser,
@@ -3444,6 +3527,7 @@ export default function ArchitectQrTiles() {
                                       variant="ghost"
                                       size="icon"
                                       className="text-muted-foreground hover:text-destructive"
+                                      disabled={!canEditStoreData}
                                       onClick={() =>
                                         void handleDeleteStoreUser(storeUser)
                                       }
@@ -3870,7 +3954,7 @@ export default function ArchitectQrTiles() {
                         </div>
                       </div>
 
-                      <div className="space-y-3">
+                      {isPiVenue ? <p className="rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">Local Core owns this venue's printer bindings. Use Local Pi printers above to test the configured devices; onboarding manages their Bluetooth connection.</p> : <div className="space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <Label>Declared printer interfaces</Label>
                           <Button
@@ -4013,7 +4097,7 @@ export default function ArchitectQrTiles() {
                             </div>
                           ))}
                         </div>
-                      </div>
+                      </div>}
 
                       {remoteNode ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -4080,7 +4164,7 @@ export default function ArchitectQrTiles() {
                           variant="destructive"
                           size="sm"
                           onClick={() => setHistoryDialogOpen(true)}
-                          disabled={purgingHistory}
+                          disabled={purgingHistory || !canEditStoreData}
                         >
                           {purgingHistory ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -4114,18 +4198,18 @@ export default function ArchitectQrTiles() {
               />
               <MetricCard
                 title="Users"
-                value={overviewTotals.users}
-                description="Profiles counted across all venues."
+                value={overviewTotals.incomplete ? "Not reported" : overviewTotals.users}
+                description="Local venue counts require a live Pi response."
               />
               <MetricCard
                 title="QR Tiles"
-                value={overviewTotals.tiles}
+                value={overviewTotals.incomplete ? "Not reported" : overviewTotals.tiles}
                 description="Venue-linked tiles tracked by the backend."
               />
               <MetricCard
                 title="Orders"
-                value={overviewTotals.orders}
-                description="Lifetime order volume snapshot."
+                value={overviewTotals.incomplete ? "Not reported" : overviewTotals.orders}
+                description="Local venue counts require a live Pi response."
               />
             </div>
 
@@ -4172,7 +4256,7 @@ export default function ArchitectQrTiles() {
                               Users
                             </p>
                             <p className="mt-2 text-2xl font-semibold">
-                              {store.usersCount}
+                              {store.usersCount ?? "Not reported"}
                             </p>
                           </div>
                           <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -4180,7 +4264,7 @@ export default function ArchitectQrTiles() {
                               Tiles
                             </p>
                             <p className="mt-2 text-2xl font-semibold">
-                              {store.tilesCount}
+                              {store.tilesCount ?? "Not reported"}
                             </p>
                           </div>
                           <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -4188,7 +4272,7 @@ export default function ArchitectQrTiles() {
                               Orders
                             </p>
                             <p className="mt-2 text-2xl font-semibold">
-                              {store.ordersCount}
+                              {store.ordersCount ?? "Not reported"}
                             </p>
                           </div>
                         </div>
@@ -4476,7 +4560,7 @@ export default function ArchitectQrTiles() {
             </Button>
             <Button
               onClick={() => void handleSaveStoreUser()}
-              disabled={savingStoreUser}
+              disabled={savingStoreUser || !canEditStoreData || loadingStoreUsers || Boolean(storeUsersError)}
             >
               {savingStoreUser ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -4498,7 +4582,7 @@ export default function ArchitectQrTiles() {
           <DialogHeader>
             <DialogTitle>Delete venue history?</DialogTitle>
             <DialogDescription>
-              This permanently deletes historical data for{" "}
+              This permanently deletes {isPiVenue ? "local Pi" : "online"} historical data for{" "}
               {selectedStore?.name ?? "this venue"}. Current setup, menu, staff,
               tables, QR tiles, printers, and node config are kept.
             </DialogDescription>
@@ -4539,6 +4623,7 @@ export default function ArchitectQrTiles() {
               onClick={() => void handlePurgeHistory()}
               disabled={
                 purgingHistory ||
+                !canEditStoreData ||
                 !historyConfirmationPhrase ||
                 historyConfirmation !== historyConfirmationPhrase
               }

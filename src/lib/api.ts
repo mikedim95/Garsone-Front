@@ -1,5 +1,6 @@
 // API service with auth + robust JSON/error handling
 import { useAuthStore } from "@/store/authStore";
+import { v4 as uuid, v5 as requestFingerprint } from "uuid";
 import type {
   AuthResponse,
   ArchitectStoreUser,
@@ -365,6 +366,39 @@ export async function fetchApi<T>(
   } finally {
     if (timeout !== undefined) window.clearTimeout(timeout);
     options?.signal?.removeEventListener("abort", cancel);
+  }
+}
+
+const pendingArchitectMutations = new Map<string, { requestId: string; fingerprint: string }>();
+
+async function fetchArchitectMutation<T>(endpoint: string, options: RequestInit): Promise<T> {
+  const actor = useAuthStore.getState().user?.id;
+  // Only operation scope and a random UUID enter browser storage. Even a hash
+  // of a password-bearing draft remains memory-only. After reload the server
+  // rejects changed intent before any write; a deliberate retry gets a new ID.
+  const fingerprint = requestFingerprint(`${options.method}:${endpoint}:${options.body || ""}`, requestFingerprint.URL);
+  const key = `architect-mutation:${actor}:${options.method}:${endpoint}`;
+  const pending = pendingArchitectMutations.get(key);
+  let requestId = pending?.fingerprint === fingerprint ? pending.requestId : pending ? uuid() : undefined;
+  try { requestId ||= sessionStorage.getItem(key) || undefined; } catch { /* Memory still protects retries. */ }
+  requestId ||= uuid();
+  pendingArchitectMutations.set(key, { requestId, fingerprint });
+  try { sessionStorage.setItem(key, requestId); } catch { /* Storage may be unavailable. */ }
+  try {
+    const result = await fetchApi<T>(endpoint, { ...options, headers: { ...options.headers, "x-request-id": requestId }, timeoutMs: 40_000 });
+    pendingArchitectMutations.delete(key);
+    try { sessionStorage.removeItem(key); } catch { /* No persisted request to remove. */ }
+    return result;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "REQUEST_ID_REUSED") {
+      pendingArchitectMutations.delete(key);
+      try { sessionStorage.removeItem(key); } catch { /* No persisted request to remove. */ }
+      throw new ApiError(error.status, "These details differ from an interrupted request. Refresh the venue, review your changes, then submit again.", error.code);
+    }
+    if (error instanceof ApiError && (error.status === 0 || ["LOCAL_COMMAND_TIMEOUT", "COMMAND_OUTCOME_UNCERTAIN"].includes(error.code || ""))) {
+      throw new ApiError(error.status, "The venue did not confirm this change. Refresh its data before trying again; an unchanged retry uses the same request.", error.code);
+    }
+    throw error;
   }
 }
 
@@ -1033,7 +1067,7 @@ export const api = {
   ): Promise<{ users: ArchitectStoreUser[] }> =>
     isOffline()
       ? Promise.resolve({ users: [] })
-      : fetchApi<{ users: ArchitectStoreUser[] }>(`/admin/stores/${storeId}/users`),
+      : fetchApi<{ users: ArchitectStoreUser[] }>(`/admin/stores/${storeId}/users`, { timeoutMs: 40_000 }),
   adminCreateStoreUser: (
     storeId: string,
     data: {
@@ -1053,7 +1087,7 @@ export const api = {
             role: data.role.toLowerCase() as ArchitectStoreUser["role"],
           },
         })
-      : fetchApi<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users`, {
+      : fetchArchitectMutation<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users`, {
           method: "POST",
           body: JSON.stringify(data),
         }),
@@ -1077,14 +1111,14 @@ export const api = {
             role: (data.role?.toLowerCase() as ArchitectStoreUser["role"]) || "waiter",
           },
         })
-      : fetchApi<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users/${userId}`, {
+      : fetchArchitectMutation<{ user: ArchitectStoreUser }>(`/admin/stores/${storeId}/users/${userId}`, {
           method: "PATCH",
           body: JSON.stringify(data),
         }),
   adminDeleteStoreUser: (storeId: string, userId: string): Promise<OkResponse> =>
     isOffline()
       ? Promise.resolve({ ok: true } as OkResponse)
-      : fetchApi<OkResponse>(`/admin/stores/${storeId}/users/${userId}`, {
+      : fetchArchitectMutation<OkResponse>(`/admin/stores/${storeId}/users/${userId}`, {
           method: "DELETE",
         }),
   adminPurgeStoreHistory: (
@@ -1093,7 +1127,7 @@ export const api = {
   ): Promise<PurgeStoreHistoryResponse> =>
     isOffline()
       ? devMocks.adminPurgeStoreHistory(storeId)
-      : fetchApi<PurgeStoreHistoryResponse>(`/admin/stores/${storeId}/history`, {
+      : fetchArchitectMutation<PurgeStoreHistoryResponse>(`/admin/stores/${storeId}/history`, {
           method: "DELETE",
           body: JSON.stringify({ confirmation }),
         }),
@@ -1183,7 +1217,7 @@ export const api = {
   ): Promise<{ store: StoreInfo }> =>
     isOffline()
       ? devMocks.adminUpdateStoreOrderingMode(storeId, orderingMode)
-      : fetchApi<{ store: StoreInfo }>(
+      : fetchArchitectMutation<{ store: StoreInfo }>(
           `/admin/stores/${storeId}/ordering-mode`,
           {
             method: "PATCH",
@@ -1196,7 +1230,7 @@ export const api = {
   ): Promise<{ store: StoreInfo }> =>
     isOffline()
       ? devMocks.adminUpdateStorePrinters(storeId, printers)
-      : fetchApi<{ store: StoreInfo }>(`/admin/stores/${storeId}/printers`, {
+      : fetchArchitectMutation<{ store: StoreInfo }>(`/admin/stores/${storeId}/printers`, {
           method: "PATCH",
           body: JSON.stringify({ printers }),
         }),
