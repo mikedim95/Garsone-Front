@@ -1826,13 +1826,22 @@ export default function ArchitectQrTiles() {
             : payload.printers.map(normalizeRemoteNodePrinter),
         });
         toast({
-          title: "Pi associated",
-          description: "Waiting for the Pi to acknowledge the MQTT config.",
+          title: res.localDeployment?.status === "preserved"
+            ? "Pi associated — review venue deployment"
+            : res.localDeployment?.status === "adopted" ? "Local Pi associated" : "Pi associated",
+          description: res.localDeployment?.status === "preserved"
+            ? res.localDeployment.message || "The venue's existing deployment choice was preserved. Review Venue Deployment before using this Pi."
+            : res.localDeployment?.status === "adopted"
+              ? "The existing local stack is linked. Waiting for its health report; no venue data was imported."
+              : "Waiting for the Pi to acknowledge the MQTT config.",
         });
-        void waitForRemoteNodeAck(
-          selectedStoreId,
-          res.node.desiredConfigVersion,
-        );
+        // A full-local claim sets the venue destination immediately; refresh
+        // both the deployment card and QR links without requiring a reload.
+        await Promise.all([loadVenueDeployment(selectedStoreId), refreshStoreTiles(selectedStoreId, true)]);
+        if (res.localDeployment?.status !== "preserved") {
+          void waitForRemoteNodeAck(selectedStoreId, res.node.desiredConfigVersion)
+            .then(() => loadVenueDeployment(selectedStoreId));
+        }
       } catch (error) {
         console.error("Failed to claim pending node", error);
         toast({
@@ -1845,7 +1854,7 @@ export default function ArchitectQrTiles() {
         setClaimingNodeId(null);
       }
     },
-    [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck],
+    [nodeConfig, selectedStoreId, toast, waitForRemoteNodeAck, loadVenueDeployment, refreshStoreTiles],
   );
 
   const handleRotateNodeToken = useCallback(async () => {

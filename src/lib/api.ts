@@ -275,6 +275,13 @@ type RemoteNodeSaveResponse = {
   node: RemoteNode;
   token?: string | null;
   tokenOnlyShownOnce?: boolean;
+  localDeployment?: {
+    status: "adopted" | "preserved" | "not_applicable";
+    reason?: string;
+    message?: string;
+    localUrl?: string;
+    nodeId?: string;
+  };
 };
 type PublicEventPayload = {
   event:
