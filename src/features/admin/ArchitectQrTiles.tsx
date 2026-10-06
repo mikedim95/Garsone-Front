@@ -159,7 +159,7 @@ function ArchitectSectionTabs({ value, label, children }: { value: string; label
 type ActiveTab = "pool" | "settings" | "overview";
 type GenerateScope = "pool" | "store";
 type GenerateMethod = "random" | "manual";
-type TileLifecycle = "inactive" | "unbound" | "venue" | "live";
+type TileLifecycle = "inactive" | "unbound" | "venue" | "live" | "pending";
 type PoolStatusFilter = "all" | TileLifecycle;
 type StoreOnboardForm = StoreOnboardPayload;
 type StoreUserRoleInput = "MANAGER" | "WAITER" | "COOK" | "HYBRID";
@@ -360,6 +360,7 @@ const slugifyStore = (value: string) =>
 const getTileLifecycle = (tile: QRTile): TileLifecycle => {
   if (!tile.isActive) return "inactive";
   if (!tile.storeId) return "unbound";
+  if (tile.assignmentSource === "PI_PENDING") return "pending";
   if (!tile.tableId) return "venue";
   return "live";
 };
@@ -416,6 +417,7 @@ const lifecycleCopy: Record<
   unbound: { label: "QR only", variant: "warning" },
   venue: { label: "Venue linked", variant: "info" },
   live: { label: "Table assigned", variant: "success" },
+  pending: { label: "Awaiting Pi report", variant: "warning" },
 };
 
 type BadgeVariant = "outline" | "warning" | "info" | "success" | "destructive";
@@ -495,6 +497,22 @@ function TileLifecycleBadge({ tile }: { tile: QRTile }) {
     <Badge variant={meta.variant} className="whitespace-nowrap">
       {meta.label}
     </Badge>
+  );
+}
+
+function TileAssignmentReport({ tile }: { tile: QRTile }) {
+  if (tile.assignmentSource !== "PI") return null;
+  const reportedAt = tile.assignmentReportedAt;
+  const validDate = reportedAt && Number.isFinite(Date.parse(reportedAt));
+  // This is an observed snapshot, including when the Pi is currently offline.
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      Last reported by Pi · {validDate ? (
+        <time dateTime={reportedAt} title={reportedAt}>
+          {new Date(reportedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+        </time>
+      ) : "Report time unavailable"}
+    </p>
   );
 }
 
@@ -1992,6 +2010,7 @@ export default function ArchitectQrTiles() {
         unbound: 0,
         venue: 0,
         live: 0,
+        pending: 0,
       },
     );
   }, [unassignedPoolTiles]);
@@ -2001,8 +2020,10 @@ export default function ArchitectQrTiles() {
       (acc, tile) => {
         acc.total += 1;
         if (!tile.isActive) acc.inactive += 1;
-        if (tile.isActive && !tile.tableId) acc.unassigned += 1;
-        if (tile.isActive && tile.tableId) acc.live += 1;
+        // An absent Pi report is unknown, not evidence of an unassigned table.
+        if (tile.isActive && tile.assignmentSource === "PI_PENDING") acc.pending += 1;
+        else if (tile.isActive && !tile.tableId) acc.unassigned += 1;
+        else if (tile.isActive && tile.tableId) acc.live += 1;
         return acc;
       },
       {
@@ -2010,6 +2031,7 @@ export default function ArchitectQrTiles() {
         inactive: 0,
         unassigned: 0,
         live: 0,
+        pending: 0,
       },
     );
   }, [storeTiles]);
@@ -2459,12 +2481,15 @@ export default function ArchitectQrTiles() {
                                 <p className="text-xs text-muted-foreground">
                                   {getTileLifecycle(tile) === "unbound"
                                     ? "Waiting for venue inventory."
+                                    : getTileLifecycle(tile) === "pending"
+                                      ? "Table assignment has not been reported by the Pi."
                                     : getTileLifecycle(tile) === "venue"
                                       ? "Assign tables from per-venue options."
                                       : getTileLifecycle(tile) === "live"
                                         ? "Assigned from venue settings."
                                         : "Kept out of circulation."}
                                 </p>
+                                <TileAssignmentReport tile={tile} />
                               </div>
                             </TableCell>
                             <TableCell className="hidden md:table-cell">
@@ -2702,6 +2727,12 @@ export default function ArchitectQrTiles() {
                     />
                   </div>
 
+                  {selectedStoreStats.pending > 0 && (
+                    <p role="status" className="text-sm text-muted-foreground">
+                      {selectedStoreStats.pending} QR {selectedStoreStats.pending === 1 ? "code is" : "codes are"} awaiting a table assignment report from the Pi. Assigned and unassigned counts exclude these codes.
+                    </p>
+                  )}
+
                   <Card
                     interactive={false}
                     className="border-primary/25 bg-primary/5"
@@ -2898,13 +2929,18 @@ export default function ArchitectQrTiles() {
                                   </TableCell>
                                   <TableCell className="min-w-[12rem]">
                                     <p className="font-medium">
-                                      {tile.tableLabel || "No table assigned"}
+                                      {tile.assignmentSource === "PI_PENDING"
+                                        ? "Assignment not reported yet"
+                                        : tile.tableLabel || (tile.tableId ? "Table assigned" : "No table assigned")}
                                     </p>
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                      {tile.tableId
+                                      {tile.assignmentSource === "PI_PENDING"
+                                        ? "Waiting for the associated Pi to report this QR's table."
+                                        : tile.tableId
                                         ? `Table ID ${tile.tableId}`
                                         : "Assign from the venue table editor."}
                                     </p>
+                                    <TileAssignmentReport tile={tile} />
                                   </TableCell>
                                   <TableCell>
                                     <div className="space-y-2">
@@ -2912,6 +2948,8 @@ export default function ArchitectQrTiles() {
                                       <p className="text-xs text-muted-foreground">
                                         {getTileLifecycle(tile) === "venue"
                                           ? "Ready for table assignment."
+                                          : getTileLifecycle(tile) === "pending"
+                                            ? "Table assignment has not been reported by the Pi."
                                           : getTileLifecycle(tile) === "live"
                                             ? "Bound to a table."
                                             : getTileLifecycle(tile) ===

@@ -134,6 +134,8 @@ export interface QRTile {
   isActive: boolean;
   tableId?: string | null;
   tableLabel?: string | null;
+  assignmentSource?: "ONLINE" | "PI" | "PI_PENDING";
+  assignmentReportedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
