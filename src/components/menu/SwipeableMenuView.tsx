@@ -862,7 +862,7 @@ export const SwipeableMenuView = ({
 
   return (
     <>
-      {/* Category Navigation */}
+      {/* Keep the sticky rail transparent; only the category pills have surfaces. */}
       <motion.div
         ref={categoryNavigationRef}
         initial={reduceMotion ? false : { opacity: 0, y: -6 }}
@@ -872,7 +872,7 @@ export const SwipeableMenuView = ({
           ease: [0.22, 1, 0.36, 1],
         }}
         style={{ top: "var(--menu-header-height, 0px)" }}
-        className="sticky z-30 mb-3 -mx-4 border-b border-border/35 bg-background/95 px-0 py-2 backdrop-blur sm:mx-0 sm:px-3"
+        className="sticky z-30 mb-3 -mx-4 bg-transparent px-0 py-2 sm:mx-0"
       >
         <div className="relative flex items-center overflow-hidden">
           <div
@@ -882,7 +882,7 @@ export const SwipeableMenuView = ({
               defaultValue: "Menu categories",
             })}
             aria-orientation="horizontal"
-            className="relative flex flex-1 items-center gap-2 overflow-x-auto scrollbar-hide px-4 sm:px-0"
+            className="relative flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain scrollbar-hide px-4 py-1 sm:gap-2.5 sm:px-1"
           >
             {allCategories.map((cat) => {
               const isActive = allCategories[safeSelectedIndex]?.id === cat.id;
@@ -925,12 +925,12 @@ export const SwipeableMenuView = ({
                       ?.focus({ preventScroll: true });
                   }}
                   whileTap={reduceMotion ? undefined : { scale: 0.97 }}
-                  className={`relative h-10 min-w-[88px] shrink-0 rounded-full border px-3 text-center transition-colors duration-200 ${
+                  className={`relative isolate h-11 min-w-[88px] shrink-0 rounded-full border px-4 text-center transition-[background-color,border-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none ${
                     isActive
-                      ? "border-primary bg-primary text-primary-foreground"
+                      ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20"
                       : hasSelectedItems
-                        ? "border-primary/45 bg-primary/10 text-foreground"
-                        : "border-border/45 bg-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                        ? "border-primary/40 bg-card/90 text-primary shadow-sm backdrop-blur-md hover:bg-card"
+                        : "border-border/60 bg-card/80 text-foreground/80 shadow-sm backdrop-blur-md hover:border-primary/30 hover:bg-card hover:text-foreground"
                   }`}
                 >
                   {isActive && !reduceMotion && (
@@ -945,15 +945,15 @@ export const SwipeableMenuView = ({
                       }}
                     />
                   )}
-                  {hasSelectedItems && !isActive && (
-                    <span className="absolute right-1 top-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground">
-                      {selectedCount}
-                    </span>
-                  )}
-                  <span className="relative z-10 flex h-full items-center justify-center">
+                  <span className="relative z-10 flex h-full items-center justify-center gap-2">
                     <span className="max-w-[132px] truncate text-center text-[13px] font-semibold leading-4 tracking-normal">
                       {cat.title}
                     </span>
+                    {hasSelectedItems && !isActive && (
+                      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                        {selectedCount}
+                      </span>
+                    )}
                   </span>
                 </motion.button>
               );
@@ -971,7 +971,7 @@ export const SwipeableMenuView = ({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-11 w-11 shrink-0 rounded-full"
+              className="h-11 w-11 shrink-0 rounded-full border border-border/50 bg-card/85 shadow-sm backdrop-blur-md hover:bg-card"
               disabled={safeSelectedIndex === 0}
               aria-label={t("menu.previous_category", {
                 defaultValue: "Previous category",
@@ -980,7 +980,7 @@ export const SwipeableMenuView = ({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="flex min-w-0 items-center justify-center">
+            <div className="flex min-w-0 items-center justify-center rounded-full border border-border/50 bg-card/85 px-1 shadow-sm backdrop-blur-md">
               {categoryIndicators.map((category) => (
                 <button
                   key={category.id}
@@ -1005,7 +1005,7 @@ export const SwipeableMenuView = ({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-11 w-11 shrink-0 rounded-full"
+              className="h-11 w-11 shrink-0 rounded-full border border-border/50 bg-card/85 shadow-sm backdrop-blur-md hover:bg-card"
               disabled={safeSelectedIndex >= allCategories.length - 1}
               aria-label={t("menu.next_category", {
                 defaultValue: "Next category",
