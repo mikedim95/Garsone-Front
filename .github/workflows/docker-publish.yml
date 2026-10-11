@@ -61,11 +61,12 @@ jobs:
           node tests/customer-billing-browser.mjs
           node tests/staff-billing-browser.mjs
 
-      - name: Verify Architect QR destinations
+      - name: Verify cloud management and Cook workflows
         env:
           VITE_API_URL: /api
           VITE_LOCAL_ONLY: "false"
           VITE_PUBLIC_CODE_BASE: https://www.garsone.gr/q
+          COOK_ARTIFACTS: browser-artifacts/cook-cancel
         shell: bash
         run: |
           set -euo pipefail
@@ -78,6 +79,7 @@ jobs:
           done
           node tests/qr-destination-browser.mjs
           node tests/architect-store-users-browser.mjs
+          node tests/cook-cancel-browser.mjs
           node tests/local-stack-claim-browser.mjs
 
       - name: Save browser verification artifacts

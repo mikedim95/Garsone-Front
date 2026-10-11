@@ -99,3 +99,15 @@ remain editable, and delayed responses cannot overwrite another venue or view.
 It blocks external requests and API writes. Failure artifacts default to the
 system temporary directory; `ARCHITECT_TEST_URL` and `ARCHITECT_ARTIFACTS` override
 the local server and artifact directory.
+
+The same cloud-mode fixture server supports Cook cancellation recovery:
+
+```sh
+node tests/cook-cancel-browser.mjs
+```
+
+It verifies translated network and billing errors, preservation of the order
+after failed cancellation, recovery of the button, and successful explicit retry
+in English and Greek. All responses are synthetic; no real orders are changed.
+Use `COOK_TEST_URL` to override the local origin. Failure artifacts default to the
+system temporary directory or `COOK_ARTIFACTS`.

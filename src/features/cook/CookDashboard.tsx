@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useCookOrdersStore } from "@/store/ordersStore";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { formatTableLabel } from "@/lib/formatTableLabel";
 import { realtimeService } from "@/lib/realtime";
 import { useRecoveryVersion } from "@/hooks/useRecoveryVersion";
@@ -829,6 +829,18 @@ export default function CookDashboard({ embeddedHybrid = false }: CookDashboardP
           defaultValue: "Order {{orderId}} cancelled",
           orderId: id,
         }),
+      });
+    } catch (error) {
+      console.error("Failed to cancel order", error);
+      const code = error instanceof ApiError ? error.code : undefined;
+      toast({
+        title: t("toasts.update_failed"),
+        description: code === "PAYMENT_RECORDED_ORDER_LOCKED"
+          ? t("cook.cancel_payment_recorded")
+          : code === "VISIT_CLOSED"
+            ? t("cook.cancel_visit_closed")
+            : t("cook.unable_cancel_order"),
+        variant: "destructive",
       });
     } finally {
       setActingIds((s) => {
