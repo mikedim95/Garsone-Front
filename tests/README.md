@@ -85,3 +85,17 @@ The staff suite covers full and partial payments, item selection, duplicate
 clicks and lost responses, stale balances, transfers, legacy-order review and
 role restrictions. Money parsing rejects invalid precision rather than silently
 rounding what a staff member entered.
+
+Architect venue-user loading uses a cloud-mode fixture server with
+`VITE_API_URL=/api VITE_LOCAL_ONLY=false` on port 18186:
+
+```sh
+node tests/architect-store-users-browser.mjs
+```
+
+This read-only synthetic suite checks that the QR pool and venue overview do not
+request local staff, an unavailable Pi is identified by venue, online staff
+remain editable, and delayed responses cannot overwrite another venue or view.
+It blocks external requests and API writes. Failure artifacts default to the
+system temporary directory; `ARCHITECT_TEST_URL` and `ARCHITECT_ARTIFACTS` override
+the local server and artifact directory.

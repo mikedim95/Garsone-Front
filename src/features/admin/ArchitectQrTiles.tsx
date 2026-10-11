@@ -167,6 +167,13 @@ type PoolStatusFilter = "all" | TileLifecycle;
 type StoreOnboardForm = StoreOnboardPayload;
 type StoreUserRoleInput = "MANAGER" | "WAITER" | "COOK" | "HYBRID";
 
+function venueDataError(error: unknown, venueName: string, subject: string) {
+  if (error instanceof ApiError && ["LOCAL_PI_UNAVAILABLE", "LOCAL_COMMAND_TIMEOUT", "LOCAL_COMMAND_UNAVAILABLE"].includes(error.code || error.message)) {
+    return `${venueName}'s local Pi is unavailable. Reconnect it and refresh to load ${subject}.`;
+  }
+  return error instanceof ApiError ? error.message : `Unable to load ${subject} for ${venueName}.`;
+}
+
 const isArchitectDemoStore = (
   store?: Pick<StoreInfo, "name" | "slug"> | Pick<StoreOverview, "name" | "slug"> | null,
 ) => {
@@ -638,6 +645,7 @@ export default function ArchitectQrTiles() {
   const [storeUsers, setStoreUsers] = useState<ArchitectStoreUser[]>([]);
   const [loadingStoreUsers, setLoadingStoreUsers] = useState(false);
   const [storeUsersError, setStoreUsersError] = useState<string | null>(null);
+  const storeUsersRequestRef = useRef(0);
   const [savingStoreUser, setSavingStoreUser] = useState(false);
   const [editingStoreUserId, setEditingStoreUserId] = useState<string | null>(
     null,
@@ -695,6 +703,9 @@ export default function ArchitectQrTiles() {
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
     [selectedStoreId, stores],
   );
+  const storeUsersScope = isArchitect && activeTab === "settings" && storeTab === "store-settings" ? selectedStoreId : "";
+  const storeUsersScopeRef = useRef(storeUsersScope);
+  storeUsersScopeRef.current = storeUsersScope;
   const isPiVenue = selectedStore?.dataSource === "PI" || (deploymentStoreId === selectedStoreId && venueDeployment.target === "PI");
   const [localStatusNow, setLocalStatusNow] = useState(Date.now);
   useEffect(() => {
@@ -1122,29 +1133,33 @@ export default function ArchitectQrTiles() {
 
   const loadStoreUsers = useCallback(
     async (storeId: string) => {
-      if (!storeId) return;
+      // Staff data belongs to Store Settings, not the global QR pool or other venue tabs.
+      if (!storeId || storeUsersScopeRef.current !== storeId) return;
+      const requestId = ++storeUsersRequestRef.current;
+      const isCurrentRequest = () => selectedStoreIdRef.current === storeId
+        && storeUsersScopeRef.current === storeId && storeUsersRequestRef.current === requestId;
       setLoadingStoreUsers(true);
       setStoreUsersError(null);
       try {
         const res = await api.adminListStoreUsers(storeId);
-        if (selectedStoreIdRef.current !== storeId) return;
+        if (!isCurrentRequest()) return;
         setStoreUsers(res.users ?? []);
       } catch (error) {
-        if (selectedStoreIdRef.current !== storeId) return;
+        if (!isCurrentRequest()) return;
+        const description = venueDataError(error, selectedStore?.name || "This venue", "venue users");
         setStoreUsers([]);
-        setStoreUsersError(error instanceof ApiError ? error.message : "Unable to load venue users.");
+        setStoreUsersError(description);
         console.error("Failed to load store users", error);
         toast({
           variant: "destructive",
-          title: "Failed to load users",
-          description:
-            error instanceof ApiError ? error.message : "Please try again.",
+          title: `Unable to load ${selectedStore?.name || "venue"} users`,
+          description,
         });
       } finally {
-        if (selectedStoreIdRef.current === storeId) setLoadingStoreUsers(false);
+        if (isCurrentRequest()) setLoadingStoreUsers(false);
       }
     },
-    [toast],
+    [selectedStore?.name, toast],
   );
 
   const loadOverview = useCallback(async () => {
@@ -1253,21 +1268,34 @@ export default function ArchitectQrTiles() {
   }, [loadStores, refreshPoolTiles]);
 
   useEffect(() => {
-    if (!selectedStore) return;
     setStoreUsers([]);
     setStoreUsersError(null);
+  }, [selectedStoreId]);
+
+  useEffect(() => {
+    if (!selectedStore) return;
     setStoreUserDialogOpen(false);
     setStoreOrderingMode(selectedStore.orderingMode ?? "qr");
     setPrinters(selectedStore.printers ?? []);
     void refreshStoreTiles(selectedStore.id);
     void loadRemoteNode(selectedStore.id);
     void loadVenueDeployment(selectedStore.id);
-    void loadStoreUsers(selectedStore.id);
     setEditingStoreUserId(null);
     setStoreUserForm(defaultStoreUserForm());
     setHistoryConfirmation("");
     setHistoryDialogOpen(false);
-  }, [loadRemoteNode, loadStoreUsers, loadVenueDeployment, refreshStoreTiles, selectedStore]);
+  }, [loadRemoteNode, loadVenueDeployment, refreshStoreTiles, selectedStore]);
+
+  useEffect(() => {
+    if (storeUsersScope) void loadStoreUsers(storeUsersScope);
+    else setLoadingStoreUsers(false);
+    // Ignore replies after leaving Store Settings, switching venues, or unmounting.
+    return () => { storeUsersRequestRef.current += 1; };
+  }, [loadStoreUsers, storeUsersScope]);
+
+  useEffect(() => {
+    if (activeTab === "settings" && storeTab === "store-overview") void loadOverview();
+  }, [activeTab, storeTab, loadOverview]);
 
   useEffect(() => {
     if (!isPiVenue || !localSnapshot.data) return;
@@ -2002,6 +2030,7 @@ export default function ArchitectQrTiles() {
       if (selectedStoreId) void loadRemoteNode(selectedStoreId);
       if (selectedStoreId) void loadVenueDeployment(selectedStoreId);
       if (selectedStoreId) void loadStoreUsers(selectedStoreId);
+      if (storeTab === "store-overview") void loadOverview();
       if (selectedStoreId) void refreshStoreTiles(selectedStoreId, true);
       return;
     }
@@ -2016,6 +2045,7 @@ export default function ArchitectQrTiles() {
     refreshPoolTiles,
     refreshStoreTiles,
     selectedStoreId,
+    storeTab,
   ]);
 
   const handleVenueDeployment = useCallback(async (
@@ -2120,9 +2150,9 @@ export default function ArchitectQrTiles() {
       id: selectedStore.id,
       slug: selectedStore.slug,
       name: selectedStore.name,
-      usersCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.usersCount : null) : storeUsers.length || aggregate?.usersCount || 0,
+      usersCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.usersCount : null) : aggregate?.usersCount ?? (storeUsers.length || null),
       tilesCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.tilesCount : null) : selectedStoreStats.total,
-      ordersCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.ordersCount : null) : aggregate?.ordersCount || 0,
+      ordersCount: isPiVenue ? (localStoreReady ? localSnapshot.data!.counts.ordersCount : null) : aggregate?.ordersCount ?? null,
     };
   }, [
     overview,
@@ -2715,7 +2745,7 @@ export default function ArchitectQrTiles() {
                   <div className="min-w-0 space-y-2">
                     <p className="flex items-center gap-2 font-medium"><Database className="h-4 w-4 shrink-0" />Local Pi database</p>
                     <p className="text-sm text-muted-foreground">Settings, staff and history actions here apply to {selectedStore.name}'s local database.</p>
-                    {localSnapshot.isError ? <p role="alert" className="text-sm text-destructive">{localSnapshot.error instanceof ApiError ? localSnapshot.error.message : "Cannot reach the local venue."} Local settings are unavailable until the Pi responds.</p>
+                    {localSnapshot.isError ? <p role="alert" className="text-sm text-destructive">{venueDataError(localSnapshot.error, selectedStore.name, "local venue settings")} Local settings are unavailable until the Pi responds.</p>
                       : localSnapshot.data ? <p className="text-xs text-muted-foreground">Last read from Pi: <time dateTime={localSnapshot.data.checkedAt}>{formatDate(localSnapshot.data.checkedAt)}</time></p>
                         : <p role="status" className="text-sm">Reading the local venue...</p>}
                     {localSnapshot.data && localSnapshotStale && !localSnapshot.isError && <p role="alert" className="text-sm text-destructive">Local venue status is out of date. Refresh before making changes.</p>}
