@@ -7,7 +7,7 @@ import { API_BASE } from "@/lib/api";
 import { setStoredStoreSlug } from "@/lib/storeSlug";
 
 type ScanState = "loading" | "unavailable" | "unassigned" | "connection";
-const CODE_PATTERN = /^GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/;
+const CODE_PATTERN = /^(?:GT-[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}|QT-[A-F0-9]{32})$/;
 
 export default function PublicCodeRedirect() {
   const { t } = useTranslation();

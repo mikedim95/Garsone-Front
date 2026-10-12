@@ -2,6 +2,8 @@ import { fetchApi } from "@/lib/api";
 
 export interface QrEventAssignment {
   publicCode: string;
+  // Issued by Core when saved; never supplied by the editor as an input.
+  publicToken?: string | null;
   tableId: string | null;
   label: string | null;
   isActive: boolean;
@@ -30,7 +32,7 @@ export interface QrEvent extends QrEventConfig {
 }
 
 export interface QrEventBundle {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   event: QrEventConfig &
     Pick<QrEvent, "id" | "storeId" | "storeSlug" | "revision">;
   exportedAt: string;
@@ -76,8 +78,11 @@ export const qrEventsApi = {
 };
 
 export function eventQrUrl(
-  event: Pick<QrEvent, "id" | "publicApiUrl">,
-  publicCode: string,
+  event: Pick<QrEvent, "publicApiUrl">,
+  assignment: Pick<QrEventAssignment, "publicToken">,
 ): string {
-  return `${event.publicApiUrl.replace(/\/+$/, "")}/q/${encodeURIComponent(publicCode)}?event=${encodeURIComponent(event.id)}`;
+  const token = assignment.publicToken;
+  // A missing token must never fall back to a URL exposing the event ID.
+  if (!token || !/^QT-[0-9A-F]{32}$/.test(token)) return "";
+  return `${event.publicApiUrl.replace(/\/+$/, "")}/q/${token}`;
 }

@@ -8,11 +8,29 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright-core");
+const { createElement } = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
+const { QRCodeSVG } = require("qrcode.react");
 const origin = process.env.QR_TEST_URL || "http://127.0.0.1:18180";
+assert(["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname), "Use a local fixture origin");
 const storeId = "11111111-1111-4111-8111-111111111111";
 const tableId = "22222222-2222-4222-8222-222222222222";
 const eventId = "33333333-3333-4333-8333-333333333333";
 const pairingToken = "A".repeat(43);
+const publicToken = "QT-0123456789ABCDEF0123456789ABCDEF";
+const expectedQrUrl = `http://noor-node.local:8080/api/q/${publicToken}`;
+const prepareAssignments = (assignments, previous = []) => assignments.map((assignment, index) => {
+  assert.equal(assignment.publicToken, undefined, "Only the backend supplies public tokens");
+  return { ...assignment, publicToken: previous.find(row => row.publicCode === assignment.publicCode)?.publicToken ||
+    (index === 0 ? publicToken : `QT-${index.toString(16).toUpperCase().padStart(32, "0")}`) };
+});
+async function assertQrPayload(svg, value, level = "L") {
+  const expected = renderToStaticMarkup(createElement(QRCodeSVG, { value, size: 240, includeMargin: true, level }));
+  const expectedPaths = [...expected.matchAll(/<path[^>]* d="([^"]*)"/g)].map(match => match[1]);
+  assert(expectedPaths.length > 0);
+  assert.deepEqual(await svg.locator("path").evaluateAll(paths => paths.map(path => path.getAttribute("d"))), expectedPaths,
+    "QR SVG must encode the opaque URL, including in the print document");
+}
 const browser = await chromium.launch({
   headless: true,
   ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
@@ -29,6 +47,7 @@ try {
       version: 0,
     }));
     window.print = () => {};
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async value => { window.__copiedQrUrl = value; } } });
   });
   const page = await context.newPage();
   const errors = [];
@@ -56,6 +75,7 @@ try {
     let body = {};
     let status = 200;
     if (path === "/admin/stores") body = { stores: [store] };
+    else if (path === "/admin/stores/overview") body = { stores: [{ ...store, usersCount: 0, tilesCount: tiles.length, ordersCount: 0 }] };
     else if (path.endsWith("/tables")) body = { tables };
     else if (path.endsWith("/qr-tiles")) body = { tiles };
     else if (path.endsWith("/nodes")) body = { nodes: [] };
@@ -69,17 +89,19 @@ try {
         revision: 1, lastAppliedRevision: 0, lastAppliedAt: null, paired: false, isImported: false,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
+      event.assignments = prepareAssignments(event.assignments);
       body = { event };
     } else if (path === `/admin/qr-events/${eventId}` && request.method() === "PATCH") {
       if (forceConflict) { status = 409; body = { error: "QR_EVENT_REVISION_CONFLICT" }; }
       else {
         const { expectedRevision, ...changes } = request.postDataJSON();
         assert.equal(expectedRevision, event.revision);
+        changes.assignments = prepareAssignments(changes.assignments, event.assignments);
         event = { ...event, ...changes, revision: event.revision + 1 }; body = { event };
       }
     } else if (path.endsWith("/export")) {
       const { id, storeId, storeSlug, name, publicAppUrl, publicApiUrl, revision, isActive, assignments } = event;
-      body = { bundle: { schemaVersion: 1, event: { id, storeId, storeSlug, name, publicAppUrl, publicApiUrl, revision, isActive, assignments }, exportedAt: new Date().toISOString() } };
+      body = { bundle: { schemaVersion: 2, event: { id, storeId, storeSlug, name, publicAppUrl, publicApiUrl, revision, isActive, assignments }, exportedAt: new Date().toISOString() } };
     } else if (path.endsWith("/pairing")) {
       event = { ...event, paired: request.method() !== "DELETE", lastAppliedRevision: 0, lastAppliedAt: null };
       body = request.method() === "DELETE" ? { ok: true } : { token: pairingToken };
@@ -152,8 +174,13 @@ try {
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "QR", exact: true }).first().click();
-  await page.getByRole("dialog").getByText(`http://noor-node.local:8080/api/q/GT-ABCD-1234?event=${eventId}`, { exact: true }).waitFor();
+  await page.getByRole("dialog").getByText(expectedQrUrl, { exact: true }).waitFor();
+  assert(!(await page.getByRole("dialog").innerHTML()).includes(eventId));
+  await assertQrPayload(page.getByRole("dialog").locator('svg[width="240"]'), expectedQrUrl);
   await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Copy URL for GT-ABCD-1234", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.__copiedQrUrl), expectedQrUrl);
+  assert.equal(new URL(expectedQrUrl).search, "");
   const [popup] = await Promise.all([
     page.waitForEvent("popup"),
     page.getByRole("button", { name: "Print enabled QR codes", exact: true }).click(),
@@ -162,6 +189,10 @@ try {
   assert.equal(await popup.locator("script,img").count(), 0);
   assert.equal(await popup.locator("svg").count(), 1);
   assert.match(await popup.locator("body").textContent(), /<img src=x onerror=alert\(1\)>/);
+  assert(!(await popup.content()).includes(eventId), "Printed document must not contain the event UUID");
+  assert(!(await popup.content()).includes("?event="), "Printed document must not contain an event query");
+  await popup.getByText(expectedQrUrl, { exact: true }).waitFor();
+  await assertQrPayload(popup.locator("svg"), expectedQrUrl, "M");
   await popup.close();
 
   event = { ...event, revision: 2 };
@@ -177,6 +208,8 @@ try {
     page.getByRole("button", { name: "Export for Pi", exact: true }).click(),
   ]);
   const exported = JSON.parse(await fs.readFile(await download.path(), "utf8"));
+  assert.equal(exported.schemaVersion, 2);
+  assert.equal(exported.event.assignments[0].publicToken, publicToken);
   assert.equal(exported.event.id, eventId);
   assert.equal(exported.event.revision, 3);
   assert.equal(download.suggestedFilename(), `qr-event-${eventId}-r3.json`);
@@ -213,6 +246,21 @@ try {
   assert(await page.getByLabel("Label for GT-ABCD-1234", { exact: true }).isDisabled());
   assert(await page.getByRole("button", { name: "Save event", exact: true }).isDisabled());
   assert(await page.getByRole("button", { name: "Print enabled QR codes", exact: true }).isEnabled());
+
+  // A legacy event can prepare tokens without unrelated edits. Never reuse its UUID URL.
+  event = { ...event, isImported: false, assignments: event.assignments.map(({ publicToken, ...assignment }) => assignment) };
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await page.getByText("Save event to prepare private links.", { exact: true }).waitFor();
+  assert(await page.getByRole("button", { name: "Save event", exact: true }).isEnabled());
+  assert(await page.getByRole("button", { name: "Print enabled QR codes", exact: true }).isDisabled());
+  assert(await page.getByRole("button", { name: "QR", exact: true }).first().isDisabled());
+  assert(await page.getByRole("button", { name: "Copy URL for GT-ABCD-1234", exact: true }).isDisabled());
+  forceConflict = false;
+  const nextRevision = event.revision + 1;
+  await page.getByRole("button", { name: "Save event", exact: true }).click();
+  await page.getByText(`Saved revision ${nextRevision}`, { exact: true }).waitFor();
+  assert(await page.getByRole("button", { name: "Print enabled QR codes", exact: true }).isEnabled());
+  assert(await page.getByRole("button", { name: "Copy URL for GT-ABCD-1234", exact: true }).isEnabled());
   assert(!requests.some((request) => request.url.includes("noor-node.local")), "Cloud dashboard must never call the LAN API");
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpected, []);
@@ -221,6 +269,8 @@ try {
     "responsive event controls and sticky header at four sizes", "inline validation focuses field before any write", "derived/custom API addresses", "removal undo preserves assignments", "stale print is blocked", "latest export revision and filename", "pair rotation clears old acknowledgement", "event creation and venue assignments", "local printed resolver URL", "print XSS escaping", "unassigned codes excluded from printing", "bundle export",
     "scoped pairing download without cloud JWT", "409 retains unsaved edits", "dirty tab navigation guard",
     "imported event is read-only and printable", "no cloud-to-LAN browser requests",
+    "opaque token preview and copied URL", "actual printed QR matrix has no event UUID", "v2 bundle retains public tokens",
+    "legacy event blocks unsafe links and can prepare tokens without other edits", "save requests never supply public tokens",
   ] }));
 } finally {
   await browser.close();

@@ -111,7 +111,9 @@ export function normalizedEventDraft(config: QrEventConfig): QrEventConfig {
     publicAppUrl: normalizeEventUrl(config.publicAppUrl, true),
     publicApiUrl: normalizeEventUrl(config.publicApiUrl, false),
     assignments: config.assignments.map((row) => ({
-      ...row,
+      publicCode: row.publicCode,
+      tableId: row.tableId,
+      isActive: row.isActive,
       label: row.label?.trim() || null,
     })),
   };

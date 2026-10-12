@@ -67,6 +67,8 @@ jobs:
           VITE_LOCAL_ONLY: "false"
           VITE_PUBLIC_CODE_BASE: https://www.garsone.gr/q
           COOK_ARTIFACTS: browser-artifacts/cook-cancel
+          QR_TEST_URL: http://127.0.0.1:18186
+          QR_SCAN_ARTIFACT_DIR: browser-artifacts/qr-scan
         shell: bash
         run: |
           set -euo pipefail
@@ -78,6 +80,8 @@ jobs:
             sleep 1
           done
           node tests/qr-destination-browser.mjs
+          node tests/qr-events-browser-smoke.mjs
+          node tests/qr-scan-browser-smoke.mjs
           node tests/architect-store-users-browser.mjs
           node tests/cook-cancel-browser.mjs
           node tests/local-stack-claim-browser.mjs

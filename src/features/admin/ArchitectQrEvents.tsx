@@ -212,6 +212,9 @@ export default function ArchitectQrEvents({
       draft.publicApiUrl.trim().replace(/\/+$/, "") !== saved.publicApiUrl,
   );
   const remaining = MAX_CODES - (draft?.assignments.length ?? 0);
+  const needsPublicLinks = Boolean(
+    saved?.assignments.some((assignment) => !eventQrUrl(saved, assignment)),
+  );
   const printable = useMemo(
     () =>
       saved?.isActive
@@ -410,7 +413,7 @@ export default function ArchitectQrEvents({
     );
 
   const save = async () => {
-    if (!draft || readOnly || running.current || !dirty) return;
+    if (!draft || readOnly || running.current || (!dirty && !needsPublicLinks)) return;
     setTouched({ name: true, publicAppUrl: true, publicApiUrl: true });
     const firstInvalid = (
       ["name", "publicAppUrl", "publicApiUrl"] as const
@@ -555,7 +558,7 @@ export default function ArchitectQrEvents({
           "Choose a valid JSON event bundle exported from the cloud architect dashboard.",
         );
       }
-      if (bundle?.schemaVersion !== 1 || bundle?.event?.storeId !== store.id)
+      if (![1, 2].includes(bundle?.schemaVersion) || bundle?.event?.storeId !== store.id)
         throw new Error(
           "Select the venue this event bundle belongs to before importing.",
         );
@@ -618,7 +621,7 @@ export default function ArchitectQrEvents({
   };
 
   const print = async () => {
-    if (!saved || dirty || !printable.length || running.current) return;
+    if (!saved || dirty || needsPublicLinks || !printable.length || running.current) return;
     const popup = window.open("", "_blank", "width=960,height=800");
     if (!popup) {
       reportError(
@@ -650,6 +653,12 @@ export default function ArchitectQrEvents({
           message:
             "This event changed elsewhere. Review the latest saved revision now shown, then print again.",
         });
+        return;
+      }
+      if (latest.assignments.some((assignment) => !eventQrUrl(latest, assignment))) {
+        popup.close();
+        remember(latest);
+        setNotice({ kind: "info", message: "Save event to prepare private links before printing." });
         return;
       }
       const currentTables = new Map(
@@ -696,13 +705,13 @@ export default function ArchitectQrEvents({
                       store.name}
                   </h2>
                   <QRCodeSVG
-                    value={eventQrUrl(saved, assignment.publicCode)}
+                    value={eventQrUrl(latest, assignment)}
                     size={180}
                     includeMargin
                     level="M"
                   />
                   <p className="code">{assignment.publicCode}</p>
-                  <p>{eventQrUrl(saved, assignment.publicCode)}</p>
+                  <p>{eventQrUrl(latest, assignment)}</p>
                 </article>
               ))}
             </main>
@@ -950,6 +959,10 @@ export default function ArchitectQrEvents({
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {dirty
                   ? "Save before exporting or printing."
+                  : needsPublicLinks
+                    ? readOnly
+                      ? "Save this event in the cloud dashboard, then sync it to prepare private links."
+                      : "Save event to prepare private links."
                   : !saved?.isActive
                     ? "Enable this event to print its codes."
                     : `${printable.length} saved code${printable.length === 1 ? "" : "s"} ready to print.`}
@@ -959,7 +972,7 @@ export default function ArchitectQrEvents({
               <Button
                 aria-label="Save event"
                 className="min-w-0 px-2 sm:px-4"
-                disabled={!dirty || busy || readOnly}
+                disabled={(!dirty && !needsPublicLinks) || busy || readOnly}
                 onClick={() => void save()}
               >
                 {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -979,7 +992,7 @@ export default function ArchitectQrEvents({
                 aria-label="Print enabled QR codes"
                 className="min-w-0 px-2 sm:px-4"
                 variant="outline"
-                disabled={!saved || dirty || !printable.length || busy}
+                disabled={!saved || dirty || needsPublicLinks || !printable.length || busy}
                 onClick={print}
               >
                 <Printer className="mr-2 h-4 w-4" />
@@ -1462,7 +1475,7 @@ export default function ArchitectQrEvents({
                             <Button
                               variant="ghost"
                               size="sm"
-                              disabled={!saved || dirty || busy}
+                              disabled={!saved || dirty || busy || !eventQrUrl(saved, assignment)}
                               onClick={() => setPreview(assignment)}
                             >
                               QR
@@ -1470,12 +1483,12 @@ export default function ArchitectQrEvents({
                             <Button
                               variant="ghost"
                               size="icon"
-                              disabled={!saved || dirty || busy}
+                              disabled={!saved || dirty || busy || !eventQrUrl(saved, assignment)}
                               aria-label={`Copy URL for ${assignment.publicCode}`}
                               onClick={() =>
                                 saved &&
                                 void copy(
-                                  eventQrUrl(saved, assignment.publicCode),
+                                  eventQrUrl(saved, assignment),
                                 )
                               }
                             >
@@ -1644,13 +1657,13 @@ export default function ArchitectQrEvents({
           <DialogHeader>
             <DialogTitle>{preview?.label || preview?.publicCode}</DialogTitle>
             <DialogDescription className="break-all">
-              {preview && saved ? eventQrUrl(saved, preview.publicCode) : ""}
+              {preview && saved ? eventQrUrl(saved, preview) : ""}
             </DialogDescription>
           </DialogHeader>
           {preview && saved && (
             <div className="flex justify-center rounded bg-white p-4">
               <QRCodeSVG
-                value={eventQrUrl(saved, preview.publicCode)}
+                value={eventQrUrl(saved, preview)}
                 size={240}
                 includeMargin
               />

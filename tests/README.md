@@ -17,6 +17,13 @@ node tests/qr-events-browser-smoke.mjs
 node tests/qr-scan-browser-smoke.mjs
 ```
 
+Event checks verify opaque public links in previews, clipboard values and the
+printed QR matrix, without an event UUID or query parameter. Legacy events must
+save to prepare links before previewing or printing. The fixture also checks v2
+exports and that clients never submit public tokens on create/update. Scan checks
+preserve existing online GT codes and old event links while accepting QT tokens.
+Both suites run in the cloud image-publishing checks.
+
 Run the guest checkout suite in both cloud (`VITE_LOCAL_ONLY=false`) and local
 (`VITE_LOCAL_ONLY=true`) modes. It verifies a single submit action, no payment/NFC
 requests, cart recovery and duplicate-click prevention. For local checkout, serve with `VITE_API_URL=/api` and `VITE_LOCAL_ONLY=true` on

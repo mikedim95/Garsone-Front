@@ -3,9 +3,9 @@
 // PLAYWRIGHT_MODULE, CHROME_PATH and QR_TEST_URL use the same options as the event dashboard smoke.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright-core");
@@ -13,20 +13,23 @@ const origin = new URL(process.env.QR_TEST_URL || "http://127.0.0.1:18180").orig
 if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname)) {
   throw new Error("QR scan smoke requires a local preview origin");
 }
-const artifactDir = process.env.QR_SCAN_ARTIFACT_DIR || fileURLToPath(new URL("../../Garsone-Core/deploy/pi/full-stack/artifacts/", import.meta.url));
+const artifactDir = process.env.QR_SCAN_ARTIFACT_DIR || path.join(os.tmpdir(), "garsone-qr-scan");
 const eventId = "a7a8c9d0-1234-4567-8123-123456789abc";
 const tableId = "d7a8c9d0-1234-4567-8123-123456789abc";
 const visitId = "e7a8c9d0-1234-4567-8123-123456789abc";
 const visitToken = "2".repeat(64);
 const storeId = "c7a8c9d0-1234-4567-8123-123456789abc";
 const code = "GT-ABCD-2345";
+const publicToken = "QT-0123456789ABCDEF0123456789ABCDEF";
 const tablePath = `/table/${tableId}?storeSlug=noor`;
 const foreignOrigin = "https://configured-event-app.invalid";
-const success = { status: "OK", tableId, tableLabel: "Table 1", storeSlug: "noor", publicCode: code, eventId };
+const success = { status: "OK", tableId, tableLabel: "Table 1", storeSlug: "noor", publicCode: code };
 const completed = [];
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
 
 async function scenario(name, handler, verify, options = {}) {
+  const scanCode = options.code || code;
+  const resolverPath = `/api/q/${scanCode.toUpperCase()}`;
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
@@ -60,7 +63,7 @@ async function scenario(name, handler, verify, options = {}) {
       unexpected.push(`External request: ${url.origin}${url.pathname}`);
       return route.abort();
     }
-    if (url.pathname === `/api/q/${code}`) {
+    if (url.pathname === resolverPath) {
       requests.push(request);
       return handler({ route, request, url, attempt: requests.length, fulfill, releases });
     }
@@ -91,8 +94,8 @@ async function scenario(name, handler, verify, options = {}) {
   });
   try {
     if (options.clock) await page.clock.install();
-    const requested = page.waitForRequest(request => new URL(request.url()).pathname === `/api/q/${code}`);
-    await page.goto(`${origin}/q/${code}${options.query ?? `?event=${eventId}`}`, { waitUntil: "domcontentloaded" });
+    const requested = page.waitForRequest(request => new URL(request.url()).pathname === resolverPath);
+    await page.goto(`${origin}/q/${scanCode}${options.query ?? `?event=${eventId}`}`, { waitUntil: "domcontentloaded" });
     await requested;
     await verify({ page, requests, destinationRequests });
     for (const request of requests) {
@@ -114,6 +117,37 @@ async function scenario(name, handler, verify, options = {}) {
 }
 
 try {
+  await scenario("opaque token opens the local table without an event query", ({ route, url, fulfill }) => {
+    assert.equal(url.search, "");
+    return fulfill(route, { ...success, publicToken });
+  }, async ({ page, requests }) => {
+    await page.waitForURL(`${origin}${tablePath}`);
+    assert.equal(requests.length, 1);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("STORE_SLUG")), "noor");
+  }, { code: publicToken, query: "" });
+
+  await scenario("unknown opaque token stays unavailable and retries the same token", ({ route, url, fulfill }) => {
+    assert.equal(url.search, "");
+    return fulfill(route, { error: "QR_EVENT_TILE_NOT_FOUND_OR_INACTIVE" }, 404);
+  }, async ({ page, requests }) => {
+    await page.getByRole("heading", { name: "This QR code is unavailable", exact: true }).waitFor();
+    assert.equal(new URL(page.url()).pathname, `/q/${publicToken.toLowerCase()}`);
+    const retried = page.waitForRequest(request => new URL(request.url()).pathname === `/api/q/${publicToken}`);
+    await page.getByRole("button", { name: "Check again", exact: true }).click();
+    await retried;
+    await page.getByRole("heading", { name: "This QR code is unavailable", exact: true }).waitFor();
+    assert.equal(requests.length, 2);
+    assert.doesNotMatch(await page.locator("main").innerText(), /QR_EVENT_|NOT_FOUND/);
+  }, { code: publicToken.toLowerCase(), query: "" });
+
+  await scenario("legacy global code opens without an event query", ({ route, url, fulfill }) => {
+    assert.equal(url.search, "");
+    return fulfill(route, success);
+  }, async ({ page, requests }) => {
+    await page.waitForURL(`${origin}${tablePath}`);
+    assert.equal(requests.length, 1);
+  }, { query: "" });
+
   let releaseLoading;
   await scenario("mobile loading and missing-code guidance", async ({ route, fulfill, releases }) => {
     await new Promise(resolve => { releaseLoading = resolve; releases.push(resolve); });
@@ -127,6 +161,7 @@ try {
     assert.doesNotMatch(await page.locator("main").innerText(), /QR_EVENT_|NOT_FOUND|\{"error"/);
     assert.equal(new URL(page.url()).pathname, `/q/${code}`);
     assert.equal(requests.length, 1);
+    assert.equal(new URL(requests[0].url()).searchParams.get("event"), eventId);
     await fs.mkdir(artifactDir, { recursive: true });
     await page.screenshot({ path: path.join(artifactDir, "qr-scan-mobile-unavailable.png"), fullPage: true });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile page should not scroll horizontally");
